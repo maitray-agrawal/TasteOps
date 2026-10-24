@@ -75,7 +75,9 @@ class CulturalMatrixService:
         # Check if any signals or location exist
         has_signals = bool(twin.anchor_entities or twin.resolved_tags or twin.location)
         if not has_signals:
-            logger.warning("CulturalTwin contains no anchor entities, tags, or location. Returning empty matrix.")
+            logger.warning(
+                "CulturalTwin contains no anchor entities, tags, or location. Returning empty matrix."
+            )
             return CulturalMatrix(
                 evidence=[
                     CulturalMatrixEvidence(
@@ -98,7 +100,9 @@ class CulturalMatrixService:
 
         for category, res in zip(target_categories, results):
             if isinstance(res, BaseException):
-                logger.error("Category '%s' query failed with exception: %s", category, res)
+                logger.error(
+                    "Category '%s' query failed with exception: %s", category, res
+                )
                 matrix.query_metadata.append(
                     CategoryQueryMetadata(
                         category=category,
@@ -148,7 +152,9 @@ class CulturalMatrixService:
         twin: CulturalTwin,
         category: str,
         take: int,
-    ) -> tuple[list[CulturalRecommendation], CategoryQueryMetadata, CulturalMatrixEvidence]:
+    ) -> tuple[
+        list[CulturalRecommendation], CategoryQueryMetadata, CulturalMatrixEvidence
+    ]:
         """Queries Qloo Insights for a single category with a deterministic single-retry fallback on empty."""
         start_time = time.perf_counter()
         capability = self.insights_service.get_capability(category)
@@ -193,7 +199,9 @@ class CulturalMatrixService:
 
         # 1. First Attempt
         try:
-            recs = await self.insights_service.fetch_category_insights(params, category, source_signal)
+            recs = await self.insights_service.fetch_category_insights(
+                params, category, source_signal
+            )
         except Exception as e:
             logger.warning("Category '%s' initial query failed: %s", category, e)
             recs = []
@@ -219,7 +227,10 @@ class CulturalMatrixService:
             return recs, meta, ev
 
         # 2. Deterministic Fallback Rule & Single Retry
-        logger.info("Category '%s' returned 0 results. Evaluating deterministic fallback rules...", category)
+        logger.info(
+            "Category '%s' returned 0 results. Evaluating deterministic fallback rules...",
+            category,
+        )
         fallback_params, fallback_desc = self._compute_fallback_params(
             twin=twin,
             category=category,
@@ -246,7 +257,9 @@ class CulturalMatrixService:
             return [], meta, ev
 
         # Execute single retry with broadened fallback query
-        logger.info("Category '%s' retrying once with fallback: %s", category, fallback_desc)
+        logger.info(
+            "Category '%s' retrying once with fallback: %s", category, fallback_desc
+        )
         fallback_source_signal = {
             **source_signal,
             "fallback_applied": fallback_desc,
@@ -276,7 +289,8 @@ class CulturalMatrixService:
             ev = CulturalMatrixEvidence(
                 category=category,
                 message=f"Initial query returned 0 results; fallback ({fallback_desc}) successfully returned {len(fallback_recs)} recommendations.",
-                signals_used=fallback_params.signal_entities + fallback_params.signal_tags,
+                signals_used=fallback_params.signal_entities
+                + fallback_params.signal_tags,
             )
             return fallback_recs, meta, ev
         else:
@@ -293,7 +307,8 @@ class CulturalMatrixService:
             ev = CulturalMatrixEvidence(
                 category=category,
                 message=f"Category returned 0 results after initial attempt and broadened fallback ({fallback_desc}). Zero items hallucinated.",
-                signals_used=fallback_params.signal_entities + fallback_params.signal_tags,
+                signals_used=fallback_params.signal_entities
+                + fallback_params.signal_tags,
             )
             return [], meta, ev
 
@@ -353,7 +368,11 @@ class CulturalMatrixService:
 
         # Rule D: Spatial entity with location and anchor entities
         # Fallback: Drop location constraint if hyper-local space returned nothing
-        if capability.supports_spatial_location and original_params.location_wkt and twin.anchor_entities:
+        if (
+            capability.supports_spatial_location
+            and original_params.location_wkt
+            and twin.anchor_entities
+        ):
             return (
                 InsightParams(
                     filter_type=capability.urn,

@@ -87,7 +87,9 @@ class QlooClient:
         if cache is not None:
             self.cache: CacheBackend | None = cache
         elif self.settings.cache_enabled and self.settings.cache_ttl_seconds > 0:
-            self.cache = AsyncTTLCache(default_ttl_seconds=self.settings.cache_ttl_seconds)
+            self.cache = AsyncTTLCache(
+                default_ttl_seconds=self.settings.cache_ttl_seconds
+            )
         else:
             self.cache = None
 
@@ -183,7 +185,10 @@ class QlooClient:
                             )
                         return data
                     except json.JSONDecodeError as err:
-                        logger.error("Failed to decode JSON from Qloo response: %s", response.text[:200])
+                        logger.error(
+                            "Failed to decode JSON from Qloo response: %s",
+                            response.text[:200],
+                        )
                         raise QlooValidationError(
                             message=f"Qloo returned invalid JSON: {err!s}",
                             status_code=response.status_code,
@@ -207,7 +212,9 @@ class QlooClient:
                 # 3. Not Found (404) - Do NOT retry
                 if response.status_code == 404:
                     error_detail = self._extract_error_details(response)
-                    logger.warning("Qloo resource not found (HTTP 404): %s", error_detail.message)
+                    logger.warning(
+                        "Qloo resource not found (HTTP 404): %s", error_detail.message
+                    )
                     raise QlooNotFoundError(
                         message=f"Qloo resource not found: {error_detail.message}",
                         status_code=404,
@@ -217,7 +224,11 @@ class QlooClient:
                 # 4. Bad Request / Validation Error (400, 422) - Do NOT retry
                 if response.status_code in (400, 422):
                     error_detail = self._extract_error_details(response)
-                    logger.warning("Qloo validation error (HTTP %d): %s", response.status_code, error_detail.message)
+                    logger.warning(
+                        "Qloo validation error (HTTP %d): %s",
+                        response.status_code,
+                        error_detail.message,
+                    )
                     raise QlooValidationError(
                         message=f"Qloo rejected request: {error_detail.message}",
                         status_code=response.status_code,
@@ -227,7 +238,11 @@ class QlooClient:
                 # 5. Rate Limited (429) - Transient, can retry
                 if response.status_code == 429:
                     retry_after_header = response.headers.get("Retry-After")
-                    retry_after_val = float(retry_after_header) if retry_after_header and retry_after_header.isdigit() else backoff * (2 ** (attempt - 1))
+                    retry_after_val = (
+                        float(retry_after_header)
+                        if retry_after_header and retry_after_header.isdigit()
+                        else backoff * (2 ** (attempt - 1))
+                    )
                     if attempt < max_attempts:
                         logger.warning(
                             "Qloo rate limited (429). Retrying in %0.2fs (Attempt %d/%d)",
@@ -386,7 +401,9 @@ class QlooClient:
                 f"Invalid parameter type for search: {type(params).__name__}. Expected SearchParams, dict, or str."
             )
 
-        raw_data = await self._execute_get("/search", query_params=validated_params.to_query_params())
+        raw_data = await self._execute_get(
+            "/search", query_params=validated_params.to_query_params()
+        )
         items = self._extract_result_list(raw_data)
 
         entities: list[QlooEntity] = []
@@ -422,7 +439,9 @@ class QlooClient:
                 f"Invalid parameter type for get_tags: {type(params).__name__}. Expected TagParams, dict, or str."
             )
 
-        raw_data = await self._execute_get("/v2/tags", query_params=validated_params.to_query_params())
+        raw_data = await self._execute_get(
+            "/v2/tags", query_params=validated_params.to_query_params()
+        )
         items = self._extract_result_list(raw_data)
 
         tags: list[QlooTag] = []
@@ -454,7 +473,9 @@ class QlooClient:
                 f"Invalid parameter type for get_insights: {type(params).__name__}. Expected InsightParams or dict."
             )
 
-        raw_data = await self._execute_get("/v2/insights", query_params=validated_params.to_query_params())
+        raw_data = await self._execute_get(
+            "/v2/insights", query_params=validated_params.to_query_params()
+        )
         items = self._extract_result_list(raw_data)
 
         insights: list[QlooInsight] = []

@@ -291,3 +291,110 @@ Tool executions return structured JSON error envelopes rather than raw exception
 1. **Authentication Failures (401, 403)**: Are never retried automatically. The system raises `QlooAuthenticationError` immediately to avoid locking API keys.
 2. **Spatial Filters Restricted**: Geographic location filters (`latitude`, `longitude`, `radius`) are only applied to `place` and `destination`. They are automatically omitted from queries for `artist`, `book`, `brand`, and `movie`.
 3. **Deterministic Single-Retry**: If a category returns 0 items, the service applies one deterministic fallback (broadened radius or dropped tag constraints) and retries once. If results remain empty, it returns `[]` without fabricating data.
+
+---
+
+## 10. Agent Intelligence & Orchestration Architecture (Developer 2)
+
+### 10.1. Workflow Philosophy & Boundaries
+- **No Unrestricted Autonomous Loops**: Agents operate within deterministic workflow boundaries governed by `WorkflowEngine`.
+- **Decoupled Transport**: Agents **NEVER** call Qloo REST APIs directly; all cultural intelligence is routed through `CulturalIntelligenceMCPAdapter` invoking the TasteOps Cultural Intelligence MCP Server.
+- **Strict Provenance & Anti-Hallucination**: Every Qloo entity ID, tag, and cultural recommendation used in activations, spatial zones, or brand partnerships must match verified evidence from Qloo resolution and insights. Hallucinated IDs are flagged and rejected by the Governance Agent.
+- **Human Approval Gate**: Execution cannot occur without explicit human approval at `AWAITING_APPROVAL`.
+
+### 10.2. Explicit 13 Workflow States
+The system strictly enforces valid state transitions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> INTENT_PARSED
+    INTENT_PARSED --> CULTURAL_TWIN_CREATED
+    CULTURAL_TWIN_CREATED --> QLOO_RESOLVED
+    QLOO_RESOLVED --> CULTURAL_MATRIX_READY
+    CULTURAL_MATRIX_READY --> AGENTS_RUNNING
+    AGENTS_RUNNING --> PLAN_GENERATED
+    PLAN_GENERATED --> VALIDATED
+    VALIDATED --> AWAITING_APPROVAL
+    AWAITING_APPROVAL --> APPROVED : Human Approval
+    AWAITING_APPROVAL --> FAILED : Human Rejection
+    APPROVED --> EXECUTING
+    EXECUTING --> COMPLETED
+    EXECUTING --> FAILED
+    
+    CREATED --> FAILED
+    INTENT_PARSED --> FAILED
+    CULTURAL_TWIN_CREATED --> FAILED
+    QLOO_RESOLVED --> FAILED
+    CULTURAL_MATRIX_READY --> FAILED
+    AGENTS_RUNNING --> FAILED
+    PLAN_GENERATED --> FAILED
+    VALIDATED --> FAILED
+```
+
+| State | Role & Responsibilities |
+| :--- | :--- |
+| `CREATED` | Session initialized with raw intent. |
+| `INTENT_PARSED` | User intent decomposed into structured domain hints, venue type, and raw terms. |
+| `CULTURAL_TWIN_CREATED` | Structured `CulturalTwin` draft formed. |
+| `QLOO_RESOLVED` | Raw terms and motifs resolved to verified Qloo entity IDs and tags via MCP tools. |
+| `CULTURAL_MATRIX_READY` | 6-domain CulturalMatrix fetched concurrently via MCP `get_cultural_matrix`. |
+| `AGENTS_RUNNING` | Specialized agents invoked concurrently (Strategist, Architect, Partnership). |
+| `PLAN_GENERATED` | Agent outputs synthesized into unified `CulturalActivationPlan`. |
+| `VALIDATED` | `GovernanceAgent` audits provenance, ensures 0 invented IDs, checks compliance. |
+| `AWAITING_APPROVAL` | Pipeline pauses; awaits human curator review. |
+| `APPROVED` | Human curator approves activation plan. |
+| `EXECUTING` | Downstream physical space tasks executed (Spotify playlists, lighting cues, signage). |
+| `COMPLETED` | All execution tasks completed with verifiable provenance. |
+| `FAILED` | Workflow halted due to validation failure or curator rejection. |
+
+### 10.3. The 4 Specialized Agents
+
+1. **Cultural Strategist (`CulturalStrategist`)**:
+   - Synthesizes space positioning statements and cultural pillars.
+   - Anchors pillars to verified Qloo entity IDs with cross-domain justification.
+2. **Experience Architect (`ExperienceArchitect`)**:
+   - Designs sonic identities, morning/afternoon/evening daypart programs, and spatial zoning (e.g., Main Bar, Listening Room).
+   - Pairs sensory atmosphere (lighting, audio, scent) with verified Qloo artists.
+3. **Partnership Agent (`PartnershipAgent`)**:
+   - Formulates commercial and residency brand activations with high affinity scores.
+   - Requires verified Qloo brand/place IDs with affinity-backed provenance.
+4. **Governance / Execution Agent (`GovernanceAgent`)**:
+   - **Audit Phase**: Audits all proposed entity IDs against verified Qloo IDs. Fails validation if hallucinated IDs are detected.
+   - **Approval Phase**: Enforces human gate at `AWAITING_APPROVAL`.
+   - **Execution Phase**: Generates concrete hardware/software tasks (Spotify playlist, signage, staff briefings) with provenance logs.
+
+### 10.4. Programmatic Workflow Example
+```python
+from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
+from tasteops.workflows.engine import WorkflowEngine
+from tasteops.workflows.states import WorkflowState
+
+# Initialize engine with MCP adapter (no REST API calls)
+adapter = CulturalIntelligenceMCPAdapter()
+engine = WorkflowEngine(mcp_adapter=adapter)
+
+# 1. Run pipeline up to human approval gate
+ctx = await engine.run_pipeline_to_approval_gate(
+    raw_intent="Open an analog vinyl listening cafe with Japanese minimalism in Chelsea",
+    parsed_hints={
+        "venue_name": "Kissa Chelsea",
+        "raw_anchor_entities": ["Blue Bottle", "A24"],
+        "raw_tags": ["Japanese minimalism", "audiophile"],
+        "location": {"latitude": 40.7484, "longitude": -73.9857, "radius_meters": 2000},
+    },
+)
+
+assert ctx.current_state == WorkflowState.AWAITING_APPROVAL
+print(f"Validation passed: {ctx.plan.governance_report.validation_passed}")
+
+# 2. Human Curator reviews & approves
+await engine.approve_plan(ctx, approved_by="Curator: Maitray Agrawal")
+assert ctx.current_state == WorkflowState.APPROVED
+
+# 3. Execute downstream tasks
+await engine.execute_plan(ctx)
+assert ctx.current_state == WorkflowState.COMPLETED
+print(f"Executed {ctx.plan.execution_summary.executed_tasks} physical tasks.")
+```
+

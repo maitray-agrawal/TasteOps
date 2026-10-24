@@ -14,7 +14,9 @@ from tasteops.services.insights_service import InsightsService
 def sample_twin():
     return CulturalTwin(
         target_audience="Design-conscious creative professionals, coffee aficionados",
-        location=LocationInput(latitude=40.7484, longitude=-73.9857, radius_meters=2000),
+        location=LocationInput(
+            latitude=40.7484, longitude=-73.9857, radius_meters=2000
+        ),
         business_type="Minimalist specialty coffee lounge and listening bar",
         mood="Warm, intimate, analog, acoustic focus",
         positioning="High-end third-wave cafe by day, vinyl bar by night",
@@ -23,7 +25,9 @@ def sample_twin():
     )
 
 
-def test_capability_validation_does_not_pass_location_to_non_spatial_entities(mock_settings):
+def test_capability_validation_does_not_pass_location_to_non_spatial_entities(
+    mock_settings,
+):
     """Ensure non-spatial entities (artist, book, brand, movie) never receive spatial location filters."""
     client = QlooClient(settings=mock_settings)
     service = InsightsService(client)
@@ -69,26 +73,33 @@ async def test_generate_cultural_matrix_concurrent_success(mock_settings, sample
     """Test concurrent execution across all 6 categories and verify normalized output."""
     mock_responses = {
         "urn:entity:artist": [
-            {"id": "art_1", "name": "Floating Points", "affinity": 0.92, "explainability": ["Shared aesthetic with Four Tet"]}
+            {
+                "id": "art_1",
+                "name": "Floating Points",
+                "affinity": 0.92,
+                "explainability": ["Shared aesthetic with Four Tet"],
+            }
         ],
         "urn:entity:book": [
             {"id": "book_1", "name": "In Praise of Shadows", "affinity": 0.88}
         ],
-        "urn:entity:brand": [
-            {"id": "brand_1", "name": "Muji", "affinity": 0.91}
-        ],
+        "urn:entity:brand": [{"id": "brand_1", "name": "Muji", "affinity": 0.91}],
         "urn:entity:place": [
-            {"id": "place_1", "name": "Sey Coffee", "affinity": 0.95, "metadata": {"neighborhood": "Bushwick"}}
+            {
+                "id": "place_1",
+                "name": "Sey Coffee",
+                "affinity": 0.95,
+                "metadata": {"neighborhood": "Bushwick"},
+            }
         ],
-        "urn:entity:movie": [
-            {"id": "mov_1", "name": "Perfect Days", "affinity": 0.89}
-        ],
+        "urn:entity:movie": [{"id": "mov_1", "name": "Perfect Days", "affinity": 0.89}],
         "urn:entity:destination": [
             {"id": "dest_1", "name": "Kyoto, Japan", "affinity": 0.93}
         ],
     }
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
+
         def insight_side_effect(request: httpx.Request):
             filter_type = request.url.params.get("filter.type", "")
             results = mock_responses.get(filter_type, [])
@@ -107,8 +118,13 @@ async def test_generate_cultural_matrix_concurrent_success(mock_settings, sample
             assert matrix.artists[0].name == "Floating Points"
             assert matrix.artists[0].type == "artist"
             assert matrix.artists[0].affinity == 0.92
-            assert matrix.artists[0].source_signal["anchor_entities"] == sample_twin.anchor_entities
-            assert matrix.artists[0].explainability == ["Shared aesthetic with Four Tet"]
+            assert (
+                matrix.artists[0].source_signal["anchor_entities"]
+                == sample_twin.anchor_entities
+            )
+            assert matrix.artists[0].explainability == [
+                "Shared aesthetic with Four Tet"
+            ]
 
             assert len(matrix.books) == 1
             assert matrix.books[0].name == "In Praise of Shadows"
@@ -145,6 +161,7 @@ async def test_deterministic_fallback_on_empty_and_retry_once(mock_settings):
     call_count = {"count": 0}
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
+
         def insight_side_effect(request: httpx.Request):
             call_count["count"] += 1
             tags_param = request.url.params.get("signal.interests.tags", "")
@@ -152,7 +169,10 @@ async def test_deterministic_fallback_on_empty_and_retry_once(mock_settings):
             if tags_param:
                 return httpx.Response(200, json={"results": []})
             # Fallback call with anchor entities only returns success
-            return httpx.Response(200, json={"results": [{"id": "art_2", "name": "Bonobo", "affinity": 0.85}]})
+            return httpx.Response(
+                200,
+                json={"results": [{"id": "art_2", "name": "Bonobo", "affinity": 0.85}]},
+            )
 
         mock_router.get("/v2/insights").mock(side_effect=insight_side_effect)
 
@@ -179,7 +199,9 @@ async def test_zero_hallucination_on_exhausted_fallback(mock_settings):
     """Ensure zero hallucination: when both initial and fallback return empty, 0 items returned."""
     twin = CulturalTwin(
         anchor_entities=["ent_rare_signal"],
-        location=LocationInput(latitude=40.7484, longitude=-73.9857, radius_meters=1000),
+        location=LocationInput(
+            latitude=40.7484, longitude=-73.9857, radius_meters=1000
+        ),
     )
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:

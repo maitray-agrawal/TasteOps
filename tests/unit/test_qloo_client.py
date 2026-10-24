@@ -27,7 +27,9 @@ async def test_search_200_success(mock_settings, sample_search_payload):
         )
 
         async with QlooClient(settings=mock_settings) as client:
-            entities = await client.search(SearchParams(query="Blue Bottle", type="place", take=10))
+            entities = await client.search(
+                SearchParams(query="Blue Bottle", type="place", take=10)
+            )
 
             assert len(entities) == 2
             assert entities[0].id == "ent_blue_bottle_123"
@@ -97,7 +99,10 @@ async def test_get_insights_200_success(mock_settings, sample_insights_payload):
             assert mock_route.called
             last_request = mock_route.calls.last.request
             assert last_request.method == "GET"
-            assert last_request.url.params["signal.interests.entities"] == "ent_blue_bottle_123"
+            assert (
+                last_request.url.params["signal.interests.entities"]
+                == "ent_blue_bottle_123"
+            )
             assert last_request.url.params["filter.type"] == "urn:entity:artist"
             assert last_request.url.params["filter.location"] == "POINT(-73.985 40.748)"
             assert last_request.url.params["filter.location.radius"] == "2000"
@@ -110,7 +115,10 @@ async def test_401_unauthorized_never_retried(mock_settings):
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
         mock_route = mock_router.get("/search").respond(
             status_code=401,
-            json={"error": "Invalid API Key", "message": "API key provided is invalid or expired."},
+            json={
+                "error": "Invalid API Key",
+                "message": "API key provided is invalid or expired.",
+            },
         )
 
         async with QlooClient(settings=mock_settings) as client:
@@ -129,7 +137,10 @@ async def test_403_forbidden_never_retried(mock_settings):
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
         mock_route = mock_router.get("/v2/insights").respond(
             status_code=403,
-            json={"error": "Forbidden", "message": "Endpoint not permitted for your plan."},
+            json={
+                "error": "Forbidden",
+                "message": "Endpoint not permitted for your plan.",
+            },
         )
 
         async with QlooClient(settings=mock_settings) as client:

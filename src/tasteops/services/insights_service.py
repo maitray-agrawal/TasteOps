@@ -102,7 +102,9 @@ class InsightsService:
         capability = self.get_capability(category)
 
         # Enforce capability constraints: do not pass location to non-spatial entities
-        valid_location_wkt = location_wkt if capability.supports_spatial_location else None
+        valid_location_wkt = (
+            location_wkt if capability.supports_spatial_location else None
+        )
         valid_radius = location_radius if capability.supports_spatial_location else None
 
         valid_entities = anchor_entities if capability.supports_entity_signals else []

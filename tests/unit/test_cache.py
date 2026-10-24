@@ -40,7 +40,9 @@ async def test_qloo_client_uses_cache(sample_search_payload):
     )
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
-        mock_route = mock_router.get("/search").respond(status_code=200, json=sample_search_payload)
+        mock_route = mock_router.get("/search").respond(
+            status_code=200, json=sample_search_payload
+        )
 
         async with QlooClient(settings=settings) as client:
             # First call -> hits HTTP

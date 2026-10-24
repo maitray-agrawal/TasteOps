@@ -74,7 +74,11 @@ class EntityResolver:
         fuzzy_score = round(seq_ratio, 4)
 
         # Small boost if expected entity type matches
-        if expected_type and entity.type and expected_type.lower() in entity.type.lower():
+        if (
+            expected_type
+            and entity.type
+            and expected_type.lower() in entity.type.lower()
+        ):
             fuzzy_score = min(1.0, round(fuzzy_score + 0.05, 4))
 
         return fuzzy_score, "fuzzy_similarity"
@@ -121,7 +125,11 @@ class EntityResolver:
                 ),
             )
 
-        logger.debug("Searching Qloo for cultural anchor: '%s' (type=%s)", norm_query, expected_type)
+        logger.debug(
+            "Searching Qloo for cultural anchor: '%s' (type=%s)",
+            norm_query,
+            expected_type,
+        )
 
         # 1. Search Qloo using validated SearchParams
         search_params = SearchParams(
@@ -235,6 +243,8 @@ class EntityResolver:
         """Resolves multiple natural language terms sequentially or concurrently."""
         results: list[EntityResolutionResult] = []
         for q in queries:
-            res = await self.resolve(q, expected_type=expected_type, min_confidence=min_confidence)
+            res = await self.resolve(
+                q, expected_type=expected_type, min_confidence=min_confidence
+            )
             results.append(res)
         return results

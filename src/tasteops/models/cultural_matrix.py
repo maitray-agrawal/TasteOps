@@ -16,16 +16,26 @@ class LocationInput(BaseModel):
 
     latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
     longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
-    wkt: str | None = Field(default=None, description="WKT point e.g. POINT(-73.985 40.748)")
-    radius_meters: int = Field(default=2000, ge=10, le=200000, description="Spatial search radius")
+    wkt: str | None = Field(
+        default=None, description="WKT point e.g. POINT(-73.985 40.748)"
+    )
+    radius_meters: int = Field(
+        default=2000, ge=10, le=200000, description="Spatial search radius"
+    )
 
     @field_validator("wkt")
     @classmethod
     def validate_wkt(cls, v: str | None) -> str | None:
         if v is not None:
             cleaned = v.strip()
-            if not re.match(r"^POINT\s*\(\s*[-+]?[0-9]*\.?[0-9]+\s+[-+]?[0-9]*\.?[0-9]+\s*\)$", cleaned, re.IGNORECASE):
-                raise ValueError(f"Invalid WKT format '{v}'. Expected 'POINT(longitude latitude)'")
+            if not re.match(
+                r"^POINT\s*\(\s*[-+]?[0-9]*\.?[0-9]+\s+[-+]?[0-9]*\.?[0-9]+\s*\)$",
+                cleaned,
+                re.IGNORECASE,
+            ):
+                raise ValueError(
+                    f"Invalid WKT format '{v}'. Expected 'POINT(longitude latitude)'"
+                )
             return cleaned
         return None
 
@@ -41,11 +51,22 @@ class LocationInput(BaseModel):
 class CulturalTwin(BaseModel):
     """Holistic cultural profile definition for a physical space or brand."""
 
-    target_audience: str | None = Field(default=None, description="Audience demographic / psychographic summary")
-    location: LocationInput | None = Field(default=None, description="Physical coordinates and radius")
-    business_type: str | None = Field(default=None, description="Venue type e.g. 'specialty cafe', 'boutique hotel'")
-    mood: str | None = Field(default=None, description="Atmospheric vibe e.g. 'minimalist', 'warm intimate'")
-    positioning: str | None = Field(default=None, description="Market positioning e.g. 'craft premium', 'underground'")
+    target_audience: str | None = Field(
+        default=None, description="Audience demographic / psychographic summary"
+    )
+    location: LocationInput | None = Field(
+        default=None, description="Physical coordinates and radius"
+    )
+    business_type: str | None = Field(
+        default=None, description="Venue type e.g. 'specialty cafe', 'boutique hotel'"
+    )
+    mood: str | None = Field(
+        default=None, description="Atmospheric vibe e.g. 'minimalist', 'warm intimate'"
+    )
+    positioning: str | None = Field(
+        default=None,
+        description="Market positioning e.g. 'craft premium', 'underground'",
+    )
     anchor_entities: list[str] = Field(
         default_factory=list,
         description="Verified Qloo entity IDs anchoring the physical space taste profile",
@@ -65,10 +86,17 @@ class CulturalRecommendation(BaseModel):
 
     id: str = Field(..., description="Verified Qloo entity ID")
     name: str = Field(..., description="Display name of recommended entity")
-    type: str = Field(..., description="Entity category (e.g. artist, book, brand, place, movie, destination)")
-    affinity: float = Field(..., ge=0.0, le=1.0, description="Normalized affinity score [0.0 - 1.0]")
+    type: str = Field(
+        ...,
+        description="Entity category (e.g. artist, book, brand, place, movie, destination)",
+    )
+    affinity: float = Field(
+        ..., ge=0.0, le=1.0, description="Normalized affinity score [0.0 - 1.0]"
+    )
     score: float | None = Field(default=None, description="Raw affinity score")
-    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Recommendation confidence")
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Recommendation confidence"
+    )
     source_query: str = Field(..., description="API endpoint / category query invoked")
     source_signal: dict[str, Any] = Field(
         default_factory=dict,
@@ -87,23 +115,42 @@ class CulturalRecommendation(BaseModel):
 class CategoryQueryMetadata(BaseModel):
     """Execution diagnostics for a single category query."""
 
-    category: str = Field(..., description="Category queried (artist, book, brand, place, movie, destination)")
+    category: str = Field(
+        ...,
+        description="Category queried (artist, book, brand, place, movie, destination)",
+    )
     filter_type: str = Field(..., description="Target Qloo URN used")
-    status: str = Field(..., description="Query outcome: 'success', 'empty', 'fallback_success', 'fallback_empty', 'error'")
+    status: str = Field(
+        ...,
+        description="Query outcome: 'success', 'empty', 'fallback_success', 'fallback_empty', 'error'",
+    )
     retries: int = Field(default=0, description="Number of fallback retries executed")
-    fallback_applied: str | None = Field(default=None, description="Description of deterministic fallback applied, if any")
-    items_count: int = Field(default=0, description="Number of recommendations returned")
-    latency_ms: float = Field(default=0.0, description="Query execution duration in milliseconds")
-    params_used: dict[str, Any] = Field(default_factory=dict, description="Sanitized parameters dispatched to Qloo")
+    fallback_applied: str | None = Field(
+        default=None,
+        description="Description of deterministic fallback applied, if any",
+    )
+    items_count: int = Field(
+        default=0, description="Number of recommendations returned"
+    )
+    latency_ms: float = Field(
+        default=0.0, description="Query execution duration in milliseconds"
+    )
+    params_used: dict[str, Any] = Field(
+        default_factory=dict, description="Sanitized parameters dispatched to Qloo"
+    )
 
 
 class CulturalMatrixEvidence(BaseModel):
     """Provenance audit log for a category recommendation set."""
 
     category: str = Field(..., description="Target category")
-    message: str = Field(..., description="High-level description of signals and filters utilized")
+    message: str = Field(
+        ..., description="High-level description of signals and filters utilized"
+    )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    signals_used: list[str] = Field(default_factory=list, description="IDs of anchor entities or tags utilized")
+    signals_used: list[str] = Field(
+        default_factory=list, description="IDs of anchor entities or tags utilized"
+    )
 
 
 class CulturalMatrix(BaseModel):
