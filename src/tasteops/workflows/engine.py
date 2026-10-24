@@ -21,6 +21,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from tasteops.agents.governance import UnapprovedExecutionError
 from tasteops.models.cultural_matrix import (
     CulturalTwin,
     LocationInput,
@@ -655,6 +656,14 @@ class WorkflowEngine:
 
         if not ctx.plan:
             raise RuntimeError("Cannot execute: Plan is missing.")
+
+        # Verify explicit approval record is present
+        if not ctx.approval and not any(
+            record.to_state == WorkflowState.APPROVED for record in ctx.history
+        ):
+            raise UnapprovedExecutionError(
+                "Execution blocked: Plan has not been approved (approval record is absent)."
+            )
 
         # Identify approver from approval record or audit history
         last_approver = ctx.approval.approver if ctx.approval else "curator"

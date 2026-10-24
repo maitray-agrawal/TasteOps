@@ -513,7 +513,7 @@ class GovernanceAgent:
     async def execute_plan(
         self,
         plan: CulturalActivationPlan,
-        is_approved: bool = True,
+        is_approved: bool = False,
         approved_by: str | None = None,
         approval: ApprovalRecord | None = None,
         session_id: str | None = None,
