@@ -61,6 +61,38 @@ class PartnershipAgent:
         experience_design: ExperienceDesignOutput | None = None,
     ) -> PartnershipOutput:
         """Identifies, scores, and structures brand partnership candidates with outreach drafts."""
+        if isinstance(cultural_twin, dict):
+            cultural_twin = CulturalTwin.model_validate(cultural_twin)
+        elif cultural_twin is not None and not isinstance(cultural_twin, CulturalTwin):
+            raise TypeError(
+                f"Expected CulturalTwin, dict, or None, got {type(cultural_twin).__name__}"
+            )
+
+        if isinstance(cultural_matrix, dict):
+            cultural_matrix = CulturalMatrix.model_validate(cultural_matrix)
+        elif cultural_matrix is not None and not isinstance(
+            cultural_matrix, CulturalMatrix
+        ):
+            raise TypeError(
+                f"Expected CulturalMatrix, dict, or None, got {type(cultural_matrix).__name__}"
+            )
+
+        if isinstance(strategy, dict):
+            strategy = CulturalStrategyOutput.model_validate(strategy)
+        elif strategy is not None and not isinstance(strategy, CulturalStrategyOutput):
+            raise TypeError(
+                f"Expected CulturalStrategyOutput, dict, or None, got {type(strategy).__name__}"
+            )
+
+        if isinstance(experience_design, dict):
+            experience_design = ExperienceDesignOutput.model_validate(experience_design)
+        elif experience_design is not None and not isinstance(
+            experience_design, ExperienceDesignOutput
+        ):
+            raise TypeError(
+                f"Expected ExperienceDesignOutput, dict, or None, got {type(experience_design).__name__}"
+            )
+
         logger.info(
             "[%s] Screening and scoring brand partnerships from cultural matrix",
             self.name,
@@ -225,6 +257,12 @@ class PartnershipAgent:
 
     async def execute(self, payload: PartnershipInput) -> PartnershipOutput:
         """Executes partnership candidate screening from structured input payload."""
+        if isinstance(payload, dict):
+            payload = PartnershipInput.model_validate(payload)
+        elif not isinstance(payload, PartnershipInput):
+            raise TypeError(
+                f"Expected PartnershipInput or dict, got {type(payload).__name__}"
+            )
         return await self.identify_partnerships(
             cultural_twin=payload.cultural_twin,
             brand_results=payload.brand_results,

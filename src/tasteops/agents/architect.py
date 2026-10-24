@@ -56,6 +56,20 @@ class ExperienceArchitect:
         cultural_matrix: CulturalMatrix,
     ) -> ExperienceDesignOutput:
         """Designs physical, acoustic, and spatial experience directives."""
+        if isinstance(cultural_twin, dict):
+            cultural_twin = CulturalTwin.model_validate(cultural_twin)
+        elif not isinstance(cultural_twin, CulturalTwin):
+            raise TypeError(
+                f"Expected CulturalTwin or dict, got {type(cultural_twin).__name__}"
+            )
+
+        if isinstance(cultural_matrix, dict):
+            cultural_matrix = CulturalMatrix.model_validate(cultural_matrix)
+        elif not isinstance(cultural_matrix, CulturalMatrix):
+            raise TypeError(
+                f"Expected CulturalMatrix or dict, got {type(cultural_matrix).__name__}"
+            )
+
         logger.info(
             "[%s] Designing coherent cultural experience for '%s'",
             self.name,
@@ -380,6 +394,13 @@ class ExperienceArchitect:
 
     async def execute(self, payload: ExperienceDesignInput) -> ExperienceDesignOutput:
         """Executes experience design from structured input payload."""
+        if isinstance(payload, dict):
+            payload = ExperienceDesignInput.model_validate(payload)
+        elif not isinstance(payload, ExperienceDesignInput):
+            raise TypeError(
+                f"Expected ExperienceDesignInput or dict, got {type(payload).__name__}"
+            )
+
         twin = payload.cultural_twin
         if twin is None:
             # Fallback twin reconstruction from strategy if twin not directly passed

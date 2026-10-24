@@ -67,6 +67,13 @@ class GovernanceAgent:
     # -------------------------------------------------------------------------
     def plan(self, payload: GovernanceValidationInput) -> ExecutionPlan:
         """Converts cultural recommendations into a structured ExecutionPlan."""
+        if isinstance(payload, dict):
+            payload = GovernanceValidationInput.model_validate(payload)
+        elif not isinstance(payload, GovernanceValidationInput):
+            raise TypeError(
+                f"Expected GovernanceValidationInput or dict, got {type(payload).__name__}"
+            )
+
         logger.info(
             "[%s] Synthesizing cultural recommendations into ExecutionPlan",
             self.name,
@@ -236,6 +243,21 @@ class GovernanceAgent:
         6. duplicate actions (redundant or duplicate action IDs/targets)
         7. unsupported external actions (unauthorized external mutations)
         """
+        if isinstance(payload, dict):
+            payload = GovernanceValidationInput.model_validate(payload)
+        elif not isinstance(payload, GovernanceValidationInput):
+            raise TypeError(
+                f"Expected GovernanceValidationInput or dict, got {type(payload).__name__}"
+            )
+
+        if execution_plan is not None:
+            if isinstance(execution_plan, dict):
+                execution_plan = ExecutionPlan.model_validate(execution_plan)
+            elif not isinstance(execution_plan, ExecutionPlan):
+                raise TypeError(
+                    f"Expected ExecutionPlan, dict, or None, got {type(execution_plan).__name__}"
+                )
+
         twin = payload.cultural_twin
         matrix = payload.cultural_matrix
         strategy = payload.strategy
@@ -536,6 +558,13 @@ class GovernanceAgent:
         - Every execution task must pass strict provenance validation before execution.
         """
         # Strict Human-in-the-Loop Gate Enforcement
+        if isinstance(plan, dict):
+            plan = CulturalActivationPlan.model_validate(plan)
+        elif not isinstance(plan, CulturalActivationPlan):
+            raise TypeError(
+                f"Expected CulturalActivationPlan or dict, got {type(plan).__name__}"
+            )
+
         if not is_approved:
             logger.error(
                 "[%s] Security violation: Attempted execution of plan '%s' prior to approval.",
@@ -806,6 +835,13 @@ class GovernanceAgent:
         self, plan: CulturalActivationPlan, tasks: list[ExecutionTask]
     ) -> AuditReport:
         """Conducts a post-execution audit validating task provenance and execution bounds."""
+        if isinstance(plan, dict):
+            plan = CulturalActivationPlan.model_validate(plan)
+        elif not isinstance(plan, CulturalActivationPlan):
+            raise TypeError(
+                f"Expected CulturalActivationPlan or dict, got {type(plan).__name__}"
+            )
+
         audit_id = f"audit_{uuid.uuid4().hex[:8]}"
         provenance_violations = sum(1 for t in tasks if not t.provenance)
         unsupported = sum(
