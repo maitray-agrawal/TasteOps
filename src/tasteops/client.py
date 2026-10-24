@@ -140,6 +140,14 @@ class QlooClient:
         """
         client = self._get_client()
         url = endpoint if endpoint.startswith("/") else f"/{endpoint}"
+        clean_path = url.split("?")[0].rstrip("/")
+        if clean_path in {"/recs", "/recommendations"} or clean_path.startswith(
+            ("/recs/", "/recommendations/")
+        ):
+            raise QlooValidationError(
+                f"Endpoint '{clean_path}' is banned by the Qloo Hackathon Developer Guide. Use '/v2/insights' instead."
+            )
+
         max_attempts = 1 + self.settings.max_retries
         backoff = self.settings.retry_backoff_factor
 
