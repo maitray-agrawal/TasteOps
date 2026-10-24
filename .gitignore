@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment and secrets (CRITICAL: Never commit Qloo API keys)
+.env
+.env.*
+!.env.example
+
+# Qloo response datasets and cache dumps
+*.dataset.json
+*.response.json
+qloo_cache/
+.cache/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
