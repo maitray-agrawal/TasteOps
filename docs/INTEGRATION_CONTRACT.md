@@ -402,8 +402,34 @@ stateDiagram-v2
      - `confidence`: Curatorial confidence score.
      - `expected_role`: Concrete spatial/functional deployment role in the venue.
 3. **Partnership Agent (`PartnershipAgent`)**:
-   - Formulates commercial and residency brand activations with high affinity scores.
-   - Requires verified Qloo brand/place IDs with affinity-backed provenance.
+   - **Purpose**: Identifies, evaluates, and structures high-resonance brand partnership candidates for physical venues using evidence from Qloo and operational brief constraints.
+   - **Input**:
+     - `cultural_twin`: Structured audience profile, mood, cultural themes, constraints, and exclusions.
+     - `cultural_matrix` / `brand_results`: Verified candidate brands from Qloo Insights.
+     - `business_constraints`: Operational boundaries (e.g. acoustic caps, spatial limitations, no commercial banners).
+     - `budget`: Operating tier or budget parameters.
+   - **6-Dimensional Scoring Engine (0 to 100)**:
+     For every candidate brand, computes:
+     1. **`AudienceFit`**: Direct Qloo cross-affinity percentage.
+     2. **`CulturalFit`**: Thematic and aesthetic alignment with cultural themes, mood, and positioning.
+     3. **`BrandCompatibility`**: Industry and category synergy with the physical venue's business model.
+     4. **`ContextFit`**: Physical space feasibility, spatial footprint, and operational integration.
+     5. **`BudgetFit`**: Alignment with venue budget tier (e.g. consignment/loan vs. sponsorship fees).
+     6. **`Novelty`**: Subcultural freshness and anti-generic appeal (penalizes mass-market retail ubiquity).
+     - **Normalized Composite Score (`overall_score`)**: Weighted composite from 0.0 to 100.0.
+   - **Candidate Return Schema (`BrandPartnershipCandidate`)**:
+     - `brand`: Brand name and category.
+     - `score`: Normalized score 0–100 with full 6-dimensional `score_breakdown`.
+     - `supporting_qloo_evidence`: Immutable Qloo evidence (entity ID, affinity, query, explainability).
+     - `partnership_concept`: Tailored physical collaboration blueprint (listening stations, tableware, amenities).
+     - `estimated_effort`: Level (Low/Medium/High) and operational effort rationale.
+     - `risk`: Objective risk assessment (brand dilution, operational complexity, mitigation).
+     - `recommended_next_action`: Immediate pragmatic action step for management.
+     - `outreach_draft` (`OutreachDraft`): Exploratory outreach communication (subject, opening hook referencing Qloo evidence, value proposition, call to action, disclaimer).
+   - **Strict Guardrails**:
+     - **No Claimed Partnerships**: `is_existing_partner = False` is enforced on all candidates.
+     - **Drafts Only**: Outreach letters are strictly generated as exploratory drafts.
+     - **Zero Hallucination**: 100% of candidate IDs and evidence trace directly to verified Qloo entities.
 4. **Governance / Execution Agent (`GovernanceAgent`)**:
    - **Audit Phase**: Audits all proposed entity IDs against verified Qloo IDs. Fails validation if hallucinated IDs are detected.
    - **Approval Phase**: Enforces human gate at `AWAITING_APPROVAL`.

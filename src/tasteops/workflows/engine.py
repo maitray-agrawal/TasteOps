@@ -240,6 +240,7 @@ class WorkflowEngine:
 
         # 3. Partnership Agent
         partnership_input = PartnershipInput(
+            cultural_twin=ctx.cultural_twin,
             strategy=ctx.strategy_output,
             experience_design=ctx.experience_output,
             cultural_matrix=ctx.cultural_matrix,

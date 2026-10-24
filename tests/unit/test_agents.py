@@ -402,6 +402,96 @@ async def test_partnership_agent(sample_twin, sample_curated_matrix):
 
 
 @pytest.mark.asyncio
+async def test_partnership_agent_scoring_and_candidate_structure(
+    sample_twin, sample_curated_matrix
+):
+    """Test Partnership Agent computes 6-dimensional scores, outreach drafts, and never claims active partnerships."""
+    partnership_agent = PartnershipAgent()
+
+    # Pass explicit CulturalTwin, brand_results, business_constraints, and budget
+    part_output = await partnership_agent.identify_partnerships(
+        cultural_twin=sample_twin,
+        brand_results=sample_curated_matrix.brands,
+        business_constraints=[
+            "Maintain acoustic dampening under 75dB",
+            "No overt corporate signage",
+        ],
+        budget="Medium Tier ($50k buildout)",
+        cultural_matrix=sample_curated_matrix,
+    )
+
+    assert len(part_output.candidates) >= 2
+
+    for candidate in part_output.candidates:
+        # 1. Basic brand and score properties
+        assert candidate.brand in ["Muji", "Audio-Technica"]
+        assert candidate.brand_entity_id in ["ent_muji", "ent_audio_technica"]
+        assert 0.0 <= candidate.score <= 100.0
+
+        # 2. 6-Dimensional score breakdown
+        breakdown = candidate.score_breakdown
+        assert 0.0 <= breakdown.cultural_fit <= 100.0
+        assert 0.0 <= breakdown.audience_fit <= 100.0
+        assert 0.0 <= breakdown.brand_compatibility <= 100.0
+        assert 0.0 <= breakdown.context_fit <= 100.0
+        assert 0.0 <= breakdown.budget_fit <= 100.0
+        assert 0.0 <= breakdown.novelty <= 100.0
+        assert breakdown.overall_score == candidate.score
+
+        # 3. Supporting Qloo evidence
+        assert (
+            candidate.supporting_qloo_evidence["entity_id"] == candidate.brand_entity_id
+        )
+        assert candidate.supporting_qloo_evidence["affinity"] > 0.80
+        assert candidate.supporting_qloo_evidence["source_query"] == "/v2/insights"
+
+        # 4. Editorial and operational details
+        assert len(candidate.partnership_concept) > 20
+        assert any(
+            candidate.estimated_effort.startswith(prefix)
+            for prefix in ["Low", "Medium", "High"]
+        )
+        assert len(candidate.risk) > 20
+        assert len(candidate.recommended_next_action) > 20
+
+        # 5. Exploratory outreach draft (DO NOT claim that a real partnership exists)
+        assert candidate.is_existing_partner is False
+        draft = candidate.outreach_draft
+        assert draft.recipient_role
+        assert candidate.brand in draft.subject
+        assert (
+            str(round(candidate.supporting_qloo_evidence["affinity"] * 100))
+            in draft.opening_hook
+        )
+        assert draft.proposed_collaboration
+        assert draft.value_proposition
+        assert draft.call_to_action
+        assert "Exploratory outreach draft only" in draft.disclaimer
+        assert "No existing formal partnership" in draft.disclaimer
+
+
+@pytest.mark.asyncio
+async def test_partnership_agent_exclusion_filtering(
+    sample_twin, sample_curated_matrix
+):
+    """Test Partnership Agent omits candidates matching cultural exclusions."""
+    # Add Muji to exclusions
+    twin_with_exclusions = sample_twin.model_copy(deep=True)
+    twin_with_exclusions.exclusions = ["Muji", "Fast Fashion"]
+
+    partnership_agent = PartnershipAgent()
+    part_output = await partnership_agent.identify_partnerships(
+        cultural_twin=twin_with_exclusions,
+        brand_results=sample_curated_matrix.brands,
+        cultural_matrix=sample_curated_matrix,
+    )
+
+    candidate_names = [c.brand for c in part_output.candidates]
+    assert "Muji" not in candidate_names
+    assert "Audio-Technica" in candidate_names
+
+
+@pytest.mark.asyncio
 async def test_governance_agent_validates_clean_plan(
     sample_twin, sample_curated_matrix
 ):

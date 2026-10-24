@@ -9,7 +9,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from tasteops.models.cultural_matrix import CulturalMatrix, CulturalTwin
+from tasteops.models.cultural_matrix import (
+    CulturalMatrix,
+    CulturalRecommendation,
+    CulturalTwin,
+)
 
 # ---------------------------------------------------------------------------
 # Cultural Strategist Schemas
@@ -338,6 +342,118 @@ class ExperienceDesignOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class PartnershipScoreBreakdown(BaseModel):
+    """Normalized 6-dimensional scoring model for brand partnerships (0 to 100)."""
+
+    cultural_fit: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Alignment with cultural themes, mood, and positioning",
+    )
+    audience_fit: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Audience taste overlap and Qloo affinity",
+    )
+    brand_compatibility: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Brand synergy and venue business model compatibility",
+    )
+    context_fit: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Physical space feasibility and spatial footprint",
+    )
+    budget_fit: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Feasibility within budget constraints and operating tier",
+    )
+    novelty: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Curatorial freshness and subcultural distinction",
+    )
+    overall_score: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Normalized composite score from 0 to 100",
+    )
+
+
+class OutreachDraft(BaseModel):
+    """Exploratory outreach draft for brand partnership development."""
+
+    recipient_role: str = Field(
+        default="Brand Partnerships / Cultural Marketing Lead",
+        description="Target role or department",
+    )
+    subject: str = Field(..., description="Outreach subject line")
+    opening_hook: str = Field(
+        ...,
+        description="Cultural hook citing verified audience taste overlap",
+    )
+    proposed_collaboration: str = Field(
+        ..., description="Detailed physical collaboration concept"
+    )
+    value_proposition: str = Field(
+        ..., description="Mutual value proposition for brand and physical venue"
+    )
+    call_to_action: str = Field(
+        ..., description="Low-friction exploratory conversation invitation"
+    )
+    disclaimer: str = Field(
+        default="Exploratory outreach draft only. No existing formal partnership or affiliation is claimed.",
+        description="Ethical and legal guardrail disclaimer",
+    )
+
+
+class BrandPartnershipCandidate(BaseModel):
+    """Curated brand partnership candidate with multi-dimensional scoring and outreach draft."""
+
+    brand: str = Field(..., description="Brand name")
+    brand_entity_id: str = Field(..., description="Verified Qloo entity ID")
+    category: str = Field(..., description="Brand category or industry")
+    score: float = Field(
+        ..., ge=0.0, le=100.0, description="Normalized score from 0 to 100"
+    )
+    score_breakdown: PartnershipScoreBreakdown = Field(
+        ..., description="6-dimensional scoring breakdown"
+    )
+    supporting_qloo_evidence: dict[str, Any] = Field(
+        ..., description="Verifiable Qloo evidence backing this candidate"
+    )
+    partnership_concept: str = Field(
+        ..., description="Physical space collaboration concept"
+    )
+    estimated_effort: str = Field(
+        ...,
+        description="Estimated operational effort level (Low/Medium/High) and rationale",
+    )
+    risk: str = Field(
+        ...,
+        description="Risk analysis including brand clash, operational, budget, or exclusivity considerations",
+    )
+    recommended_next_action: str = Field(
+        ..., description="Recommended immediate next action"
+    )
+    outreach_draft: OutreachDraft = Field(
+        ..., description="Draft outreach communication"
+    )
+    is_existing_partner: bool = Field(
+        default=False,
+        description="Explicit guardrail: False indicates no pre-existing partnership exists",
+    )
+
+
 class PartnershipActivation(BaseModel):
     """A concrete brand or creator activation concept."""
 
@@ -363,16 +479,38 @@ class PartnershipActivation(BaseModel):
 class PartnershipInput(BaseModel):
     """Input payload for Partnership Agent."""
 
-    strategy: CulturalStrategyOutput
-    experience_design: ExperienceDesignOutput
-    cultural_matrix: CulturalMatrix
+    cultural_twin: CulturalTwin | None = Field(
+        default=None, description="Structured CulturalTwin foundation"
+    )
+    cultural_matrix: CulturalMatrix = Field(
+        ..., description="Verified candidate CulturalMatrix"
+    )
+    brand_results: list[CulturalRecommendation] | None = Field(
+        default=None, description="Optional explicit Qloo brand results"
+    )
+    business_constraints: list[str] | None = Field(
+        default=None, description="Operational and commercial constraints"
+    )
+    budget: str | None = Field(
+        default=None, description="Operating budget tier or parameters"
+    )
+    strategy: CulturalStrategyOutput | None = Field(
+        default=None, description="Optional upstream cultural strategy"
+    )
+    experience_design: ExperienceDesignOutput | None = Field(
+        default=None, description="Optional upstream experience design"
+    )
 
 
 class PartnershipOutput(BaseModel):
     """Structured partnership activations output."""
 
+    candidates: list[BrandPartnershipCandidate] = Field(
+        default_factory=list,
+        description="Top scored brand partnership candidates with Qloo evidence and outreach drafts",
+    )
     partnerships: list[PartnershipActivation] = Field(
-        ..., min_length=1, description="Ranked partnership activations"
+        default_factory=list, description="Ranked partnership activations"
     )
     event_collaborations: list[str] = Field(
         default_factory=list, description="Pop-up and event ideas"
