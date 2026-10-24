@@ -431,9 +431,43 @@ stateDiagram-v2
      - **Drafts Only**: Outreach letters are strictly generated as exploratory drafts.
      - **Zero Hallucination**: 100% of candidate IDs and evidence trace directly to verified Qloo entities.
 4. **Governance / Execution Agent (`GovernanceAgent`)**:
-   - **Audit Phase**: Audits all proposed entity IDs against verified Qloo IDs. Fails validation if hallucinated IDs are detected.
-   - **Approval Phase**: Enforces human gate at `AWAITING_APPROVAL`.
-   - **Execution Phase**: Generates concrete hardware/software tasks (Spotify playlist, signage, staff briefings) with provenance logs.
+   - **Purpose**: Converts upstream cultural recommendations into an actionable, dependency-mapped `ExecutionPlan`, executes multi-point compliance validations, strictly enforces the Human-in-the-Loop approval gate, dispatches verified physical/digital execution tasks, and performs post-execution audits.
+   - **Deterministic 5-Phase Workflow**:
+     ```
+     PLAN → VALIDATE → APPROVAL → EXECUTION → AUDIT
+     ```
+   - **Phase 1: PLAN (`ExecutionPlan`)**:
+     Synthesizes recommendations into a structured blueprint prior to human approval:
+     - `actions`: List of typed action items ([`ExecutionPlanAction`](file:///d:/TasteOps/src/tasteops/workflows/schemas.py)) covering sound system calibration, physical tableware procurement, exploratory partner outreach, atmosphere dayparting, and cultural programming.
+     - `dependencies`: Explicit prerequisite mapping (e.g. `act_brand_01` requires `act_sonic_01`).
+     - `estimated_cost`: Granular financial cost estimate and budget allocation.
+     - `risks`: Operational, spatial, acoustic, and brand perception risks with concrete mitigations.
+     - `approvals_required`: List of required sign-off roles (`["General Manager", "Cultural Curator", "Financial Controller"]`).
+     - `evidence`: Supporting Qloo evidence items linking planned actions to cultural intelligence.
+   - **Phase 2: VALIDATE (7-Point Audit Engine)**:
+     Executes strict automated compliance checks before plan can enter the approval gate:
+     1. **Missing Evidence Audit**: Verifies that 100% of recommendations, signals, and partner proposals carry supporting Qloo queries and explainability data.
+     2. **Conflicting Recommendations Audit**: Audits against negative exclusions (prunes contradictory entities) and flags acoustic/atmospheric contradictions (e.g. excessive dB vs. quiet sanctuary).
+     3. **Budget Violations Audit**: Verifies that capital expenditure requirements remain strictly within the venue's configured budget tier.
+     4. **Invalid Entities Audit (Zero Hallucination)**: Audits every referenced entity ID against ground truth Qloo entities. Any unverified ID immediately fails validation.
+     5. **Low Confidence Audit**: Confirms all recommendations satisfy the minimum affinity and confidence thresholds ($\ge 0.50$).
+     6. **Duplicate Actions Audit**: Detects and eliminates redundant or duplicate action IDs and task targets.
+     7. **Unsupported External Actions Audit**: Restricts execution to validated integrations (`spotify_audio_seed`, `partner_outreach_brief`, `spatial_design_spec`, `curatorial_programming`, `hospitality_training`). Blocks unauthorized external mutations.
+   - **Phase 3: APPROVAL (Deterministic Human-in-the-Loop Gate)**:
+     - **Strict Execution Boundary**: The agent must **NEVER** execute external actions before explicit human approval.
+     - Attempts to execute an unapproved or invalid plan raise `UnapprovedExecutionError`.
+     - Human approval (`approve_plan`) records curator identity, timestamp, and transitions state to `APPROVED`.
+   - **Phase 4: EXECUTION (`ExecutionTask`)**:
+     Dispatches concrete execution tasks once approved. Every task strictly contains:
+     - `task_id`: Unique execution task identifier (e.g. `task_e24b7a1c`).
+     - `action`: Concrete execution instruction.
+     - `owner`: Designated human or operational role (e.g. `"Audio Curator"`, `"Spatial Designer"`).
+     - `input`: Parameter dictionary for automated or staff execution.
+     - `status`: Execution status (`"EXECUTED"`).
+     - `timestamp`: UTC execution timestamp.
+     - `provenance`: Traceability payload containing verified Qloo entity ID, plan ID, and curator approver.
+   - **Phase 5: AUDIT (`AuditReport`)**:
+     Produces a post-execution compliance audit certifying approval verification, zero provenance violations, and zero unauthorized action leaks.
 
 ### 10.4. Programmatic Workflow Example
 ```python

@@ -565,19 +565,120 @@ class GovernanceValidationOutput(BaseModel):
     )
 
 
+class ExecutionPlanAction(BaseModel):
+    """Single planned action within an ExecutionPlan."""
+
+    action_id: str = Field(..., description="Unique action identifier")
+    title: str = Field(..., description="Action title")
+    description: str = Field(..., description="Action description")
+    owner: str = Field(..., description="Designated role responsible for action")
+    estimated_cost: str = Field(
+        default="$0", description="Cost breakdown for this action"
+    )
+    dependencies: list[str] = Field(
+        default_factory=list, description="IDs of prerequisite actions"
+    )
+    target_entity_id: str | None = Field(
+        default=None, description="Qloo entity ID if applicable"
+    )
+
+
+class ExecutionPlan(BaseModel):
+    """Structured execution plan generated prior to approval."""
+
+    plan_id: str = Field(..., description="Execution plan unique ID")
+    actions: list[ExecutionPlanAction] = Field(
+        ..., description="List of planned actions"
+    )
+    dependencies: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Dependency mapping (action_id -> prerequisite action_ids)",
+    )
+    estimated_cost: str = Field(
+        ..., description="Overall estimated cost and budget allocation"
+    )
+    risks: list[str] = Field(
+        default_factory=list,
+        description="Operational, spatial, and financial risks",
+    )
+    approvals_required: list[str] = Field(
+        default_factory=list,
+        description="List of required approval roles/signoffs",
+    )
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Supporting Qloo evidence backing the actions",
+    )
+
+
 class ExecutionTask(BaseModel):
     """Single concrete action item executed upon plan approval."""
 
-    task_id: str
-    category: (
-        str  # e.g. "spotify_playlist_seed", "partner_outreach_brief", "spatial_spec"
+    task_id: str = Field(..., description="Unique execution task identifier")
+    action: str = Field(default="", description="Action description or instruction")
+    owner: str = Field(default="System", description="Responsible role or agent")
+    input: dict[str, Any] = Field(
+        default_factory=dict, description="Input parameters and configuration"
     )
-    description: str
-    target_partner_or_artist: str
-    target_entity_id: str
-    status: str = "PENDING"  # PENDING, EXECUTED, FAILED
-    executed_at: datetime | None = None
-    output_reference: str | None = None
+    status: str = Field(
+        default="PENDING",
+        description="Task execution status (e.g. PENDING, APPROVED, EXECUTED, FAILED)",
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Execution or creation timestamp",
+    )
+    provenance: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Qloo entity provenance and verification trace",
+    )
+    # Backward-compatible fields
+    category: str = Field(
+        default="general_execution",
+        description="Category (e.g. spotify_audio_seed, partner_outreach_brief, spatial_design_spec)",
+    )
+    description: str = Field(default="", description="Backward-compatible description")
+    target_partner_or_artist: str = Field(
+        default="", description="Target partner or artist name"
+    )
+    target_entity_id: str = Field(
+        default="", description="Target verified Qloo entity ID"
+    )
+    executed_at: datetime | None = Field(
+        default=None, description="Legacy executed_at timestamp"
+    )
+    output_reference: str | None = Field(
+        default=None, description="External resource reference URI"
+    )
+
+
+class AuditReport(BaseModel):
+    """Post-execution audit report verifying compliance and integrity."""
+
+    audit_id: str = Field(..., description="Audit record ID")
+    plan_id: str = Field(..., description="Audited plan ID")
+    audited_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    total_actions_planned: int = Field(
+        ..., description="Total actions in ExecutionPlan"
+    )
+    total_tasks_executed: int = Field(
+        ..., description="Total execution tasks successfully executed"
+    )
+    provenance_violations: int = Field(
+        default=0, description="Count of provenance violations detected"
+    )
+    unsupported_actions_blocked: int = Field(
+        default=0, description="Count of unauthorized external actions blocked"
+    )
+    approval_verified: bool = Field(
+        default=True, description="True if explicit human approval was verified"
+    )
+    compliance_status: str = Field(
+        default="COMPLIANT", description="COMPLIANT, FLAGGED, or FAILED"
+    )
+    findings: list[str] = Field(
+        default_factory=list, description="Audit observations and log entries"
+    )
 
 
 class ExecutionSummary(BaseModel):
@@ -588,6 +689,9 @@ class ExecutionSummary(BaseModel):
     failed_tasks: int
     tasks: list[ExecutionTask]
     completed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    audit_report: AuditReport | None = Field(
+        default=None, description="Post-execution compliance audit"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -606,4 +710,8 @@ class CulturalActivationPlan(BaseModel):
     experience_design: ExperienceDesignOutput
     partnerships: PartnershipOutput
     governance: GovernanceValidationOutput
+    execution_plan: ExecutionPlan | None = Field(
+        default=None,
+        description="Pre-approval execution plan with actions, dependencies, and cost",
+    )
     execution_summary: ExecutionSummary | None = None

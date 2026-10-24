@@ -259,8 +259,13 @@ class WorkflowEngine:
             experience_design=ctx.experience_output,
             partnerships=ctx.partnership_output,
         )
-        # Preliminary validation to construct plan
-        gov_output = await self.governance.validate_plan(empty_governance)
+        # 1. PLAN Phase: Generate structured ExecutionPlan
+        execution_plan = self.governance.plan(empty_governance)
+
+        # 2. Preliminary validation to construct plan
+        gov_output = await self.governance.validate_plan(
+            empty_governance, execution_plan=execution_plan
+        )
         ctx.governance_output = gov_output
 
         ctx.plan = CulturalActivationPlan(
@@ -271,6 +276,7 @@ class WorkflowEngine:
             experience_design=ctx.experience_output,
             partnerships=ctx.partnership_output,
             governance=ctx.governance_output,
+            execution_plan=execution_plan,
         )
 
         ctx.record_transition(
@@ -377,7 +383,19 @@ class WorkflowEngine:
         if not ctx.plan:
             raise RuntimeError("Cannot execute: Plan is missing.")
 
-        execution_summary = await self.governance.execute_plan(ctx.plan)
+        # Identify approver from audit history
+        last_approver = "curator"
+        for record in reversed(ctx.history):
+            if (
+                record.to_state == WorkflowState.APPROVED
+                and "approver" in record.metadata
+            ):
+                last_approver = record.metadata["approver"]
+                break
+
+        execution_summary = await self.governance.execute_plan(
+            ctx.plan, is_approved=True, approved_by=last_approver
+        )
         ctx.plan.execution_summary = execution_summary
 
         validate_transition(ctx.current_state, WorkflowState.COMPLETED)

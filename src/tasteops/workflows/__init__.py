@@ -9,6 +9,7 @@ from tasteops.workflows.context import StateTransitionRecord, WorkflowContext
 from tasteops.workflows.engine import WorkflowEngine
 from tasteops.workflows.schemas import (
     AtmosphereGuidelines,
+    AuditReport,
     BrandEcosystem,
     BrandPartnershipCandidate,
     ComplianceCheck,
@@ -18,6 +19,8 @@ from tasteops.workflows.schemas import (
     CulturalStrategyInput,
     CulturalStrategyOutput,
     DaypartProgram,
+    ExecutionPlan,
+    ExecutionPlanAction,
     ExecutionSummary,
     ExecutionTask,
     ExperienceDesignInput,
@@ -44,6 +47,7 @@ from tasteops.workflows.states import (
 
 __all__ = [
     "AtmosphereGuidelines",
+    "AuditReport",
     "BrandEcosystem",
     "BrandPartnershipCandidate",
     "ComplianceCheck",
@@ -53,6 +57,8 @@ __all__ = [
     "CulturalStrategyInput",
     "CulturalStrategyOutput",
     "DaypartProgram",
+    "ExecutionPlan",
+    "ExecutionPlanAction",
     "ExecutionSummary",
     "ExecutionTask",
     "ExperienceDesignInput",

@@ -11,7 +11,7 @@ import pytest
 import respx
 
 from tasteops.agents.architect import ExperienceArchitect
-from tasteops.agents.governance import GovernanceAgent
+from tasteops.agents.governance import GovernanceAgent, UnapprovedExecutionError
 from tasteops.agents.partnership import PartnershipAgent
 from tasteops.agents.strategist import CulturalStrategist
 from tasteops.models.cultural_matrix import (
@@ -21,7 +21,9 @@ from tasteops.models.cultural_matrix import (
     PhysicalSpaceBrief,
 )
 from tasteops.workflows.schemas import (
+    CulturalActivationPlan,
     CulturalStrategyInput,
+    ExecutionPlan,
     ExperienceDesignInput,
     GovernanceValidationInput,
     PartnershipInput,
@@ -585,3 +587,199 @@ async def test_governance_agent_rejects_hallucinated_ids(
     assert gov_output.provenance_verified is False
     assert "hallucinated_fake_id_99999" in gov_output.unverified_entity_ids
     assert any("Provenance violation" in flag for flag in gov_output.risk_flags)
+
+
+@pytest.mark.asyncio
+async def test_governance_agent_creates_execution_plan_and_dependencies(
+    sample_twin, sample_curated_matrix
+):
+    """Test Governance Agent converts cultural recommendations into a structured ExecutionPlan."""
+    strategist = CulturalStrategist()
+    strat_output = await strategist.execute(
+        CulturalStrategyInput(
+            cultural_twin=sample_twin, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    architect = ExperienceArchitect()
+    arch_output = await architect.execute(
+        ExperienceDesignInput(
+            strategy=strat_output, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    partnership_agent = PartnershipAgent()
+    part_output = await partnership_agent.execute(
+        PartnershipInput(
+            strategy=strat_output,
+            experience_design=arch_output,
+            cultural_matrix=sample_curated_matrix,
+        )
+    )
+
+    governance = GovernanceAgent()
+    gov_input = GovernanceValidationInput(
+        cultural_twin=sample_twin,
+        cultural_matrix=sample_curated_matrix,
+        strategy=strat_output,
+        experience_design=arch_output,
+        partnerships=part_output,
+    )
+
+    # 1. Generate ExecutionPlan
+    exec_plan = governance.plan(gov_input)
+    assert isinstance(exec_plan, ExecutionPlan)
+    assert len(exec_plan.actions) >= 4
+    assert exec_plan.estimated_cost
+    assert "$12,500" in exec_plan.estimated_cost
+    assert len(exec_plan.risks) >= 2
+    assert "General Manager" in exec_plan.approvals_required
+    assert "Cultural Curator" in exec_plan.approvals_required
+    assert len(exec_plan.evidence) >= 1
+
+    # 2. Check dependencies structure
+    assert "act_sonic_01" in exec_plan.dependencies
+    assert "act_brand_01" in exec_plan.dependencies
+    assert "act_sonic_01" in exec_plan.dependencies["act_brand_01"]
+
+
+@pytest.mark.asyncio
+async def test_governance_agent_refuses_execution_before_approval(
+    sample_twin, sample_curated_matrix
+):
+    """Strict Gate Test: The agent must NEVER execute external actions before explicit approval."""
+    strategist = CulturalStrategist()
+    strat_output = await strategist.execute(
+        CulturalStrategyInput(
+            cultural_twin=sample_twin, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    architect = ExperienceArchitect()
+    arch_output = await architect.execute(
+        ExperienceDesignInput(
+            strategy=strat_output, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    partnership_agent = PartnershipAgent()
+    part_output = await partnership_agent.execute(
+        PartnershipInput(
+            strategy=strat_output,
+            experience_design=arch_output,
+            cultural_matrix=sample_curated_matrix,
+        )
+    )
+
+    governance = GovernanceAgent()
+    gov_input = GovernanceValidationInput(
+        cultural_twin=sample_twin,
+        cultural_matrix=sample_curated_matrix,
+        strategy=strat_output,
+        experience_design=arch_output,
+        partnerships=part_output,
+    )
+    gov_output = await governance.validate_plan(gov_input)
+
+    plan = CulturalActivationPlan(
+        plan_id="plan_test_unapproved_123",
+        cultural_twin=sample_twin,
+        cultural_matrix=sample_curated_matrix,
+        strategy=strat_output,
+        experience_design=arch_output,
+        partnerships=part_output,
+        governance=gov_output,
+    )
+
+    # Explicitly attempt execution with is_approved=False
+    with pytest.raises(UnapprovedExecutionError) as exc_info:
+        await governance.execute_plan(plan, is_approved=False)
+
+    assert "NEVER execute external actions before explicit approval" in str(
+        exc_info.value
+    )
+
+
+@pytest.mark.asyncio
+async def test_governance_agent_executes_tasks_with_provenance_and_audit(
+    sample_twin, sample_curated_matrix
+):
+    """Test Governance Agent generates execution tasks with task_id, action, owner, input, status, timestamp, provenance, and audit."""
+    strategist = CulturalStrategist()
+    strat_output = await strategist.execute(
+        CulturalStrategyInput(
+            cultural_twin=sample_twin, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    architect = ExperienceArchitect()
+    arch_output = await architect.execute(
+        ExperienceDesignInput(
+            strategy=strat_output, cultural_matrix=sample_curated_matrix
+        )
+    )
+
+    partnership_agent = PartnershipAgent()
+    part_output = await partnership_agent.execute(
+        PartnershipInput(
+            strategy=strat_output,
+            experience_design=arch_output,
+            cultural_matrix=sample_curated_matrix,
+        )
+    )
+
+    governance = GovernanceAgent()
+    gov_input = GovernanceValidationInput(
+        cultural_twin=sample_twin,
+        cultural_matrix=sample_curated_matrix,
+        strategy=strat_output,
+        experience_design=arch_output,
+        partnerships=part_output,
+    )
+    gov_output = await governance.validate_plan(gov_input)
+
+    plan = CulturalActivationPlan(
+        plan_id="plan_test_approved_456",
+        cultural_twin=sample_twin,
+        cultural_matrix=sample_curated_matrix,
+        strategy=strat_output,
+        experience_design=arch_output,
+        partnerships=part_output,
+        governance=gov_output,
+    )
+
+    # Execute with explicit approval
+    summary = await governance.execute_plan(
+        plan, is_approved=True, approved_by="Curator: Maitray Agrawal"
+    )
+
+    assert summary.total_tasks >= 3
+    assert summary.executed_tasks == summary.total_tasks
+    assert summary.failed_tasks == 0
+
+    # Verify every execution task has: task_id, action, owner, input, status, timestamp, provenance
+    for task in summary.tasks:
+        assert task.task_id.startswith("task_")
+        assert len(task.action) > 10
+        assert task.owner in [
+            "Audio Curator",
+            "Partnership Director",
+            "Spatial Designer",
+        ]
+        assert isinstance(task.input, dict)
+        assert task.status == "EXECUTED"
+        assert task.timestamp is not None
+        assert isinstance(task.provenance, dict)
+        assert "entity_id" in task.provenance or "zone" in task.provenance
+        assert task.provenance["approved_by"] == "Curator: Maitray Agrawal"
+
+    # Verify post-execution audit report
+    assert summary.audit_report is not None
+    audit = summary.audit_report
+    assert audit.audit_id.startswith("audit_")
+    assert audit.plan_id == "plan_test_approved_456"
+    assert audit.approval_verified is True
+    assert audit.provenance_violations == 0
+    assert audit.unsupported_actions_blocked == 0
+    assert audit.compliance_status == "COMPLIANT"
+    assert len(audit.findings) >= 2
