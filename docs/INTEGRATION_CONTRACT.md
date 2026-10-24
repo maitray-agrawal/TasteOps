@@ -137,47 +137,126 @@ server = create_cultural_intelligence_mcp()
 
 ---
 
-## 5. Registered MCP Tools & Argument Schemas
+## 5. Registered MCP Tools & Strongly-Typed Schemas
 
-The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_qloo`) are strictly prohibited and not exposed.
+The MCP server exposes 10 high-level cultural intelligence tools. Raw HTTP calls to Qloo (e.g. `call_qloo`) are strictly prohibited and not exposed. Every tool enforces:
+1. **Typed Input & Output:** Strict Pydantic models in `tasteops.mcp.schemas`.
+2. **Validation:** Parameter boundaries, length restrictions, geographic coordinate bounds, and threshold ranges.
+3. **Deterministic Error Behavior:** Safe error trapping returning structured payloads with `request_id` and root-cause error descriptions rather than uncaught exceptions.
+4. **Provenance:** Traceable evidence retained across entity resolution (`evidence`), tag taxonomy (`evidence`), and recommendations (`source_query`, `source_signal`, `explainability`).
+5. **Request ID:** A unique UUID4 `request_id` on every tool execution.
+6. **Confidence:** Explicit confidence scores `[0.0 - 1.0]` for resolutions and recommendations.
 
 ### 5.1. `health_check`
-- **Description:** Verifies server readiness, Qloo base URL configuration, and returns diagnostic metrics.
-- **Arguments:** None.
+- **Description:** Performs health diagnostics on the Cultural Intelligence MCP server and configuration.
+- **Input Schema:** `HealthCheckInput` (no arguments required).
+- **Output Schema:** `HealthCheckOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `status` (`str`): `"healthy"` or `"degraded"`.
+  - `server` (`str`): `"tasteops-cultural-intelligence"`.
+  - `version` (`str`): Semantic server version (`"1.0.0"`).
+  - `base_url` (`str`): Configured Qloo API base URL.
+  - `timestamp` (`str`): ISO-8601 UTC timestamp.
+  - `latency_ms` (`float`): Execution latency in milliseconds.
+  - `error` (`str | None`): Error details if degraded.
 
 ### 5.2. `resolve_entity`
 - **Description:** Resolves natural language cultural anchor strings (venue, artist, brand) into verified Qloo entity IDs.
-- **Arguments:**
-  - `query` (`str`, required): Natural language anchor (e.g. `"Blue Bottle"`, `"A24"`).
+- **Input Schema:** `ResolveEntityInput`
+  - `query` (`str`, required): Natural language anchor (min length 1, e.g. `"Blue Bottle"`, `"A24"`).
   - `expected_type` (`str | None`, optional): Domain hint (`"place"`, `"brand"`, `"artist"`).
-  - `min_confidence` (`float`, default `0.5`): Minimum score `[0.0 - 1.0]` required to accept match.
+  - `min_confidence` (`float`, default `0.5`, bounds `0.0` - `1.0`): Minimum score required to accept top match.
+- **Output Schema:** `ResolveEntityOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `is_resolved` (`bool`): `True` if top match exceeds `min_confidence`.
+  - `input` (`str`): Normalized raw query.
+  - `resolved_entity_id` (`str | None`): Verified Qloo entity ID (e.g. `"ent_a24_film"`).
+  - `entity_name` (`str | None`): Standardized entity name.
+  - `entity_type` (`str | None`): Domain category.
+  - `confidence` (`float`): Match confidence score `[0.0 - 1.0]`.
+  - `source` (`str`): Resolution source (`"qloo_search"`).
+  - `evidence` (`dict`): Provenance dictionary (`source`, `raw_query`, `normalized_query`, `match_method`, `score`, `timestamp`).
+  - `alternatives_count` (`int`): Count of candidate alternatives evaluated.
+  - `alternatives` (`list[dict]`): Top candidate alternatives with individual scores and match reasons.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.3. `resolve_tag`
-- **Description:** Resolves aesthetic motifs, vibes, or genre terms into verified Qloo taxonomy tags. Rejects unknown tags.
-- **Arguments:**
-  - `query` (`str`, required): Natural language motif (e.g. `"Japanese minimalism"`, `"lo-fi beats"`).
+- **Description:** Resolves aesthetic motifs, vibes, or genre terms into verified Qloo taxonomy tags. Rejects unknown tags (zero tag fabrication).
+- **Input Schema:** `ResolveTagInput`
+  - `query` (`str`, required): Natural language motif (min length 1, e.g. `"Japanese minimalism"`, `"lo-fi beats"`).
   - `expected_category` (`str | None`, optional): Category hint (`"style"`, `"music"`, `"dining"`).
-  - `min_confidence` (`float`, default `0.5`): Minimum acceptance threshold.
+  - `min_confidence` (`float`, default `0.5`, bounds `0.0` - `1.0`): Minimum acceptance threshold.
+- **Output Schema:** `ResolveTagOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `is_resolved` (`bool`): `True` if tag verified in taxonomy.
+  - `input` (`str`): Normalized raw query.
+  - `resolved_tag_id` (`str | None`): Verified taxonomy tag ID (e.g. `"tag_jp_minimalism"`).
+  - `tag_name` (`str | None`): Normalized tag title.
+  - `category` (`str | None`): Taxonomy category.
+  - `confidence` (`float`): Match score `[0.0 - 1.0]`.
+  - `source` (`str`): Provenance source (`"qloo_tags"`).
+  - `evidence` (`dict`): Provenance dictionary (`source`, `match_method`, `score`, `timestamp`).
+  - `alternatives_count` (`int`): Count of candidate alternatives.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.4. `get_cultural_profile`
-- **Description:** Produces an instant cross-domain taste profile for an anchor entity.
-- **Arguments:**
-  - `entity_id` (`str | None`): Verified Qloo entity ID.
-  - `entity_name` (`str | None`): Alternative entity name (resolved automatically if `entity_id` omitted).
-  - `take` (`int`, default `5`): Recommendations per domain.
+- **Description:** Produces an instant cross-domain taste profile for an anchor entity across music, brands, and spaces.
+- **Input Schema:** `GetCulturalProfileInput`
+  - `entity_id` (`str | None`, optional): Verified Qloo entity ID.
+  - `entity_name` (`str | None`, optional): Natural language entity name (resolved automatically if `entity_id` omitted).
+  - `take` (`int`, default `5`, bounds `1` - `20`): Recommendations per domain.
+- **Validation:** Must provide at least one of `entity_id` or `entity_name`.
+- **Output Schema:** `GetCulturalProfileOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `entity_id` (`str | None`): Profiled Qloo entity ID.
+  - `entity_name` (`str | None`): Display name.
+  - `affinities` (`CulturalProfileAffinities`): Object containing `artists`, `brands`, and `places` lists with individual confidence and provenance.
+  - `total_affinities` (`int`): Total recommendations count.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.5. Domain-Specific Affinity Tools
-- **`get_related_artists`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_books`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_brands`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_places`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `latitude: float | None`, `longitude: float | None`, `radius_meters: int = 5000`, `take: int = 10`
-- **`get_related_movies`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
+- **Tools:**
+  - `get_related_artists` (music recommendations)
+  - `get_related_books` (literature and monograph recommendations)
+  - `get_related_brands` (lifestyle and equipment brand recommendations)
+  - `get_related_places` (local venues and spatial synergies)
+  - `get_related_movies` (cinematic and film movement recommendations)
+- **Input Schemas:**
+  - Non-spatial domains (`artists`, `books`, `brands`, `movies`): `GetRelatedCategoryInput`
+    - `anchor_entities` (`list[str]`, default `[]`): Seed entity IDs.
+    - `resolved_tags` (`list[str]`, default `[]`): Seed tag IDs.
+    - `take` (`int`, default `10`, bounds `1` - `50`): Maximum recommendations.
+  - Spatial domain (`places`): `GetRelatedPlacesInput`
+    - `anchor_entities` (`list[str]`, default `[]`): Seed entity IDs.
+    - `resolved_tags` (`list[str]`, default `[]`): Seed tag IDs.
+    - `latitude` (`float | None`, bounds `-90.0` - `90.0`): Latitude for spatial bounding.
+    - `longitude` (`float | None`, bounds `-180.0` - `180.0`): Longitude for spatial bounding.
+    - `radius_meters` (`int`, default `5000`, bounds `100` - `50000`): Search radius in meters.
+    - `take` (`int`, default `10`, bounds `1` - `50`): Maximum places.
+- **Output Schema:** `CategoryRecommendationsOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `category` (`str`): Target domain category name.
+  - `recommendations` (`list[dict]`): List of recommendations, each containing `id`, `name`, `type`, `affinity`, `confidence`, `source_query`, `source_signal`, `explainability`.
+  - `total_count` (`int`): Items returned.
+  - `query_metadata` (`list[dict]`): Telemetry and query provenance.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.6. `get_cultural_matrix`
 - **Description:** Assembles a holistic 6-domain CulturalMatrix for a physical space's `CulturalTwin` concurrently.
-- **Arguments:**
-  - `cultural_twin` (`dict`, required): Object adhering to the [`CulturalTwin`](file:///d:/TasteOps/src/tasteops/models/cultural_matrix.py#L35-L53) schema.
-  - `take_per_category` (`int`, default `10`): Max items per category.
+- **Input Schema:** `GetCulturalMatrixInput`
+  - `cultural_twin` (`dict`, required): Object adhering to the [`CulturalTwin`](file:///d:/TasteOps/src/tasteops/models/cultural_matrix.py#L35-L53) schema (`business_type`, `mood`, `anchor_entities`, `resolved_tags`, `location`).
+  - `take_per_category` (`int`, default `10`, bounds `1` - `30`): Recommendations per domain.
+- **Output Schema:** `GetCulturalMatrixOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `status` (`str`): `"success"` or `"error"`.
+  - `cultural_matrix` (`dict | None`): Complete 6-domain payload (`artists`, `books`, `brands`, `places`, `movies`, `destinations`, `evidence`, `query_metadata`).
+  - `total_recommendations` (`int`): Aggregate recommendation count.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ---
 
@@ -218,7 +297,8 @@ The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_q
       "match_reason": "token_subset_match"
     }
   ],
-  "latency_ms": 14.2
+  "latency_ms": 14.2,
+  "error": null
 }
 ```
 
@@ -274,15 +354,16 @@ The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_q
         }
       }
     ]
-  }
+  },
+  "error": null
 }
 ```
 
 ---
 
-## 7. Error Envelope Format
+## 7. Deterministic Error Envelope Format
 
-Tool executions return structured JSON error envelopes rather than raw exceptions:
+When tool validation fails or an upstream query is unresolvable, tools return structured JSON error envelopes rather than uncaught exceptions:
 
 ```json
 {
@@ -292,6 +373,7 @@ Tool executions return structured JSON error envelopes rather than raw exception
   "cultural_matrix": null
 }
 ```
+
 
 ---
 

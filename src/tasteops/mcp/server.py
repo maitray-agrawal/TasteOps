@@ -15,7 +15,8 @@ Exposes high-level cultural intelligence tools for AI agent orchestration:
 Features:
 - Structured logging with unique request IDs (UUID4)
 - High-level intelligence abstractions (never exposes raw Qloo HTTP requests)
-- Strict validation and graceful error formatting
+- Strict validation, provenance, confidence scoring, and graceful error formatting
+- Strongly-typed Pydantic input and output schemas
 """
 
 import logging
@@ -27,6 +28,21 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from tasteops.client import QlooClient
+from tasteops.mcp.schemas import (
+    CategoryRecommendationsOutput,
+    CulturalProfileAffinities,
+    GetCulturalMatrixInput,
+    GetCulturalMatrixOutput,
+    GetCulturalProfileInput,
+    GetCulturalProfileOutput,
+    GetRelatedCategoryInput,
+    GetRelatedPlacesInput,
+    HealthCheckOutput,
+    ResolveEntityInput,
+    ResolveEntityOutput,
+    ResolveTagInput,
+    ResolveTagOutput,
+)
 from tasteops.models.cultural_matrix import CulturalTwin, LocationInput
 from tasteops.services.cultural_matrix_service import CulturalMatrixService
 from tasteops.services.entity_resolver import EntityResolver
@@ -59,16 +75,32 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         start_time = time.perf_counter()
         logger.info("[Req: %s] Executing health_check", request_id)
 
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        return {
-            "request_id": request_id,
-            "status": "healthy",
-            "server": "tasteops-cultural-intelligence",
-            "version": "1.0.0",
-            "base_url": qloo_client.base_url,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "latency_ms": round(latency_ms, 2),
-        }
+        try:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            output = HealthCheckOutput(
+                request_id=request_id,
+                status="healthy",
+                server="tasteops-cultural-intelligence",
+                version="1.0.0",
+                base_url=qloo_client.base_url,
+                timestamp=datetime.now(UTC).isoformat(),
+                latency_ms=round(latency_ms, 2),
+            )
+            return output.model_dump()
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            logger.error("[Req: %s] health_check error: %s", request_id, e)
+            error_output = HealthCheckOutput(
+                request_id=request_id,
+                status="degraded",
+                server="tasteops-cultural-intelligence",
+                version="1.0.0",
+                base_url=getattr(qloo_client, "base_url", "unknown"),
+                timestamp=datetime.now(UTC).isoformat(),
+                latency_ms=round(latency_ms, 2),
+                error=str(e),
+            )
+            return error_output.model_dump()
 
     # -------------------------------------------------------------------------
     # Entity Resolution Tool
@@ -93,35 +125,45 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         )
 
         try:
-            result = await entity_resolver.resolve(
+            valid_input = ResolveEntityInput(
                 query=query,
                 expected_type=expected_type,
                 min_confidence=min_confidence,
             )
+            result = await entity_resolver.resolve(
+                query=valid_input.query,
+                expected_type=valid_input.expected_type,
+                min_confidence=valid_input.min_confidence,
+            )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return {
-                "request_id": request_id,
-                "is_resolved": result.is_resolved,
-                "input": result.input,
-                "resolved_entity_id": result.resolved_entity_id,
-                "entity_name": result.entity.name if result.entity else None,
-                "entity_type": result.entity_type,
-                "confidence": result.confidence,
-                "source": result.source,
-                "evidence": result.evidence.model_dump(),
-                "alternatives_count": len(result.alternatives),
-                "alternatives": [a.model_dump() for a in result.alternatives[:5]],
-                "latency_ms": round(elapsed_ms, 2),
-            }
+            output = ResolveEntityOutput(
+                request_id=request_id,
+                is_resolved=result.is_resolved,
+                input=result.input,
+                resolved_entity_id=result.resolved_entity_id,
+                entity_name=result.entity.name if result.entity else None,
+                entity_type=result.entity_type,
+                confidence=result.confidence,
+                source=result.source,
+                evidence=result.evidence.model_dump(),
+                alternatives_count=len(result.alternatives),
+                alternatives=[a.model_dump() for a in result.alternatives[:5]],
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return output.model_dump()
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error("[Req: %s] resolve_entity error: %s", request_id, e)
-            return {
-                "request_id": request_id,
-                "error": str(e),
-                "is_resolved": False,
-                "resolved_entity_id": None,
-                "confidence": 0.0,
-            }
+            error_output = ResolveEntityOutput(
+                request_id=request_id,
+                error=str(e),
+                is_resolved=False,
+                input=query or "",
+                resolved_entity_id=None,
+                confidence=0.0,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return error_output.model_dump()
 
     # -------------------------------------------------------------------------
     # Tag Resolution Tool
@@ -146,34 +188,44 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         )
 
         try:
-            result = await tag_resolver.resolve(
+            valid_input = ResolveTagInput(
                 query=query,
                 expected_category=expected_category,
                 min_confidence=min_confidence,
             )
+            result = await tag_resolver.resolve(
+                query=valid_input.query,
+                expected_category=valid_input.expected_category,
+                min_confidence=valid_input.min_confidence,
+            )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return {
-                "request_id": request_id,
-                "is_resolved": result.is_resolved,
-                "input": result.input,
-                "resolved_tag_id": result.resolved_tag_id,
-                "tag_name": result.tag_name,
-                "category": result.category,
-                "confidence": result.confidence,
-                "source": result.source,
-                "evidence": result.evidence.model_dump(),
-                "alternatives_count": len(result.alternatives),
-                "latency_ms": round(elapsed_ms, 2),
-            }
+            output = ResolveTagOutput(
+                request_id=request_id,
+                is_resolved=result.is_resolved,
+                input=result.input,
+                resolved_tag_id=result.resolved_tag_id,
+                tag_name=result.tag_name,
+                category=result.category,
+                confidence=result.confidence,
+                source=result.source,
+                evidence=result.evidence.model_dump(),
+                alternatives_count=len(result.alternatives),
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return output.model_dump()
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error("[Req: %s] resolve_tag error: %s", request_id, e)
-            return {
-                "request_id": request_id,
-                "error": str(e),
-                "is_resolved": False,
-                "resolved_tag_id": None,
-                "confidence": 0.0,
-            }
+            error_output = ResolveTagOutput(
+                request_id=request_id,
+                error=str(e),
+                is_resolved=False,
+                input=query or "",
+                resolved_tag_id=None,
+                confidence=0.0,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return error_output.model_dump()
 
     # -------------------------------------------------------------------------
     # Cultural Profile Tool
@@ -198,51 +250,69 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         )
 
         try:
-            target_id = entity_id
-            target_name = entity_name
+            valid_input = GetCulturalProfileInput(
+                entity_id=entity_id,
+                entity_name=entity_name,
+                take=take,
+            )
+            target_id = valid_input.entity_id
+            target_name = valid_input.entity_name
 
             # If name passed without ID, resolve entity first
             if not target_id and target_name:
                 res = await entity_resolver.resolve(target_name)
                 if not res.is_resolved:
-                    return {
-                        "request_id": request_id,
-                        "error": f"Could not resolve entity '{target_name}' to a verified Qloo entity ID.",
-                        "is_resolved": False,
-                    }
+                    elapsed_ms = (time.perf_counter() - start_time) * 1000
+                    unresolved_output = GetCulturalProfileOutput(
+                        request_id=request_id,
+                        error=f"Could not resolve entity '{target_name}' to a verified Qloo entity ID.",
+                        is_resolved=False,
+                        latency_ms=round(elapsed_ms, 2),
+                    )
+                    return unresolved_output.model_dump()
                 target_id = res.resolved_entity_id
                 target_name = res.entity.name if res.entity else target_name
 
             if not target_id:
-                return {
-                    "request_id": request_id,
-                    "error": "Must provide either entity_id or entity_name to get_cultural_profile.",
-                }
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                missing_output = GetCulturalProfileOutput(
+                    request_id=request_id,
+                    error="Must provide either entity_id or entity_name to get_cultural_profile.",
+                    latency_ms=round(elapsed_ms, 2),
+                )
+                return missing_output.model_dump()
 
             # Query cross-domain affinities
             twin = CulturalTwin(anchor_entities=[target_id])
             matrix = await matrix_service.generate_matrix(
                 twin,
                 categories=["artist", "brand", "place"],
-                take_per_category=take,
+                take_per_category=valid_input.take,
             )
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return {
-                "request_id": request_id,
-                "entity_id": target_id,
-                "entity_name": target_name or "Verified Entity",
-                "affinities": {
-                    "artists": [a.model_dump() for a in matrix.artists],
-                    "brands": [b.model_dump() for b in matrix.brands],
-                    "places": [p.model_dump() for p in matrix.places],
-                },
-                "total_affinities": matrix.total_recommendations,
-                "latency_ms": round(elapsed_ms, 2),
-            }
+            output = GetCulturalProfileOutput(
+                request_id=request_id,
+                entity_id=target_id,
+                entity_name=target_name or "Verified Entity",
+                affinities=CulturalProfileAffinities(
+                    artists=[a.model_dump() for a in matrix.artists],
+                    brands=[b.model_dump() for b in matrix.brands],
+                    places=[p.model_dump() for p in matrix.places],
+                ),
+                total_affinities=matrix.total_recommendations,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return output.model_dump()
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error("[Req: %s] get_cultural_profile error: %s", request_id, e)
-            return {"request_id": request_id, "error": str(e)}
+            error_output = GetCulturalProfileOutput(
+                request_id=request_id,
+                error=str(e),
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return error_output.model_dump()
 
     # -------------------------------------------------------------------------
     # Domain-Specific Tools
@@ -278,24 +348,29 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
             items = getattr(matrix, f"{category}s", [])
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-            return {
-                "request_id": request_id,
-                "category": category,
-                "recommendations": [item.model_dump() for item in items],
-                "total_count": len(items),
-                "query_metadata": [qm.model_dump() for qm in matrix.query_metadata],
-                "latency_ms": round(elapsed_ms, 2),
-            }
+            output = CategoryRecommendationsOutput(
+                request_id=request_id,
+                category=category,
+                recommendations=[item.model_dump() for item in items],
+                total_count=len(items),
+                query_metadata=[qm.model_dump() for qm in matrix.query_metadata],
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return output.model_dump()
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
                 "[Req: %s] Query domain '%s' error: %s", request_id, category, e
             )
-            return {
-                "request_id": request_id,
-                "category": category,
-                "error": str(e),
-                "recommendations": [],
-            }
+            error_output = CategoryRecommendationsOutput(
+                request_id=request_id,
+                category=category,
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return error_output.model_dump()
 
     @server.tool(
         name="get_related_artists",
@@ -306,9 +381,26 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain(
-            "artist", anchor_entities or [], resolved_tags or [], take
-        )
+        try:
+            valid_input = GetRelatedCategoryInput(
+                anchor_entities=anchor_entities or [],
+                resolved_tags=resolved_tags or [],
+                take=take,
+            )
+            return await _query_single_domain(
+                "artist",
+                valid_input.anchor_entities,
+                valid_input.resolved_tags,
+                valid_input.take,
+            )
+        except Exception as e:
+            return CategoryRecommendationsOutput(
+                request_id=str(uuid.uuid4()),
+                category="artist",
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+            ).model_dump()
 
     @server.tool(
         name="get_related_books",
@@ -319,9 +411,26 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain(
-            "book", anchor_entities or [], resolved_tags or [], take
-        )
+        try:
+            valid_input = GetRelatedCategoryInput(
+                anchor_entities=anchor_entities or [],
+                resolved_tags=resolved_tags or [],
+                take=take,
+            )
+            return await _query_single_domain(
+                "book",
+                valid_input.anchor_entities,
+                valid_input.resolved_tags,
+                valid_input.take,
+            )
+        except Exception as e:
+            return CategoryRecommendationsOutput(
+                request_id=str(uuid.uuid4()),
+                category="book",
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+            ).model_dump()
 
     @server.tool(
         name="get_related_brands",
@@ -332,9 +441,26 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain(
-            "brand", anchor_entities or [], resolved_tags or [], take
-        )
+        try:
+            valid_input = GetRelatedCategoryInput(
+                anchor_entities=anchor_entities or [],
+                resolved_tags=resolved_tags or [],
+                take=take,
+            )
+            return await _query_single_domain(
+                "brand",
+                valid_input.anchor_entities,
+                valid_input.resolved_tags,
+                valid_input.take,
+            )
+        except Exception as e:
+            return CategoryRecommendationsOutput(
+                request_id=str(uuid.uuid4()),
+                category="brand",
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+            ).model_dump()
 
     @server.tool(
         name="get_related_places",
@@ -348,14 +474,37 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         radius_meters: int = 5000,
         take: int = 10,
     ) -> dict[str, Any]:
-        loc = None
-        if latitude is not None and longitude is not None:
-            loc = LocationInput(
-                latitude=latitude, longitude=longitude, radius_meters=radius_meters
+        try:
+            valid_input = GetRelatedPlacesInput(
+                anchor_entities=anchor_entities or [],
+                resolved_tags=resolved_tags or [],
+                latitude=latitude,
+                longitude=longitude,
+                radius_meters=radius_meters,
+                take=take,
             )
-        return await _query_single_domain(
-            "place", anchor_entities or [], resolved_tags or [], take, location=loc
-        )
+            loc = None
+            if valid_input.latitude is not None and valid_input.longitude is not None:
+                loc = LocationInput(
+                    latitude=valid_input.latitude,
+                    longitude=valid_input.longitude,
+                    radius_meters=valid_input.radius_meters,
+                )
+            return await _query_single_domain(
+                "place",
+                valid_input.anchor_entities,
+                valid_input.resolved_tags,
+                valid_input.take,
+                location=loc,
+            )
+        except Exception as e:
+            return CategoryRecommendationsOutput(
+                request_id=str(uuid.uuid4()),
+                category="place",
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+            ).model_dump()
 
     @server.tool(
         name="get_related_movies",
@@ -366,9 +515,26 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain(
-            "movie", anchor_entities or [], resolved_tags or [], take
-        )
+        try:
+            valid_input = GetRelatedCategoryInput(
+                anchor_entities=anchor_entities or [],
+                resolved_tags=resolved_tags or [],
+                take=take,
+            )
+            return await _query_single_domain(
+                "movie",
+                valid_input.anchor_entities,
+                valid_input.resolved_tags,
+                valid_input.take,
+            )
+        except Exception as e:
+            return CategoryRecommendationsOutput(
+                request_id=str(uuid.uuid4()),
+                category="movie",
+                error=str(e),
+                recommendations=[],
+                total_count=0,
+            ).model_dump()
 
     # -------------------------------------------------------------------------
     # Full Cultural Matrix Tool
@@ -387,34 +553,43 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         logger.info("[Req: %s] get_cultural_matrix invoked", request_id)
 
         try:
-            # Validate input against CulturalTwin schema
-            twin_model = CulturalTwin.model_validate(cultural_twin)
+            # Validate input using GetCulturalMatrixInput and CulturalTwin schema
+            valid_input = GetCulturalMatrixInput(
+                cultural_twin=cultural_twin,
+                take_per_category=take_per_category,
+            )
+            twin_model = CulturalTwin.model_validate(valid_input.cultural_twin)
 
             matrix = await matrix_service.generate_matrix(
                 twin_model,
-                take_per_category=take_per_category,
+                take_per_category=valid_input.take_per_category,
             )
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return {
-                "request_id": request_id,
-                "status": "success",
-                "cultural_matrix": matrix.model_dump(),
-                "total_recommendations": matrix.total_recommendations,
-                "latency_ms": round(elapsed_ms, 2),
-            }
+            output = GetCulturalMatrixOutput(
+                request_id=request_id,
+                status="success",
+                cultural_matrix=matrix.model_dump(),
+                total_recommendations=matrix.total_recommendations,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return output.model_dump()
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
                 "[Req: %s] get_cultural_matrix validation/execution error: %s",
                 request_id,
                 e,
             )
-            return {
-                "request_id": request_id,
-                "status": "error",
-                "error": str(e),
-                "cultural_matrix": None,
-            }
+            error_output = GetCulturalMatrixOutput(
+                request_id=request_id,
+                status="error",
+                error=str(e),
+                cultural_matrix=None,
+                total_recommendations=0,
+                latency_ms=round(elapsed_ms, 2),
+            )
+            return error_output.model_dump()
 
     return server
 
