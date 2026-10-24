@@ -22,6 +22,7 @@ from tasteops.exceptions import (
     QlooTimeoutError,
     QlooValidationError,
 )
+from tasteops.mcp import create_cultural_intelligence_mcp
 from tasteops.models import (
     CategoryQueryMetadata,
     CulturalMatrix,
@@ -52,7 +53,11 @@ from tasteops.services import (
     TagResolver,
 )
 from tasteops.workflows import (
+    ApprovalRecord,
     CulturalActivationPlan,
+    ExecutionPlan,
+    ExecutionTask,
+    TaskProvenance,
     TasteOpsOrchestrator,
     WorkflowContext,
     WorkflowEngine,
@@ -60,6 +65,7 @@ from tasteops.workflows import (
 )
 
 __all__ = [
+    "ApprovalRecord",
     "AsyncTTLCache",
     "CacheBackend",
     "CategoryQueryMetadata",
@@ -74,6 +80,8 @@ __all__ = [
     "EntityCandidate",
     "EntityResolutionResult",
     "EntityResolver",
+    "ExecutionPlan",
+    "ExecutionTask",
     "ExperienceArchitect",
     "GovernanceAgent",
     "InsightParams",
@@ -102,8 +110,10 @@ __all__ = [
     "TagParams",
     "TagResolutionResult",
     "TagResolver",
+    "TaskProvenance",
     "TasteOpsOrchestrator",
     "WorkflowContext",
     "WorkflowEngine",
     "WorkflowState",
+    "create_cultural_intelligence_mcp",
 ]
