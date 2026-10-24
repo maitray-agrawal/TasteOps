@@ -1,5 +1,10 @@
 """TasteOps Deterministic Workflow and Orchestration Package."""
 
+from tasteops.models.cultural_matrix import (
+    PhysicalSpaceBrief,
+    ResolvedEntity,
+    ResolvedTag,
+)
 from tasteops.workflows.context import StateTransitionRecord, WorkflowContext
 from tasteops.workflows.engine import WorkflowEngine
 from tasteops.workflows.schemas import (
@@ -43,6 +48,9 @@ __all__ = [
     "PartnershipActivation",
     "PartnershipInput",
     "PartnershipOutput",
+    "PhysicalSpaceBrief",
+    "ResolvedEntity",
+    "ResolvedTag",
     "SpatialZone",
     "StateTransitionRecord",
     "WorkflowContext",

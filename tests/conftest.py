@@ -85,3 +85,57 @@ def sample_insights_payload():
             },
         ]
     }
+
+
+@pytest.fixture
+def mock_mcp_adapter(mock_settings):
+    """Provides an MCP adapter backed by an MCPServer with mock Qloo responses."""
+    from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
+    from tasteops.client import QlooClient
+    from tasteops.mcp.server import create_cultural_intelligence_mcp
+
+    mock_search_payload = {
+        "results": [
+            {
+                "id": "ent_blue_bottle_123",
+                "name": "Blue Bottle Coffee",
+                "type": "place",
+                "subtype": "cafe",
+            }
+        ]
+    }
+    mock_tags_payload = {
+        "results": [
+            {
+                "id": "tag_jp_minimalism",
+                "name": "Japanese Minimalism",
+                "category": "style",
+            }
+        ]
+    }
+    mock_insights_payload = {
+        "results": [
+            {
+                "id": "ent_four_tet",
+                "name": "Four Tet",
+                "type": "artist",
+                "affinity": 0.94,
+            },
+            {"id": "ent_muji", "name": "Muji", "type": "brand", "affinity": 0.91},
+            {
+                "id": "ent_public_records",
+                "name": "Public Records",
+                "type": "place",
+                "affinity": 0.95,
+            },
+        ]
+    }
+
+    client = QlooClient(settings=mock_settings)
+    server = create_cultural_intelligence_mcp(client)
+    return (
+        CulturalIntelligenceMCPAdapter(server),
+        mock_search_payload,
+        mock_tags_payload,
+        mock_insights_payload,
+    )

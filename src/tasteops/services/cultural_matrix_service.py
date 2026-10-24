@@ -73,7 +73,12 @@ class CulturalMatrixService:
         )
 
         # Check if any signals or location exist
-        has_signals = bool(twin.anchor_entities or twin.resolved_tags or twin.location)
+        has_signals = bool(
+            twin.resolved_entity_ids
+            or twin.anchor_entities
+            or twin.resolved_tags
+            or twin.location
+        )
         if not has_signals:
             logger.warning(
                 "CulturalTwin contains no anchor entities, tags, or location. Returning empty matrix."
@@ -166,7 +171,7 @@ class CulturalMatrixService:
         try:
             params = self.insights_service.build_insight_params(
                 category=category,
-                anchor_entities=twin.anchor_entities,
+                anchor_entities=twin.resolved_entity_ids or twin.anchor_entities,
                 resolved_tags=twin.resolved_tags,
                 location_wkt=location_wkt,
                 location_radius=location_radius,
@@ -330,7 +335,8 @@ class CulturalMatrixService:
                 return (
                     InsightParams(
                         filter_type=capability.urn,
-                        signal_entities=twin.anchor_entities,
+                        signal_entities=twin.resolved_entity_ids
+                        or twin.anchor_entities,
                         signal_tags=twin.resolved_tags,
                         location_wkt=original_params.location_wkt,
                         location_radius=expanded_radius,

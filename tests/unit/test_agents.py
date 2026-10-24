@@ -8,6 +8,7 @@ Verifies:
 """
 
 import pytest
+import respx
 
 from tasteops.agents.architect import ExperienceArchitect
 from tasteops.agents.governance import GovernanceAgent
@@ -17,6 +18,7 @@ from tasteops.models.cultural_matrix import (
     CulturalMatrix,
     CulturalRecommendation,
     CulturalTwin,
+    PhysicalSpaceBrief,
 )
 from tasteops.workflows.schemas import (
     CulturalStrategyInput,
@@ -91,6 +93,116 @@ def sample_twin():
         anchor_entities=["ent_blue_bottle_123"],
         resolved_tags=["tag_jp_minimalism", "tag_lofi_beats"],
     )
+
+
+@pytest.mark.asyncio
+async def test_cultural_strategist_transform_brief_success(mock_mcp_adapter):
+    """Test Cultural Strategist transforms physical space brief into structured CulturalTwin."""
+    adapter, mock_search, mock_tags, _ = mock_mcp_adapter
+
+    async with respx.mock(
+        base_url="https://hackathon.api.qloo.com", assert_all_called=False
+    ) as mock_router:
+        mock_router.get("/search").respond(status_code=200, json=mock_search)
+        mock_router.get("/v2/tags").respond(status_code=200, json=mock_tags)
+
+        strategist = CulturalStrategist(mcp_adapter=adapter)
+
+        brief = PhysicalSpaceBrief(
+            business_type="Analog Vinyl Listening Bar & Cafe",
+            location={
+                "latitude": 40.7484,
+                "longitude": -73.9857,
+                "radius_meters": 2000,
+            },
+            target_audience="Audiophiles, music collectors, and design purists aged 25-45",
+            positioning="Japanese-inspired craft audio sanctuary",
+            desired_mood="Warm, acoustic focus, minimalist, intimate",
+            budget="High-end boutique",
+            constraints=["SPL capped at 75dB", "No digital screens in seating zones"],
+            anchor_entities=["Blue Bottle", "Japanese minimalism"],
+        )
+
+        twin = await strategist.transform_brief(brief)
+
+        # 1. Output Schema Validation
+        assert isinstance(twin, CulturalTwin)
+        assert twin.business_type == "Analog Vinyl Listening Bar & Cafe"
+        assert twin.audience_profile
+        assert "Audiophiles" in twin.audience_profile
+        assert len(twin.cultural_themes) >= 3
+        assert twin.mood_profile
+        assert "Analog warmth" in twin.mood_profile
+        assert twin.anchor_entities == ["Blue Bottle", "Japanese minimalism"]
+
+        # 2. Verified Entity Resolution & Provenance (Never invented)
+        assert len(twin.resolved_entities) == 1
+        resolved_ent = twin.resolved_entities[0]
+        assert resolved_ent.id == "ent_blue_bottle_123"
+        assert resolved_ent.name == "Blue Bottle Coffee"
+        assert resolved_ent.type == "place"
+        assert resolved_ent.confidence > 0.0
+
+        # 3. Cultural Reasoning: Explains why each cultural signal matters
+        assert resolved_ent.why_it_matters
+        assert "Blue Bottle Coffee" in resolved_ent.why_it_matters
+        assert "ent_blue_bottle_123" in twin.signal_explanations
+
+        # 4. Verified Tag Resolution
+        assert "tag_jp_minimalism" in twin.resolved_tags
+        assert len(twin.resolved_tag_details) == 1
+        resolved_tag = twin.resolved_tag_details[0]
+        assert resolved_tag.id == "tag_jp_minimalism"
+        assert resolved_tag.name == "Japanese Minimalism"
+        assert resolved_tag.why_it_matters
+        assert "tag_jp_minimalism" in twin.signal_explanations
+
+        # 5. Cultural Constraints and Exclusions
+        assert len(twin.cultural_constraints) >= 3
+        assert any("75dB" in c for c in twin.cultural_constraints)
+        assert len(twin.exclusions) >= 3
+        assert any("Top 40" in e for e in twin.exclusions)
+
+        # 6. Confidence Score
+        assert 0.0 <= twin.confidence <= 1.0
+
+        # 7. Zero Recommendations Generated Yet (Foundation only)
+        assert not hasattr(twin, "artists")
+        assert not hasattr(twin, "brands")
+
+
+@pytest.mark.asyncio
+async def test_cultural_strategist_never_invents_qloo_ids(mock_mcp_adapter):
+    """Test Cultural Strategist never fabricates IDs for unresolvable terms."""
+    adapter, _, _, _ = mock_mcp_adapter
+
+    # Return empty results for unknown entities
+    async with respx.mock(
+        base_url="https://hackathon.api.qloo.com", assert_all_called=False
+    ) as mock_router:
+        mock_router.get("/search").respond(status_code=200, json={"results": []})
+        mock_router.get("/v2/tags").respond(status_code=200, json={"results": []})
+
+        strategist = CulturalStrategist(mcp_adapter=adapter)
+
+        brief = PhysicalSpaceBrief(
+            business_type="Speakeasy",
+            anchor_entities=[
+                "FabricatedImaginaryVenueX999",
+                "UnknownAestheticMotifZ123",
+            ],
+        )
+
+        twin = await strategist.transform_brief(brief)
+
+        # Zero hallucinated entities or tags
+        assert twin.resolved_entities == []
+        assert twin.resolved_tags == []
+        assert twin.resolved_tag_details == []
+        assert twin.anchor_entities == [
+            "FabricatedImaginaryVenueX999",
+            "UnknownAestheticMotifZ123",
+        ]
 
 
 @pytest.mark.asyncio

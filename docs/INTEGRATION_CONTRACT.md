@@ -351,8 +351,33 @@ stateDiagram-v2
 ### 10.3. The 4 Specialized Agents
 
 1. **Cultural Strategist (`CulturalStrategist`)**:
-   - Synthesizes space positioning statements and cultural pillars.
-   - Anchors pillars to verified Qloo entity IDs with cross-domain justification.
+   - **Purpose**: Transforms a user's physical-space brief (`PhysicalSpaceBrief`) into a structured, validated `CulturalTwin` that serves as the cultural foundation for all downstream agents.
+   - **Input**:
+     - `business_type`: Venue type (e.g. `"Analog Vinyl Listening Bar"`)
+     - `location`: Geographic coordinates or WKT string
+     - `target_audience`: Audience demographic & psychographic summary
+     - `positioning`: Market positioning (e.g. `"Japanese-inspired craft audio sanctuary"`)
+     - `desired_mood`: Atmospheric vibe and energy
+     - `budget`: Budget tier or parameters
+     - `constraints`: Operational and aesthetic guardrails
+     - `anchor_entities`: Natural language anchors and aesthetic motifs
+   - **Resolution & Provenance**:
+     - Resolves natural language anchors and vibes strictly via Cultural Intelligence MCP tools (`resolve_entity` and `resolve_tag`).
+     - **Zero Hallucination**: Never invents Qloo IDs or tags. Unknown terms are omitted from verified collections.
+   - **Cultural Reasoning**:
+     - Generates narrative explanations (`why_it_matters`) connecting each verified entity (brand, artist, place) and tag to the physical space.
+   - **Output (`CulturalTwin`)**:
+     - `audience_profile`: Synthesized demographic and psychographic profile
+     - `cultural_themes`: Core cultural thematic axes
+     - `mood_profile`: Detailed sonic, visual, and temporal mood breakdown
+     - `anchor_entities`: Original input terms from brief
+     - `resolved_entities`: List of `ResolvedEntity` models (id, name, type, confidence, why_it_matters)
+     - `resolved_tags`: List of verified Qloo tag IDs
+     - `cultural_constraints`: Concrete cultural guardrails
+     - `exclusions`: Cultural anti-patterns to avoid
+     - `confidence`: Overall profile confidence score
+   - **Boundary**: Does **NOT** produce recommendations yet (recommendations are generated downstream via `get_cultural_matrix`).
+   - **Downstream Strategy (`execute`)**: Synthesizes positioning statements and cultural pillars once `CulturalMatrix` is available.
 2. **Experience Architect (`ExperienceArchitect`)**:
    - Designs sonic identities, morning/afternoon/evening daypart programs, and spatial zoning (e.g., Main Bar, Listening Room).
    - Pairs sensory atmosphere (lighting, audio, scent) with verified Qloo artists.

@@ -48,37 +48,179 @@ class LocationInput(BaseModel):
         return None
 
 
-class CulturalTwin(BaseModel):
-    """Holistic cultural profile definition for a physical space or brand."""
+class ResolvedEntity(BaseModel):
+    """Verified Qloo entity with provenance and narrative relevance."""
 
+    id: str = Field(..., description="Verified Qloo entity ID (never invented)")
+    name: str = Field(..., description="Entity name")
+    type: str = Field(..., description="Entity domain type (e.g. brand, place, artist)")
+    confidence: float = Field(
+        ..., ge=0.0, le=1.0, description="Resolution match confidence score"
+    )
+    why_it_matters: str = Field(
+        ..., description="Explanation of why this cultural signal matters to the space"
+    )
+    source: str = Field(default="qloo_search", description="Data provenance source")
+    evidence: dict[str, Any] = Field(
+        default_factory=dict, description="Resolution provenance and match details"
+    )
+
+
+class ResolvedTag(BaseModel):
+    """Verified Qloo tag with provenance and aesthetic relevance."""
+
+    id: str = Field(..., description="Verified Qloo tag ID (never invented)")
+    name: str = Field(..., description="Tag name")
+    category: str | None = Field(default=None, description="Tag category")
+    confidence: float = Field(
+        default=1.0, ge=0.0, le=1.0, description="Resolution match confidence score"
+    )
+    why_it_matters: str = Field(
+        ..., description="Explanation of why this tag signal matters to the space"
+    )
+
+
+class PhysicalSpaceBrief(BaseModel):
+    """User input brief defining a physical space activation."""
+
+    business_type: str = Field(
+        ...,
+        description="Venue type (e.g. 'specialty coffee lab', 'analog listening bar', 'boutique hotel')",
+    )
+    location: LocationInput | dict[str, Any] | str | None = Field(
+        default=None,
+        description="Physical location coordinates, WKT, or description",
+    )
     target_audience: str | None = Field(
-        default=None, description="Audience demographic / psychographic summary"
-    )
-    location: LocationInput | None = Field(
-        default=None, description="Physical coordinates and radius"
-    )
-    business_type: str | None = Field(
-        default=None, description="Venue type e.g. 'specialty cafe', 'boutique hotel'"
-    )
-    mood: str | None = Field(
-        default=None, description="Atmospheric vibe e.g. 'minimalist', 'warm intimate'"
+        default=None,
+        description="Target demographic or psychographic audience summary",
     )
     positioning: str | None = Field(
         default=None,
-        description="Market positioning e.g. 'craft premium', 'underground'",
+        description="Market positioning (e.g. 'craft premium', 'underground', 'accessible luxury')",
+    )
+    desired_mood: str | None = Field(
+        default=None,
+        description="Atmospheric vibe and energy (e.g. 'minimalist, warm acoustic focus')",
+    )
+    budget: str | None = Field(
+        default=None,
+        description="Budget tier or parameters (e.g. 'boutique premium', 'lean craft')",
+    )
+    constraints: list[str] | dict[str, Any] | None = Field(
+        default=None,
+        description="Physical, operational, or aesthetic boundaries and constraints",
     )
     anchor_entities: list[str] = Field(
         default_factory=list,
-        description="Verified Qloo entity IDs anchoring the physical space taste profile",
+        description="Natural language anchor references (brands, venues, artists, aesthetics)",
+    )
+
+
+class CulturalTwin(BaseModel):
+    """Holistic cultural foundation for a physical space or brand."""
+
+    # Explicit fields requested in Cultural Strategist specification:
+    audience_profile: str = Field(
+        default="",
+        description="Synthesized audience demographic / psychographic profile",
+    )
+    cultural_themes: list[str] = Field(
+        default_factory=list,
+        description="Synthesized cultural themes guiding the identity",
+    )
+    mood_profile: str = Field(
+        default="",
+        description="Atmospheric vibe, sonic texture, and mood breakdown",
+    )
+    anchor_entities: list[str] = Field(
+        default_factory=list,
+        description="Original cultural anchor terms from brief, or verified Qloo entity IDs",
+    )
+    resolved_entities: list[ResolvedEntity] = Field(
+        default_factory=list,
+        description="Verified Qloo entities with provenance and explanations",
     )
     resolved_tags: list[str] = Field(
         default_factory=list,
         description="Verified Qloo tag IDs representing cultural motifs or aesthetics",
     )
+    cultural_constraints: list[str] = Field(
+        default_factory=list,
+        description="Aesthetic guardrails and cultural constraints",
+    )
+    exclusions: list[str] = Field(
+        default_factory=list,
+        description="Aesthetic and cultural elements strictly excluded/avoided",
+    )
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Aggregate confidence score across resolved cultural signals",
+    )
+
+    # Rich metadata & backward-compatibility fields:
+    resolved_tag_details: list[ResolvedTag] = Field(
+        default_factory=list,
+        description="Detailed verified tags with narrative explanations",
+    )
+    signal_explanations: dict[str, str] = Field(
+        default_factory=dict,
+        description="Lookup mapping of entity/tag ID to why it matters",
+    )
+    business_type: str | None = Field(
+        default=None,
+        description="Venue type e.g. 'specialty cafe', 'boutique hotel', 'listening bar'",
+    )
+    target_audience: str | None = Field(
+        default=None,
+        description="Audience demographic / psychographic summary",
+    )
+    mood: str | None = Field(
+        default=None,
+        description="Atmospheric vibe e.g. 'minimalist', 'warm intimate'",
+    )
+    positioning: str | None = Field(
+        default=None,
+        description="Market positioning e.g. 'craft premium', 'underground'",
+    )
+    budget: str | None = Field(
+        default=None,
+        description="Budget level or tier e.g. 'premium', 'high-end boutique'",
+    )
+    location: LocationInput | None = Field(
+        default=None,
+        description="Physical coordinates and radius",
+    )
     constraints: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional query constraints e.g. {'take': 10, 'price_level_max': 3}",
     )
+
+    def model_post_init(self, context: Any, /) -> None:
+        """Harmonizes audience and mood fields across schemas."""
+        if not self.audience_profile and self.target_audience:
+            self.audience_profile = self.target_audience
+        elif not self.target_audience and self.audience_profile:
+            self.target_audience = self.audience_profile
+
+        if not self.mood_profile and self.mood:
+            self.mood_profile = self.mood
+        elif not self.mood and self.mood_profile:
+            self.mood = self.mood_profile
+
+    @property
+    def resolved_entity_ids(self) -> list[str]:
+        """Returns list of verified Qloo entity IDs."""
+        if self.resolved_entities:
+            return [e.id for e in self.resolved_entities]
+        return self.anchor_entities
+
+    @property
+    def resolved_tag_ids(self) -> list[str]:
+        """Returns list of verified Qloo tag IDs."""
+        return self.resolved_tags
 
 
 class CulturalRecommendation(BaseModel):

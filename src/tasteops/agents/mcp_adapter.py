@@ -18,7 +18,13 @@ class CulturalIntelligenceMCPAdapter:
     """Async adapter wrapping tool invocations on the TasteOps Cultural Intelligence MCPServer."""
 
     def __init__(self, server: MCPServer | None = None) -> None:
-        self.server = server or create_cultural_intelligence_mcp()
+        self._server = server
+
+    @property
+    def server(self) -> MCPServer:
+        if self._server is None:
+            self._server = create_cultural_intelligence_mcp()
+        return self._server
 
     async def call_mcp_tool(
         self, tool_name: str, arguments: dict[str, Any]

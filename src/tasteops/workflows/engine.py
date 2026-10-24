@@ -17,7 +17,11 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from tasteops.models.cultural_matrix import CulturalTwin, LocationInput
+from tasteops.models.cultural_matrix import (
+    CulturalTwin,
+    LocationInput,
+    PhysicalSpaceBrief,
+)
 from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.schemas import (
     CulturalActivationPlan,
@@ -56,7 +60,7 @@ class WorkflowEngine:
         from tasteops.agents.strategist import CulturalStrategist
 
         self.mcp = mcp_adapter or CulturalIntelligenceMCPAdapter()
-        self.strategist = strategist or CulturalStrategist()
+        self.strategist = strategist or CulturalStrategist(mcp_adapter=self.mcp)
         self.architect = architect or ExperienceArchitect()
         self.partnership = partnership or PartnershipAgent()
         self.governance = governance or GovernanceAgent()
@@ -136,35 +140,38 @@ class WorkflowEngine:
                 "Cannot resolve Qloo anchors: CulturalTwin has not been created."
             )
 
-        raw_entities = ctx.parsed_intent.get("raw_anchor_entities", [])
-        raw_tags = ctx.parsed_intent.get("raw_tags", [])
+        intent = ctx.parsed_intent
+        loc_data = intent.get("location")
+        loc_model: LocationInput | None = None
+        if isinstance(loc_data, dict):
+            loc_model = LocationInput(**loc_data)
+        elif isinstance(loc_data, LocationInput):
+            loc_model = loc_data
 
-        resolved_entity_ids: list[str] = []
-        resolved_tag_ids: list[str] = []
+        raw_entities = intent.get("raw_anchor_entities", [])
+        raw_tags = intent.get("raw_tags", [])
 
-        # 1. Resolve raw entities via MCP tool
-        for term in raw_entities:
-            res = await self.mcp.resolve_entity(query=term)
-            if res.get("is_resolved") and res.get("resolved_entity_id"):
-                resolved_entity_ids.append(res["resolved_entity_id"])
+        brief = PhysicalSpaceBrief(
+            business_type=intent.get("business_type", "Curated Physical Space"),
+            location=loc_model,
+            target_audience=intent.get("target_audience"),
+            positioning=intent.get("positioning"),
+            desired_mood=intent.get("mood"),
+            budget=intent.get("budget"),
+            constraints=intent.get("constraints"),
+            anchor_entities=raw_entities + raw_tags,
+        )
 
-        # 2. Resolve raw tags via MCP tool
-        for term in raw_tags:
-            res = await self.mcp.resolve_tag(query=term)
-            if res.get("is_resolved") and res.get("resolved_tag_id"):
-                resolved_tag_ids.append(res["resolved_tag_id"])
-
-        ctx.cultural_twin.anchor_entities = resolved_entity_ids
-        ctx.cultural_twin.resolved_tags = resolved_tag_ids
+        ctx.cultural_twin = await self.strategist.transform_brief(brief)
 
         ctx.record_transition(
             WorkflowState.QLOO_RESOLVED,
             reason="Cultural anchors and aesthetic tags resolved through Cultural Intelligence MCP server",
             metadata={
-                "resolved_entities_count": len(resolved_entity_ids),
-                "resolved_tags_count": len(resolved_tag_ids),
-                "entity_ids": resolved_entity_ids,
-                "tag_ids": resolved_tag_ids,
+                "resolved_entities_count": len(ctx.cultural_twin.resolved_entities),
+                "resolved_tags_count": len(ctx.cultural_twin.resolved_tags),
+                "entity_ids": ctx.cultural_twin.resolved_entity_ids,
+                "tag_ids": ctx.cultural_twin.resolved_tags,
             },
         )
         return ctx
