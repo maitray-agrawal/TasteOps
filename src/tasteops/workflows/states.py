@@ -46,7 +46,11 @@ VALID_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
     },
     WorkflowState.AGENTS_RUNNING: {WorkflowState.PLAN_GENERATED, WorkflowState.FAILED},
     WorkflowState.PLAN_GENERATED: {WorkflowState.VALIDATED, WorkflowState.FAILED},
-    WorkflowState.VALIDATED: {WorkflowState.AWAITING_APPROVAL, WorkflowState.FAILED},
+    WorkflowState.VALIDATED: {
+        WorkflowState.AWAITING_APPROVAL,
+        WorkflowState.PLAN_GENERATED,
+        WorkflowState.FAILED,
+    },
     WorkflowState.AWAITING_APPROVAL: {WorkflowState.APPROVED, WorkflowState.FAILED},
     WorkflowState.APPROVED: {WorkflowState.EXECUTING, WorkflowState.FAILED},
     WorkflowState.EXECUTING: {WorkflowState.COMPLETED, WorkflowState.FAILED},

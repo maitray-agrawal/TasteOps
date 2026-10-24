@@ -6,9 +6,12 @@ CULTURAL_MATRIX_READY -> AGENTS_RUNNING -> PLAN_GENERATED -> VALIDATED ->
 AWAITING_APPROVAL -> APPROVED -> EXECUTING -> COMPLETED (or FAILED).
 
 Guarantees:
+- Bounded Qloo retries and fallback before FAILED (no infinite network loops).
+- Bounded Agent retries before FAILED (no infinite agent loops).
+- Validation failure transitions back to PLAN_GENERATED for bounded corrective cycles.
+- Persists state transitions and emits an immutable AuditEvent on every transition.
 - Never makes direct Qloo REST API calls; all cultural data is requested via MCP tools.
-- Strict state transition validation with zero unrestricted loops.
-- Enforces human approval boundary at AWAITING_APPROVAL before execution.
+- Enforces strict human approval gate at AWAITING_APPROVAL before execution.
 """
 
 from __future__ import annotations
@@ -23,6 +26,11 @@ from tasteops.models.cultural_matrix import (
     PhysicalSpaceBrief,
 )
 from tasteops.workflows.context import WorkflowContext
+from tasteops.workflows.persistence import (
+    AuditEvent,
+    BaseStateStore,
+    InMemoryStateStore,
+)
 from tasteops.workflows.schemas import (
     CulturalActivationPlan,
     CulturalStrategyInput,
@@ -52,6 +60,10 @@ class WorkflowEngine:
         architect: ExperienceArchitect | None = None,
         partnership: PartnershipAgent | None = None,
         governance: GovernanceAgent | None = None,
+        store: BaseStateStore | None = None,
+        max_qloo_retries: int = 2,
+        max_agent_retries: int = 2,
+        max_validation_cycles: int = 2,
     ) -> None:
         from tasteops.agents.architect import ExperienceArchitect
         from tasteops.agents.governance import GovernanceAgent
@@ -64,6 +76,38 @@ class WorkflowEngine:
         self.architect = architect or ExperienceArchitect()
         self.partnership = partnership or PartnershipAgent()
         self.governance = governance or GovernanceAgent()
+        self.store = store or InMemoryStateStore()
+
+        # Guardrail bounds against infinite loops
+        self.max_qloo_retries = max_qloo_retries
+        self.max_agent_retries = max_agent_retries
+        self.max_validation_cycles = max_validation_cycles
+
+    def _record_and_persist(
+        self,
+        ctx: WorkflowContext,
+        to_state: WorkflowState,
+        reason: str = "",
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> AuditEvent:
+        """Records transition in context history and persists audit event to store."""
+        event = ctx.record_transition(
+            to_state=to_state,
+            reason=reason,
+            metadata=metadata or {},
+            error=error,
+        )
+        if self.store:
+            try:
+                self.store.save_transition(event, ctx)
+            except Exception as exc:
+                logger.warning(
+                    "StateStore persistence failed for session %s: %s",
+                    ctx.session_id,
+                    exc,
+                )
+        return event
 
     # -------------------------------------------------------------------------
     # Transition: Step 1 - Initialize and Parse Intent
@@ -73,8 +117,10 @@ class WorkflowEngine:
     ) -> WorkflowContext:
         """Creates a fresh session in CREATED state."""
         ctx = WorkflowContext(raw_intent=raw_intent, parsed_intent=parsed_hints or {})
-        ctx.record_transition(
-            WorkflowState.CREATED, reason="Session initialized with raw intent"
+        self._record_and_persist(
+            ctx,
+            WorkflowState.CREATED,
+            reason="Session initialized with raw intent",
         )
         return ctx
 
@@ -91,7 +137,8 @@ class WorkflowEngine:
         if not ctx.parsed_intent.get("business_type"):
             ctx.parsed_intent["business_type"] = "Curated Physical Space"
 
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.INTENT_PARSED,
             reason="User intent parsed into structured domain attributes",
             metadata={"parsed_keys": list(ctx.parsed_intent.keys())},
@@ -122,7 +169,8 @@ class WorkflowEngine:
             constraints=intent.get("constraints", {}),
         )
 
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.CULTURAL_TWIN_CREATED,
             reason="Initial CulturalTwin instantiated; anchors and tags pending Qloo resolution",
         )
@@ -130,9 +178,10 @@ class WorkflowEngine:
 
     # -------------------------------------------------------------------------
     # Transition: Step 3 - Resolve Cultural Anchors via MCP
+    # Flow: RETRY -> FALLBACK -> FAILED
     # -------------------------------------------------------------------------
     async def resolve_qloo_anchors(self, ctx: WorkflowContext) -> WorkflowContext:
-        """Transitions CULTURAL_TWIN_CREATED -> QLOO_RESOLVED via MCP server."""
+        """Transitions CULTURAL_TWIN_CREATED -> QLOO_RESOLVED via MCP server with retry/fallback/fail flow."""
         validate_transition(ctx.current_state, WorkflowState.QLOO_RESOLVED)
 
         if not ctx.cultural_twin:
@@ -162,9 +211,57 @@ class WorkflowEngine:
             anchor_entities=raw_entities + raw_tags,
         )
 
-        ctx.cultural_twin = await self.strategist.transform_brief(brief)
+        twin: CulturalTwin | None = None
+        qloo_succeeded = False
+        last_error = None
 
-        ctx.record_transition(
+        # Bounded Retry Loop: RETRY
+        for attempt in range(self.max_qloo_retries + 1):
+            try:
+                twin = await self.strategist.transform_brief(brief)
+                qloo_succeeded = True
+                break
+            except Exception as exc:
+                ctx.qloo_retry_count += 1
+                last_error = str(exc)
+                logger.warning(
+                    "Qloo anchor resolution attempt %d failed: %s",
+                    attempt + 1,
+                    exc,
+                )
+                if attempt >= self.max_qloo_retries:
+                    # Bounded Retries Exhausted -> FALLBACK
+                    logger.info(
+                        "Qloo resolution retries exhausted. Activating FALLBACK."
+                    )
+                    try:
+                        fallback_brief = brief.model_copy(deep=True)
+                        fallback_brief.anchor_entities = [
+                            e for e in brief.anchor_entities if len(str(e).strip()) > 1
+                        ]
+                        twin = await self.strategist.transform_brief(fallback_brief)
+                        qloo_succeeded = True
+                    except Exception as fb_exc:
+                        logger.error(
+                            "Qloo fallback anchor resolution failed: %s", fb_exc
+                        )
+                        qloo_succeeded = False
+
+        if not qloo_succeeded or twin is None:
+            # Fallback exhausted -> FAILED
+            validate_transition(ctx.current_state, WorkflowState.FAILED)
+            self._record_and_persist(
+                ctx,
+                WorkflowState.FAILED,
+                reason="QLOO_FAILURE_TERMINAL: Anchor resolution failed after bounded retries and fallback",
+                error=last_error,
+            )
+            ctx.error_message = f"QLOO_FAILURE: Anchor resolution failed: {last_error}"
+            return ctx
+
+        ctx.cultural_twin = twin
+        self._record_and_persist(
+            ctx,
             WorkflowState.QLOO_RESOLVED,
             reason="Cultural anchors and aesthetic tags resolved through Cultural Intelligence MCP server",
             metadata={
@@ -172,29 +269,73 @@ class WorkflowEngine:
                 "resolved_tags_count": len(ctx.cultural_twin.resolved_tags),
                 "entity_ids": ctx.cultural_twin.resolved_entity_ids,
                 "tag_ids": ctx.cultural_twin.resolved_tags,
+                "qloo_retries_used": ctx.qloo_retry_count,
             },
         )
         return ctx
 
     # -------------------------------------------------------------------------
     # Transition: Step 4 - Fetch Cultural Matrix via MCP
+    # Flow: RETRY -> FALLBACK -> FAILED
     # -------------------------------------------------------------------------
     async def fetch_cultural_matrix(
         self, ctx: WorkflowContext, take_per_category: int = 10
     ) -> WorkflowContext:
-        """Transitions QLOO_RESOLVED -> CULTURAL_MATRIX_READY via MCP server."""
+        """Transitions QLOO_RESOLVED -> CULTURAL_MATRIX_READY via MCP server with retry/fallback/fail flow."""
         validate_transition(ctx.current_state, WorkflowState.CULTURAL_MATRIX_READY)
 
         if not ctx.cultural_twin:
             raise RuntimeError("Cannot fetch CulturalMatrix: CulturalTwin is missing.")
 
-        matrix = await self.mcp.get_cultural_matrix(
-            twin=ctx.cultural_twin,
-            take_per_category=take_per_category,
-        )
-        ctx.cultural_matrix = matrix
+        matrix = None
+        last_error = None
 
-        ctx.record_transition(
+        # Bounded Retry Loop: RETRY
+        for attempt in range(self.max_qloo_retries + 1):
+            try:
+                matrix = await self.mcp.get_cultural_matrix(
+                    twin=ctx.cultural_twin,
+                    take_per_category=take_per_category,
+                )
+                break
+            except Exception as exc:
+                ctx.qloo_retry_count += 1
+                last_error = str(exc)
+                logger.warning(
+                    "CulturalMatrix fetch attempt %d failed: %s",
+                    attempt + 1,
+                    exc,
+                )
+                if attempt >= self.max_qloo_retries:
+                    # Bounded Retries Exhausted -> FALLBACK
+                    logger.info(
+                        "CulturalMatrix retries exhausted. Activating FALLBACK."
+                    )
+                    try:
+                        matrix = await self.mcp.get_cultural_matrix(
+                            twin=ctx.cultural_twin,
+                            take_per_category=3,
+                        )
+                    except Exception as fb_exc:
+                        logger.error("CulturalMatrix fallback query failed: %s", fb_exc)
+
+        if matrix is None:
+            # Fallback exhausted -> FAILED
+            validate_transition(ctx.current_state, WorkflowState.FAILED)
+            self._record_and_persist(
+                ctx,
+                WorkflowState.FAILED,
+                reason="QLOO_FAILURE_TERMINAL: CulturalMatrix generation failed after bounded retries and fallback",
+                error=last_error,
+            )
+            ctx.error_message = (
+                f"QLOO_FAILURE: CulturalMatrix generation failed: {last_error}"
+            )
+            return ctx
+
+        ctx.cultural_matrix = matrix
+        self._record_and_persist(
+            ctx,
             WorkflowState.CULTURAL_MATRIX_READY,
             reason="Multidimensional CulturalMatrix generated across 6 domains via MCP server",
             metadata={
@@ -208,14 +349,17 @@ class WorkflowEngine:
 
     # -------------------------------------------------------------------------
     # Transition: Step 5 - Run Deterministic Agents & Generate Plan
+    # Flow: Bounded Retries -> FAILED
     # -------------------------------------------------------------------------
     async def run_agents_and_generate_plan(
         self, ctx: WorkflowContext
     ) -> WorkflowContext:
-        """Transitions CULTURAL_MATRIX_READY -> AGENTS_RUNNING -> PLAN_GENERATED."""
+        """Transitions CULTURAL_MATRIX_READY -> AGENTS_RUNNING -> PLAN_GENERATED with bounded retries."""
         validate_transition(ctx.current_state, WorkflowState.AGENTS_RUNNING)
-        ctx.record_transition(
-            WorkflowState.AGENTS_RUNNING, reason="Launching specialized domain agents"
+        self._record_and_persist(
+            ctx,
+            WorkflowState.AGENTS_RUNNING,
+            reason="Launching specialized domain agents",
         )
 
         if not ctx.cultural_twin or not ctx.cultural_matrix:
@@ -223,35 +367,73 @@ class WorkflowEngine:
                 "Cannot run agents: CulturalTwin or CulturalMatrix is missing."
             )
 
-        # 1. Cultural Strategist
-        strategy_input = CulturalStrategyInput(
-            cultural_twin=ctx.cultural_twin,
-            cultural_matrix=ctx.cultural_matrix,
-        )
-        ctx.strategy_output = await self.strategist.execute(strategy_input)
+        agents_succeeded = False
+        last_error = None
 
-        # 2. Experience Architect
-        experience_input = ExperienceDesignInput(
-            cultural_twin=ctx.cultural_twin,
-            cultural_matrix=ctx.cultural_matrix,
-            strategy=ctx.strategy_output,
-        )
-        ctx.experience_output = await self.architect.execute(experience_input)
+        # Bounded Agent Retry Loop
+        for attempt in range(self.max_agent_retries + 1):
+            try:
+                # 1. Cultural Strategist
+                strategy_input = CulturalStrategyInput(
+                    cultural_twin=ctx.cultural_twin,
+                    cultural_matrix=ctx.cultural_matrix,
+                )
+                ctx.strategy_output = await self.strategist.execute(strategy_input)
 
-        # 3. Partnership Agent
-        partnership_input = PartnershipInput(
-            cultural_twin=ctx.cultural_twin,
-            strategy=ctx.strategy_output,
-            experience_design=ctx.experience_output,
-            cultural_matrix=ctx.cultural_matrix,
-        )
-        ctx.partnership_output = await self.partnership.execute(partnership_input)
+                # 2. Experience Architect
+                experience_input = ExperienceDesignInput(
+                    cultural_twin=ctx.cultural_twin,
+                    cultural_matrix=ctx.cultural_matrix,
+                    strategy=ctx.strategy_output,
+                )
+                ctx.experience_output = await self.architect.execute(experience_input)
+
+                # 3. Partnership Agent
+                partnership_input = PartnershipInput(
+                    cultural_twin=ctx.cultural_twin,
+                    strategy=ctx.strategy_output,
+                    experience_design=ctx.experience_output,
+                    cultural_matrix=ctx.cultural_matrix,
+                )
+                ctx.partnership_output = await self.partnership.execute(
+                    partnership_input
+                )
+
+                agents_succeeded = True
+                break
+            except Exception as exc:
+                ctx.agent_retry_count += 1
+                last_error = str(exc)
+                logger.warning(
+                    "Domain agent execution attempt %d failed: %s",
+                    attempt + 1,
+                    exc,
+                )
+                if attempt >= self.max_agent_retries:
+                    break
+
+        if not agents_succeeded:
+            # Retries exhausted -> FAILED
+            validate_transition(ctx.current_state, WorkflowState.FAILED)
+            self._record_and_persist(
+                ctx,
+                WorkflowState.FAILED,
+                reason=f"AGENT_FAILURE: Domain agents failed after {self.max_agent_retries} bounded retries",
+                error=last_error,
+            )
+            ctx.error_message = (
+                f"AGENT_FAILURE: Domain agents failed after {self.max_agent_retries} retries:"
+                f" {last_error}"
+            )
+            return ctx
 
         # Transition to PLAN_GENERATED
         validate_transition(ctx.current_state, WorkflowState.PLAN_GENERATED)
+        assert ctx.strategy_output is not None
+        assert ctx.experience_output is not None
+        assert ctx.partnership_output is not None
 
         plan_id = f"plan_{uuid.uuid4().hex[:12]}"
-        # Governance will populate governance output next
         empty_governance = GovernanceValidationInput(
             cultural_twin=ctx.cultural_twin,
             cultural_matrix=ctx.cultural_matrix,
@@ -279,7 +461,8 @@ class WorkflowEngine:
             execution_plan=execution_plan,
         )
 
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.PLAN_GENERATED,
             reason="Synthesized agent outputs into structured CulturalActivationPlan",
             metadata={"plan_id": plan_id},
@@ -288,11 +471,17 @@ class WorkflowEngine:
 
     # -------------------------------------------------------------------------
     # Transition: Step 6 - Validate & Enter Approval Gate
+    # Flow: Validation Failure -> PLAN_GENERATED (bounded cycles -> FAILED)
     # -------------------------------------------------------------------------
     async def validate_and_await_approval(
         self, ctx: WorkflowContext
     ) -> WorkflowContext:
-        """Transitions PLAN_GENERATED -> VALIDATED -> AWAITING_APPROVAL."""
+        """Transitions PLAN_GENERATED -> VALIDATED -> AWAITING_APPROVAL.
+
+        On validation failure:
+        - If cycle count <= max_validation_cycles: transitions back to PLAN_GENERATED for refinement.
+        - If cycle count > max_validation_cycles: transitions to FAILED.
+        """
         validate_transition(ctx.current_state, WorkflowState.VALIDATED)
 
         if not ctx.plan or not ctx.cultural_twin or not ctx.cultural_matrix:
@@ -313,19 +502,60 @@ class WorkflowEngine:
             experience_design=ctx.experience_output,
             partnerships=ctx.partnership_output,
         )
-        gov_output = await self.governance.validate_plan(gov_input)
+        gov_output = await self.governance.validate_plan(
+            gov_input, execution_plan=ctx.plan.execution_plan
+        )
         ctx.governance_output = gov_output
         ctx.plan.governance = gov_output
 
+        # Handle Validation Failure
         if not gov_output.is_valid:
-            ctx.record_transition(
-                WorkflowState.FAILED,
-                reason=f"Plan validation failed: {gov_output.risk_flags}",
-            )
-            ctx.error_message = "; ".join(gov_output.risk_flags)
-            return ctx
+            ctx.validation_cycle_count += 1
+            if ctx.validation_cycle_count <= self.max_validation_cycles:
+                # Validation failure -> loop back to PLAN_GENERATED with bounded limit!
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.VALIDATED,
+                    reason=(
+                        f"Plan validation failed (cycle {ctx.validation_cycle_count}/{self.max_validation_cycles}): "
+                        f"{'; '.join(gov_output.risk_flags)}"
+                    ),
+                    error="; ".join(gov_output.risk_flags),
+                )
+                logger.info(
+                    "Validation failed. Looping back to PLAN_GENERATED for curatorial refinement (cycle %d/%d).",
+                    ctx.validation_cycle_count,
+                    self.max_validation_cycles,
+                )
+                validate_transition(ctx.current_state, WorkflowState.PLAN_GENERATED)
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.PLAN_GENERATED,
+                    reason=f"Regenerating plan after validation feedback: {'; '.join(gov_output.risk_flags)}",
+                )
+                ctx.plan.execution_plan = self.governance.plan(gov_input)
+                return ctx
+            else:
+                # Bounded validation cycles exhausted -> FAILED
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.VALIDATED,
+                    reason=f"Validation cycles exhausted ({self.max_validation_cycles} cycles): {'; '.join(gov_output.risk_flags)}",
+                    error="; ".join(gov_output.risk_flags),
+                )
+                validate_transition(ctx.current_state, WorkflowState.FAILED)
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.FAILED,
+                    reason=f"Plan failed validation after {self.max_validation_cycles} corrective cycles: {'; '.join(gov_output.risk_flags)}",
+                    error="; ".join(gov_output.risk_flags),
+                )
+                ctx.error_message = f"VALIDATION_FAILURE: Validation cycles exhausted ({self.max_validation_cycles} cycles): {'; '.join(gov_output.risk_flags)}"
+                return ctx
 
-        ctx.record_transition(
+        # Validation Passed -> VALIDATED
+        self._record_and_persist(
+            ctx,
             WorkflowState.VALIDATED,
             reason="Plan passed all provenance and constraint audits",
             metadata={"provenance_verified": gov_output.provenance_verified},
@@ -333,7 +563,8 @@ class WorkflowEngine:
 
         # Transition to AWAITING_APPROVAL (Deterministic human approval gate)
         validate_transition(ctx.current_state, WorkflowState.AWAITING_APPROVAL)
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.AWAITING_APPROVAL,
             reason="Engine paused at approval gate. Waiting for human curator sign-off.",
         )
@@ -348,7 +579,8 @@ class WorkflowEngine:
         """Transitions AWAITING_APPROVAL -> APPROVED."""
         validate_transition(ctx.current_state, WorkflowState.APPROVED)
 
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.APPROVED,
             reason=f"Plan approved by authorized curator: {approver}",
             metadata={"approver": approver},
@@ -361,10 +593,12 @@ class WorkflowEngine:
         """Transitions AWAITING_APPROVAL -> FAILED."""
         validate_transition(ctx.current_state, WorkflowState.FAILED)
 
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.FAILED,
             reason=f"Plan rejected by curator: {reason}",
             metadata={"rejection_reason": reason},
+            error=reason,
         )
         ctx.error_message = reason
         return ctx
@@ -375,7 +609,8 @@ class WorkflowEngine:
     async def execute_plan(self, ctx: WorkflowContext) -> WorkflowContext:
         """Transitions APPROVED -> EXECUTING -> COMPLETED."""
         validate_transition(ctx.current_state, WorkflowState.EXECUTING)
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.EXECUTING,
             reason="Governance agent dispatching execution tasks",
         )
@@ -399,7 +634,8 @@ class WorkflowEngine:
         ctx.plan.execution_summary = execution_summary
 
         validate_transition(ctx.current_state, WorkflowState.COMPLETED)
-        ctx.record_transition(
+        self._record_and_persist(
+            ctx,
             WorkflowState.COMPLETED,
             reason="All downstream activation tasks confirmed with provenance",
             metadata={
@@ -421,9 +657,35 @@ class WorkflowEngine:
         """Executes workflow deterministically from CREATED to AWAITING_APPROVAL."""
         ctx = self.initialize_session(raw_intent, parsed_hints)
         await self.parse_intent(ctx)
+        if ctx.current_state == WorkflowState.FAILED:
+            return ctx
+
         await self.create_cultural_twin(ctx)
+        if ctx.current_state == WorkflowState.FAILED:
+            return ctx
+
         await self.resolve_qloo_anchors(ctx)
+        if ctx.current_state == WorkflowState.FAILED:
+            return ctx
+
         await self.fetch_cultural_matrix(ctx, take_per_category=take_per_category)
+        if ctx.current_state == WorkflowState.FAILED:
+            return ctx
+
         await self.run_agents_and_generate_plan(ctx)
-        await self.validate_and_await_approval(ctx)
+        if ctx.current_state == WorkflowState.FAILED:
+            return ctx
+
+        # Bounded validation loop: if validation fails, loops to PLAN_GENERATED
+        while (
+            ctx.current_state == WorkflowState.PLAN_GENERATED
+            and ctx.validation_cycle_count <= self.max_validation_cycles
+        ):
+            await self.validate_and_await_approval(ctx)
+            if ctx.current_state in {
+                WorkflowState.AWAITING_APPROVAL,
+                WorkflowState.FAILED,
+            }:
+                break
+
         return ctx

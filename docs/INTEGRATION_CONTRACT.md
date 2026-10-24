@@ -315,7 +315,8 @@ stateDiagram-v2
     CULTURAL_MATRIX_READY --> AGENTS_RUNNING
     AGENTS_RUNNING --> PLAN_GENERATED
     PLAN_GENERATED --> VALIDATED
-    VALIDATED --> AWAITING_APPROVAL
+    VALIDATED --> PLAN_GENERATED : Validation Failure (Bounded Cycles)
+    VALIDATED --> AWAITING_APPROVAL : Validation Passed
     AWAITING_APPROVAL --> APPROVED : Human Approval
     AWAITING_APPROVAL --> FAILED : Human Rejection
     APPROVED --> EXECUTING
@@ -325,30 +326,42 @@ stateDiagram-v2
     CREATED --> FAILED
     INTENT_PARSED --> FAILED
     CULTURAL_TWIN_CREATED --> FAILED
-    QLOO_RESOLVED --> FAILED
+    QLOO_RESOLVED --> FAILED : Qloo Retries + Fallback Exhausted
     CULTURAL_MATRIX_READY --> FAILED
-    AGENTS_RUNNING --> FAILED
+    AGENTS_RUNNING --> FAILED : Agent Retries Exhausted
     PLAN_GENERATED --> FAILED
-    VALIDATED --> FAILED
+    VALIDATED --> FAILED : Max Validation Cycles Exhausted
 ```
 
-| State | Role & Responsibilities |
-| :--- | :--- |
-| `CREATED` | Session initialized with raw intent. |
-| `INTENT_PARSED` | User intent decomposed into structured domain hints, venue type, and raw terms. |
-| `CULTURAL_TWIN_CREATED` | Structured `CulturalTwin` draft formed. |
-| `QLOO_RESOLVED` | Raw terms and motifs resolved to verified Qloo entity IDs and tags via MCP tools. |
-| `CULTURAL_MATRIX_READY` | 6-domain CulturalMatrix fetched concurrently via MCP `get_cultural_matrix`. |
-| `AGENTS_RUNNING` | Specialized agents invoked concurrently (Strategist, Architect, Partnership). |
-| `PLAN_GENERATED` | Agent outputs synthesized into unified `CulturalActivationPlan`. |
-| `VALIDATED` | `GovernanceAgent` audits provenance, ensures 0 invented IDs, checks compliance. |
-| `AWAITING_APPROVAL` | Pipeline pauses; awaits human curator review. |
-| `APPROVED` | Human curator approves activation plan. |
-| `EXECUTING` | Downstream physical space tasks executed (Spotify playlists, lighting cues, signage). |
-| `COMPLETED` | All execution tasks completed with verifiable provenance. |
-| `FAILED` | Workflow halted due to validation failure or curator rejection. |
+### 10.2. State Transition & Failure Recovery Contracts
 
-### 10.3. The 4 Specialized Agents
+| State | Role & Responsibilities | Failure Transition & Recovery Path |
+| :--- | :--- | :--- |
+| `CREATED` | Session initialized with raw intent. | Invalid input format → `FAILED` |
+| `INTENT_PARSED` | User intent decomposed into structured domain hints, venue type, and raw terms. | Unparseable intent → `FAILED` |
+| `CULTURAL_TWIN_CREATED` | Structured `CulturalTwin` draft formed. | Brief validation error → `FAILED` |
+| `QLOO_RESOLVED` | Raw terms and motifs resolved to verified Qloo entity IDs and tags via MCP tools. | Network/Qloo 5xx: `RETRY` (bounded `max_qloo_retries=2`) → `FALLBACK` (sanitized anchors) → `FAILED` |
+| `CULTURAL_MATRIX_READY` | 6-domain CulturalMatrix fetched concurrently via MCP `get_cultural_matrix`. | Insights failure: `RETRY` (bounded `max_qloo_retries=2`) → `FALLBACK` (anchor-only profile) → `FAILED` |
+| `AGENTS_RUNNING` | Specialized agents invoked concurrently (Strategist, Architect, Partnership). | Agent crash/timeout: `RETRY` (bounded `max_agent_retries=2`) → `FAILED` |
+| `PLAN_GENERATED` | Agent outputs synthesized into unified `CulturalActivationPlan`. | Synthesis error → `FAILED` |
+| `VALIDATED` | `GovernanceAgent` audits provenance, ensures 0 invented IDs, checks compliance. | **Validation Failure**: transitions back to `PLAN_GENERATED` for curatorial refinement (bounded by `max_validation_cycles=2`). If cycles exhausted → `FAILED`. |
+| `AWAITING_APPROVAL` | Pipeline pauses; awaits human curator review. | Human curator rejects activation plan → `FAILED` |
+| `APPROVED` | Human curator approves activation plan. | Non-reversible gate; immutable record of approver identity. |
+| `EXECUTING` | Downstream physical space tasks dispatched with full provenance. | Action execution error → `FAILED` |
+| `COMPLETED` | All execution tasks completed with verifiable provenance. | Terminal success state. |
+| `FAILED` | Workflow halted; preserves audit event with detailed root-cause error. | Terminal failure state. |
+
+### 10.3. Loop Prevention & Guardrail Guarantees
+1. **Bounded Qloo Retries (`max_qloo_retries`)**: Network/API errors are retried at most 2 times before falling back to relaxed anchor queries. If fallback fails, state transitions to `FAILED`. Infinite network loops are strictly prohibited.
+2. **Bounded Agent Retries (`max_agent_retries`)**: Specialized agent execution errors are retried at most 2 times. If failures persist, the workflow transitions directly to `FAILED`. Autonomous agent recursion is strictly prohibited.
+3. **Bounded Validation Cycles (`max_validation_cycles`)**: Validation failure routes back from `VALIDATED` to `PLAN_GENERATED` for up to 2 corrective refinement cycles. If the plan remains invalid after 2 cycles, the workflow transitions to `FAILED`.
+4. **State Persistence & Audit Trail (`AuditEvent`)**:
+   - Every single transition emits an immutable `AuditEvent` (`event_id`, `session_id`, `from_state`, `to_state`, `timestamp`, `reason`, `metadata`, `error`).
+   - Pluggable persistence via `BaseStateStore`:
+     - `InMemoryStateStore`: In-memory storage for high-speed ephemeral execution.
+     - `FileStateStore`: Production filesystem storage persisting append-only JSONL audit events (`audit_events.jsonl`) and full JSON context state snapshots (`context.json`).
+
+### 10.4. The 4 Specialized Agents
 
 1. **Cultural Strategist (`CulturalStrategist`)**:
    - **Purpose**: Transforms a user's physical-space brief (`PhysicalSpaceBrief`) into a structured, validated `CulturalTwin` that serves as the cultural foundation for all downstream agents.
@@ -469,7 +482,7 @@ stateDiagram-v2
    - **Phase 5: AUDIT (`AuditReport`)**:
      Produces a post-execution compliance audit certifying approval verification, zero provenance violations, and zero unauthorized action leaks.
 
-### 10.4. Programmatic Workflow Example
+### 10.5. Programmatic Workflow Example
 ```python
 from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
 from tasteops.workflows.engine import WorkflowEngine

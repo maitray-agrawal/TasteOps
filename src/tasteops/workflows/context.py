@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from tasteops.models.cultural_matrix import CulturalMatrix, CulturalTwin
+from tasteops.workflows.persistence import AuditEvent
 from tasteops.workflows.schemas import (
     CulturalActivationPlan,
     CulturalStrategyOutput,
@@ -48,20 +49,40 @@ class WorkflowContext(BaseModel):
 
     plan: CulturalActivationPlan | None = None
     history: list[StateTransitionRecord] = Field(default_factory=list)
+    audit_events: list[AuditEvent] = Field(default_factory=list)
     error_message: str | None = None
+
+    # Bounded cycle and retry tracking
+    validation_cycle_count: int = 0
+    qloo_retry_count: int = 0
+    agent_retry_count: int = 0
 
     def record_transition(
         self,
         to_state: WorkflowState,
         reason: str = "",
         metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """Records a verified transition in the audit history."""
+        error: str | None = None,
+    ) -> AuditEvent:
+        """Records a verified transition in the audit history and creates an AuditEvent."""
+        from_state = self.current_state
+
         record = StateTransitionRecord(
-            from_state=self.current_state,
+            from_state=from_state,
             to_state=to_state,
             reason=reason,
             metadata=metadata or {},
         )
         self.history.append(record)
+
+        event = AuditEvent(
+            session_id=self.session_id,
+            from_state=from_state,
+            to_state=to_state,
+            reason=reason,
+            metadata=metadata or {},
+            error=error,
+        )
+        self.audit_events.append(event)
         self.current_state = to_state
+        return event
