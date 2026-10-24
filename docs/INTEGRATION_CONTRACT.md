@@ -379,8 +379,28 @@ stateDiagram-v2
    - **Boundary**: Does **NOT** produce recommendations yet (recommendations are generated downstream via `get_cultural_matrix`).
    - **Downstream Strategy (`execute`)**: Synthesizes positioning statements and cultural pillars once `CulturalMatrix` is available.
 2. **Experience Architect (`ExperienceArchitect`)**:
-   - Designs sonic identities, morning/afternoon/evening daypart programs, and spatial zoning (e.g., Main Bar, Listening Room).
-   - Pairs sensory atmosphere (lighting, audio, scent) with verified Qloo artists.
+   - **Purpose**: Designs a coherent, multi-sensory cultural experience for the physical space based strictly on the `CulturalTwin` and `CulturalMatrix`.
+   - **Input**:
+     - `cultural_twin`: Structured cultural foundation containing audience profile, mood, constraints, and exclusions.
+     - `cultural_matrix`: Verified 6-category candidate matrix from Qloo Insights.
+   - **Curatorial Coherence Rules**:
+     - **Affinity Thresholding**: Filters out candidate signals below affinity threshold (>= 0.50).
+     - **Exclusion Filtering**: Prunes any entity matching items in `cultural_twin.exclusions`.
+     - **Zero Hallucination**: Every recommendation is grounded in an actual `CulturalMatrix` entity with verifiable Qloo provenance.
+   - **6 Cultural Experience Domains Generated**:
+     1. **Sonic Identity (`SonicIdentity`)**: Acoustic profile, playback mediums (e.g. vinyl, reel-to-reel, hi-fi analog), sound system directives, curated recommendations, and daypart sequencing (morning, afternoon, evening, night).
+     2. **Reading / Library Identity (`ReadingLibraryIdentity`)**: Curatorial themes, monograph/periodical selection, spatial display strategy, and book recommendations.
+     3. **Brand Ecosystem (`BrandEcosystem`)**: Material palette, tactile brand pairings, curated amenities, and partnership criteria.
+     4. **Local Experience Ecosystem (`LocalExperienceEcosystem`)**: Neighborhood context, third-place synergies, and curated community place recommendations.
+     5. **Cultural Programming Ideas (`CulturalProgrammingIdeas`)**: Curatorial pillars, recurring activations (listening sessions, reading salons, panel discussions), and scheduling cadences.
+     6. **Atmosphere Guidelines (`AtmosphereGuidelines`)**: Sonic parameters (dB thresholds, frequency weighting), lighting (color temperature, foot-candles), olfactory & thermal guidelines, hospitality tempo, spatial zoning, and sensory pairings.
+   - **Mandatory Recommendation Contract (`ExperienceRecommendation`)**:
+     Every curated recommendation across all domains strictly contains:
+     - `recommendation`: Name and description of the recommended entity.
+     - `qloo_evidence`: Exact Qloo entity ID, affinity score, query source, and explainability provenance.
+     - `cultural_rationale`: Cultural analysis connecting the entity's aesthetics to the space's positioning.
+     - `confidence`: Curatorial confidence score.
+     - `expected_role`: Concrete spatial/functional deployment role in the venue.
 3. **Partnership Agent (`PartnershipAgent`)**:
    - Formulates commercial and residency brand activations with high affinity scores.
    - Requires verified Qloo brand/place IDs with affinity-backed provenance.

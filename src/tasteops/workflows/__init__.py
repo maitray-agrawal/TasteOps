@@ -8,9 +8,12 @@ from tasteops.models.cultural_matrix import (
 from tasteops.workflows.context import StateTransitionRecord, WorkflowContext
 from tasteops.workflows.engine import WorkflowEngine
 from tasteops.workflows.schemas import (
+    AtmosphereGuidelines,
+    BrandEcosystem,
     ComplianceCheck,
     CulturalActivationPlan,
     CulturalPillar,
+    CulturalProgrammingIdeas,
     CulturalStrategyInput,
     CulturalStrategyOutput,
     DaypartProgram,
@@ -18,11 +21,16 @@ from tasteops.workflows.schemas import (
     ExecutionTask,
     ExperienceDesignInput,
     ExperienceDesignOutput,
+    ExperienceRecommendation,
     GovernanceValidationInput,
     GovernanceValidationOutput,
+    LocalExperienceEcosystem,
     PartnershipActivation,
     PartnershipInput,
     PartnershipOutput,
+    ProgrammingActivation,
+    ReadingLibraryIdentity,
+    SonicIdentity,
     SpatialZone,
 )
 from tasteops.workflows.states import (
@@ -32,9 +40,12 @@ from tasteops.workflows.states import (
 )
 
 __all__ = [
+    "AtmosphereGuidelines",
+    "BrandEcosystem",
     "ComplianceCheck",
     "CulturalActivationPlan",
     "CulturalPillar",
+    "CulturalProgrammingIdeas",
     "CulturalStrategyInput",
     "CulturalStrategyOutput",
     "DaypartProgram",
@@ -42,15 +53,20 @@ __all__ = [
     "ExecutionTask",
     "ExperienceDesignInput",
     "ExperienceDesignOutput",
+    "ExperienceRecommendation",
     "GovernanceValidationInput",
     "GovernanceValidationOutput",
     "InvalidStateTransitionError",
+    "LocalExperienceEcosystem",
     "PartnershipActivation",
     "PartnershipInput",
     "PartnershipOutput",
     "PhysicalSpaceBrief",
+    "ProgrammingActivation",
+    "ReadingLibraryIdentity",
     "ResolvedEntity",
     "ResolvedTag",
+    "SonicIdentity",
     "SpatialZone",
     "StateTransitionRecord",
     "WorkflowContext",

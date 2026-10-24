@@ -232,8 +232,9 @@ class WorkflowEngine:
 
         # 2. Experience Architect
         experience_input = ExperienceDesignInput(
-            strategy=ctx.strategy_output,
+            cultural_twin=ctx.cultural_twin,
             cultural_matrix=ctx.cultural_matrix,
+            strategy=ctx.strategy_output,
         )
         ctx.experience_output = await self.architect.execute(experience_input)
 

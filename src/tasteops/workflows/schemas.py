@@ -5,6 +5,7 @@ maintain immutable provenance, and never invent entity IDs.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -59,6 +60,36 @@ class CulturalStrategyOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class ExperienceRecommendation(BaseModel):
+    """A culturally vetted recommendation curated for physical space experience."""
+
+    recommendation: str = Field(
+        ..., description="Recommended entity name or item title"
+    )
+    qloo_evidence: dict[str, Any] = Field(
+        ...,
+        description="Immutable Qloo evidence: entity ID, URN/type, affinity score, source query",
+    )
+    cultural_rationale: str = Field(
+        ...,
+        description="Curatorial rationale explaining alignment with the space's cultural twin",
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score reflecting Qloo affinity and curatorial fit",
+    )
+    expected_role: str = Field(
+        ...,
+        description="Expected spatial, acoustic, or experiential role in the physical space",
+    )
+    category: str = Field(
+        default="general",
+        description="Category e.g. artist, book, brand, place, movie, destination",
+    )
+
+
 class DaypartProgram(BaseModel):
     """Atmospheric and sonic programming for a time-of-day window."""
 
@@ -89,30 +120,216 @@ class SpatialZone(BaseModel):
     )
 
 
+class SonicIdentity(BaseModel):
+    """Sonic and acoustic architecture for the physical space."""
+
+    overview: str = Field(..., description="Overall sonic philosophy and sound profile")
+    acoustic_profile: str = Field(
+        ..., description="Frequency emphasis, dynamic range, and acoustic warmth"
+    )
+    playback_mediums: list[str] = Field(
+        default_factory=list,
+        description="e.g. ['Vinyl 33/45 RPM', 'Lossless 24-bit/96kHz digital']",
+    )
+    directives: list[str] = Field(
+        default_factory=list,
+        description="Curatorial directives for music volume, tempo, and vocal density",
+    )
+    curated_recommendations: list[ExperienceRecommendation] = Field(
+        default_factory=list,
+        description="Coherent, high-affinity musical artists vetted from Qloo",
+    )
+    dayparts: list[DaypartProgram] = Field(
+        default_factory=list,
+        description="Temporal atmosphere schedule and audio themes",
+    )
+
+
+class ReadingLibraryIdentity(BaseModel):
+    """Curated editorial, book, and print publication identity."""
+
+    overview: str = Field(
+        ..., description="Editorial vision and publication curation philosophy"
+    )
+    curation_themes: list[str] = Field(
+        default_factory=list,
+        description="Core literary, design, and artistic subject axes",
+    )
+    curated_recommendations: list[ExperienceRecommendation] = Field(
+        default_factory=list,
+        description="Culturally aligned books, monographs, and journals from Qloo",
+    )
+    display_strategy: str = Field(
+        ...,
+        description="Physical integration of publications in communal tables and lounge shelving",
+    )
+
+
+class BrandEcosystem(BaseModel):
+    """Tactile material, packaging, tableware, and brand partner ecosystem."""
+
+    overview: str = Field(
+        ..., description="Material philosophy and partner curation standards"
+    )
+    material_palette: list[str] = Field(
+        default_factory=list,
+        description="Approved physical textures, finishes, surfaces, and ceramics",
+    )
+    curated_recommendations: list[ExperienceRecommendation] = Field(
+        default_factory=list,
+        description="Vetted brand partners (tableware, lighting, amenities, audio hardware)",
+    )
+    partnership_criteria: list[str] = Field(
+        default_factory=list,
+        description="Standards for brand presence and subtle co-existence",
+    )
+
+
+class LocalExperienceEcosystem(BaseModel):
+    """Neighborhood integration and local cultural place benchmark ecosystem."""
+
+    overview: str = Field(
+        ..., description="Spatial hospitality benchmarks and neighborhood synergy"
+    )
+    neighborhood_context: str = Field(
+        ..., description="Local neighborhood cultural dynamic"
+    )
+    curated_recommendations: list[ExperienceRecommendation] = Field(
+        default_factory=list,
+        description="Benchmarked venues, places, and micro-destinations from Qloo",
+    )
+    community_synergies: list[str] = Field(
+        default_factory=list,
+        description="Potential cross-patronage and local community alignments",
+    )
+
+
+class ProgrammingActivation(BaseModel):
+    """Specific cultural event or residency format."""
+
+    title: str = Field(
+        ..., description="Activation title (e.g. 'Deep Listening Sunday Salon')"
+    )
+    cadence: str = Field(
+        ..., description="Frequency and timing (e.g. 'Weekly Sunday 18:00 - 21:00')"
+    )
+    format_description: str = Field(
+        ..., description="Detailed narrative of patron experience"
+    )
+    featured_recommendations: list[ExperienceRecommendation] = Field(
+        default_factory=list,
+        description="Anchoring Qloo entities featured in the program",
+    )
+    target_audience: str = Field(
+        ..., description="Specific subcultural patron segment targeted"
+    )
+    expected_outcome: str = Field(
+        ..., description="Community dwell time, cultural credibility, brand affinity"
+    )
+
+
+class CulturalProgrammingIdeas(BaseModel):
+    """Event architecture, residency programs, and recurring cultural activations."""
+
+    overview: str = Field(..., description="Programming ethos and community rhythm")
+    programming_pillars: list[str] = Field(
+        default_factory=list, description="Thematic pillars guiding event curation"
+    )
+    activations: list[ProgrammingActivation] = Field(
+        default_factory=list,
+        description="Structured recurring and signature event concepts",
+    )
+
+
+class AtmosphereGuidelines(BaseModel):
+    """Sensory, lighting, acoustic, and spatial parameters for physical execution."""
+
+    sonic_parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Acoustic targets: decibel limits (SPL), sound insulation, acoustic dampening",
+    )
+    lighting_parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Lighting guidelines: color temperature (Kelvin), lux levels, natural light transition",
+    )
+    olfactory_and_thermal: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Scent profile (e.g. cedar, hinoki, tea) and thermal comfort settings",
+    )
+    hospitality_tempo: str = Field(
+        ...,
+        description="Service choreography: greeting, dwell cadence, ordering rituals",
+    )
+    spatial_zones: list[SpatialZone] = Field(
+        default_factory=list,
+        description="Physical zone specifications and tactile elements",
+    )
+    sensory_pairings: list[str] = Field(
+        default_factory=list,
+        description="Cross-sensory pairings (beverage x audio x materiality)",
+    )
+
+
 class ExperienceDesignInput(BaseModel):
     """Input payload for Experience Architect agent."""
 
-    strategy: CulturalStrategyOutput
-    cultural_matrix: CulturalMatrix
+    cultural_twin: CulturalTwin | None = Field(
+        default=None, description="Foundational cultural twin profile"
+    )
+    cultural_matrix: CulturalMatrix = Field(
+        ..., description="Multi-domain cultural recommendations matrix"
+    )
+    strategy: CulturalStrategyOutput | None = Field(
+        default=None, description="Optional strategic positioning output"
+    )
 
 
 class ExperienceDesignOutput(BaseModel):
-    """Structured spatial, audio, and atmospheric design output."""
+    """Complete machine-readable cultural experience design for physical spaces."""
 
+    # 1. Sonic Identity
+    sonic_identity: SonicIdentity = Field(
+        ..., description="Acoustic architecture and music curation"
+    )
+    # 2. Reading/Library Identity
+    reading_library_identity: ReadingLibraryIdentity = Field(
+        ..., description="Curated publication and monograph identity"
+    )
+    # 3. Brand Ecosystem
+    brand_ecosystem: BrandEcosystem = Field(
+        ..., description="Material craft, tableware, and brand partner ecosystem"
+    )
+    # 4. Local Experience Ecosystem
+    local_experience_ecosystem: LocalExperienceEcosystem = Field(
+        ..., description="Neighborhood integration and hospitality benchmarks"
+    )
+    # 5. Cultural Programming Ideas
+    cultural_programming_ideas: CulturalProgrammingIdeas = Field(
+        ..., description="Recurring event concepts and residency formats"
+    )
+    # 6. Atmosphere Guidelines
+    atmosphere_guidelines: AtmosphereGuidelines = Field(
+        ..., description="Sensory, lighting, acoustic, and spatial parameters"
+    )
+
+    # Provenance tracking
+    provenance_entity_ids: list[str] = Field(
+        default_factory=list,
+        description="All verified Qloo entity IDs utilized in design",
+    )
+
+    # Backward-compatible fields
     music_curation_directives: list[str] = Field(
-        ..., description="Sonic guidelines and genre balance"
+        default_factory=list, description="Sonic guidelines and genre balance"
     )
     daypart_programs: list[DaypartProgram] = Field(
-        ..., min_length=1, description="Temporal atmosphere schedule"
+        default_factory=list, description="Temporal atmosphere schedule"
     )
     spatial_zones: list[SpatialZone] = Field(
-        ..., min_length=1, description="Physical zone design directives"
+        default_factory=list, description="Physical zone design directives"
     )
     sensory_pairings: list[str] = Field(
-        ..., description="Coffee, beverage, and aesthetic pairings"
-    )
-    provenance_entity_ids: list[str] = Field(
-        ..., description="Verified Qloo entity IDs utilized in design"
+        default_factory=list, description="Coffee, beverage, and aesthetic pairings"
     )
 
 

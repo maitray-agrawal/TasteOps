@@ -266,6 +266,106 @@ async def test_experience_architect(sample_twin, sample_curated_matrix):
 
 
 @pytest.mark.asyncio
+async def test_experience_architect_full_experience_design(
+    sample_twin, sample_curated_matrix
+):
+    """Test Experience Architect generates all 6 core domains with structured recommendations."""
+    architect = ExperienceArchitect()
+    arch_output = await architect.design_experience(
+        cultural_twin=sample_twin, cultural_matrix=sample_curated_matrix
+    )
+
+    # 1. Sonic Identity
+    assert arch_output.sonic_identity.overview
+    assert arch_output.sonic_identity.acoustic_profile
+    assert len(arch_output.sonic_identity.curated_recommendations) >= 1
+    assert len(arch_output.sonic_identity.directives) >= 3
+    assert len(arch_output.sonic_identity.dayparts) == 3
+
+    # 2. Reading/Library Identity
+    assert arch_output.reading_library_identity.overview
+    assert len(arch_output.reading_library_identity.curation_themes) >= 2
+    assert len(arch_output.reading_library_identity.curated_recommendations) >= 1
+    assert arch_output.reading_library_identity.display_strategy
+
+    # 3. Brand Ecosystem
+    assert arch_output.brand_ecosystem.overview
+    assert len(arch_output.brand_ecosystem.material_palette) >= 3
+    assert len(arch_output.brand_ecosystem.curated_recommendations) >= 1
+    assert len(arch_output.brand_ecosystem.partnership_criteria) >= 2
+
+    # 4. Local Experience Ecosystem
+    assert arch_output.local_experience_ecosystem.overview
+    assert arch_output.local_experience_ecosystem.neighborhood_context
+    assert len(arch_output.local_experience_ecosystem.curated_recommendations) >= 1
+    assert len(arch_output.local_experience_ecosystem.community_synergies) >= 2
+
+    # 5. Cultural Programming Ideas
+    assert arch_output.cultural_programming_ideas.overview
+    assert len(arch_output.cultural_programming_ideas.programming_pillars) >= 2
+    assert len(arch_output.cultural_programming_ideas.activations) >= 2
+    activation = arch_output.cultural_programming_ideas.activations[0]
+    assert activation.title
+    assert activation.cadence
+    assert activation.format_description
+    assert activation.expected_outcome
+
+    # 6. Atmosphere Guidelines
+    assert arch_output.atmosphere_guidelines.sonic_parameters
+    assert arch_output.atmosphere_guidelines.lighting_parameters
+    assert arch_output.atmosphere_guidelines.olfactory_and_thermal
+    assert arch_output.atmosphere_guidelines.hospitality_tempo
+    assert len(arch_output.atmosphere_guidelines.spatial_zones) == 3
+
+    # 7. Check Every Recommendation conforms to strict schema
+    all_recs = (
+        arch_output.sonic_identity.curated_recommendations
+        + arch_output.reading_library_identity.curated_recommendations
+        + arch_output.brand_ecosystem.curated_recommendations
+        + arch_output.local_experience_ecosystem.curated_recommendations
+    )
+    assert len(all_recs) >= 4
+    for rec in all_recs:
+        assert rec.recommendation
+        assert rec.qloo_evidence
+        assert "entity_id" in rec.qloo_evidence or "id" in rec.qloo_evidence
+        assert rec.cultural_rationale
+        assert 0.0 <= rec.confidence <= 1.0
+        assert rec.expected_role
+
+    # 8. Machine-Readable: Dumps to valid dictionary / JSON
+    data = arch_output.model_dump()
+    assert isinstance(data, dict)
+    assert "sonic_identity" in data
+    assert "reading_library_identity" in data
+    assert "brand_ecosystem" in data
+    assert "local_experience_ecosystem" in data
+    assert "cultural_programming_ideas" in data
+    assert "atmosphere_guidelines" in data
+
+
+@pytest.mark.asyncio
+async def test_experience_architect_exclusion_filtering(sample_curated_matrix):
+    """Test Experience Architect rejects Qloo recommendations violating cultural exclusions."""
+    twin_with_exclusions = CulturalTwin(
+        business_type="Minimalist Tea House",
+        exclusions=["Muji", "Commercial pop"],
+        anchor_entities=["ent_blue_bottle_123"],
+    )
+
+    architect = ExperienceArchitect()
+    arch_output = await architect.design_experience(
+        cultural_twin=twin_with_exclusions, cultural_matrix=sample_curated_matrix
+    )
+
+    # Muji must be rejected because it matches exclusion 'Muji'
+    brand_names = [
+        r.recommendation for r in arch_output.brand_ecosystem.curated_recommendations
+    ]
+    assert "Muji" not in brand_names
+
+
+@pytest.mark.asyncio
 async def test_partnership_agent(sample_twin, sample_curated_matrix):
     """Test Partnership Agent structures activations from verified Qloo brand recommendations."""
     strategist = CulturalStrategist()
