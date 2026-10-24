@@ -74,16 +74,63 @@ uv run tasteops-mcp
 
 ---
 
-## 🧪 Running Tests
+## 🚀 FastAPI Backend HTTP Service
 
-The test suite covers:
-- HTTP 200, 401, 403, 404, 429, 500, and timeouts
-- Non-retry guarantee for authentication failures
-- Entity and tag resolution with candidate ranking and provenance
-- Capability enforcement (spatial vs non-spatial entities)
-- Concurrent execution and single-retry deterministic fallback
-- Every single MCP tool
+The backend runs as a high-performance ASGI service exposing deterministic cultural workflow endpoints and Render-ready health probes:
 
 ```bash
+# Run locally with hot reload
+uv run uvicorn tasteops.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Production command (Render dynamically sets $PORT)
+uv run uvicorn tasteops.api.main:app --host 0.0.0.0 --port $PORT
+```
+
+### Endpoints
+- `GET /health` — Fast liveness check (<5ms, zero Qloo calls)
+- `GET /ready` — Readiness probe verifying downstream Qloo configuration and storage
+- `GET /api/v1/config` — Safe public runtime configuration
+- `POST /api/v1/sessions` — Initialize physical space activation workflow session
+- `POST /api/v1/sessions/{id}/pipeline` — Run Cultural Intelligence pipeline to Human Approval Gate
+- `POST /api/v1/sessions/{id}/approve` — Authorize activation plan with cryptographic hash
+- `POST /api/v1/sessions/{id}/reject` — Reject plan (transitions to FAILED)
+- `POST /api/v1/sessions/{id}/execute` — Dispatch idempotent execution tasks
+- `GET /api/v1/sessions/{id}/audit` — Retrieve immutable transition audit events
+
+See [`docs/API.md`](docs/API.md) for the complete API contract and frontend integration specification.
+
+---
+
+## 🐳 Docker & Render Deployment
+
+### Building Container
+```bash
+docker build -t tasteops-backend .
+```
+
+### Running Container Locally
+```bash
+docker run -p 8000:8000 -e QLOO_API_KEY="your_key" tasteops-backend
+```
+
+### Render Web Service Setup
+Deploy directly to Render via [`render.yaml`](render.yaml) blueprint:
+1. Connect repository to Render.
+2. Select **Web Service** with **Docker** runtime.
+3. Configure `QLOO_API_KEY` under Environment Variables.
+4. Set Health Check path to `/health`.
+5. Deploy.
+
+---
+
+## 🧪 Verification & Quality Gates
+
+Run all quality checks before deploying:
+
+```bash
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run mypy src
 uv run pytest -v
 ```
+
