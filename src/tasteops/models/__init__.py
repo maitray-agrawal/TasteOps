@@ -7,6 +7,9 @@ from tasteops.models.cultural_matrix import (
     CulturalRecommendation,
     CulturalTwin,
     LocationInput,
+    PhysicalSpaceBrief,
+    ResolvedEntity,
+    ResolvedTag,
 )
 from tasteops.models.entity import QlooEntity
 from tasteops.models.error import QlooError
@@ -31,11 +34,14 @@ __all__ = [
     "EntityResolutionResult",
     "InsightParams",
     "LocationInput",
+    "PhysicalSpaceBrief",
     "QlooEntity",
     "QlooError",
     "QlooInsight",
     "QlooTag",
     "ResolutionEvidence",
+    "ResolvedEntity",
+    "ResolvedTag",
     "SearchParams",
     "TagCandidate",
     "TagParams",

@@ -71,7 +71,11 @@ class TagResolver:
         fuzzy_score = round(seq_ratio, 4)
 
         # Small boost if expected category matches
-        if expected_category and tag.category and expected_category.lower() in tag.category.lower():
+        if (
+            expected_category
+            and tag.category
+            and expected_category.lower() in tag.category.lower()
+        ):
             fuzzy_score = min(1.0, round(fuzzy_score + 0.05, 4))
 
         return fuzzy_score, "fuzzy_similarity"
@@ -121,7 +125,11 @@ class TagResolver:
                 ),
             )
 
-        logger.debug("Searching Qloo tag taxonomy for: '%s' (category=%s)", norm_query, expected_category)
+        logger.debug(
+            "Searching Qloo tag taxonomy for: '%s' (category=%s)",
+            norm_query,
+            expected_category,
+        )
 
         # 1. Search Qloo tags endpoint
         tag_params = TagParams(
@@ -133,11 +141,19 @@ class TagResolver:
 
         # If no direct query match, optionally fall back to category query
         if not candidates_raw and expected_category:
-            logger.debug("No direct tag results for '%s'; attempting category search for '%s'", norm_query, expected_category)
-            candidates_raw = await self.client.get_tags(TagParams(type=expected_category, take=take))
+            logger.debug(
+                "No direct tag results for '%s'; attempting category search for '%s'",
+                norm_query,
+                expected_category,
+            )
+            candidates_raw = await self.client.get_tags(
+                TagParams(type=expected_category, take=take)
+            )
 
         if not candidates_raw:
-            logger.info("Unknown tag rejected: '%s' not found in Qloo taxonomy.", norm_query)
+            logger.info(
+                "Unknown tag rejected: '%s' not found in Qloo taxonomy.", norm_query
+            )
             return TagResolutionResult(
                 input=query,
                 resolved_tag_id=None,
@@ -160,7 +176,9 @@ class TagResolver:
         # 2. Score and rank candidates
         ranked_candidates: list[TagCandidate] = []
         for cand in candidates_raw:
-            score, reason = self.compute_tag_match_score(norm_query, cand, expected_category)
+            score, reason = self.compute_tag_match_score(
+                norm_query, cand, expected_category
+            )
             ranked_candidates.append(
                 TagCandidate(tag=cand, confidence=score, match_reason=reason)
             )
@@ -242,6 +260,8 @@ class TagResolver:
         """Resolves multiple tag terms."""
         results: list[TagResolutionResult] = []
         for q in queries:
-            res = await self.resolve(q, expected_category=expected_category, min_confidence=min_confidence)
+            res = await self.resolve(
+                q, expected_category=expected_category, min_confidence=min_confidence
+            )
             results.append(res)
         return results

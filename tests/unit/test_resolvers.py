@@ -201,6 +201,7 @@ async def test_resolve_tag_indie_cinema_and_indian_design(mock_settings):
     }
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
+
         def tag_side_effect(request):
             query = request.url.params.get("query", "")
             if "indie" in query:

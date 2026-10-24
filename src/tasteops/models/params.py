@@ -93,7 +93,9 @@ class TagParams(BaseModel):
         return params
 
 
-_POINT_REGEX = re.compile(r"^POINT\s*\(\s*[-+]?[0-9]*\.?[0-9]+\s+[-+]?[0-9]*\.?[0-9]+\s*\)$", re.IGNORECASE)
+_POINT_REGEX = re.compile(
+    r"^POINT\s*\(\s*[-+]?[0-9]*\.?[0-9]+\s+[-+]?[0-9]*\.?[0-9]+\s*\)$", re.IGNORECASE
+)
 
 
 class InsightParams(BaseModel):
@@ -171,17 +173,25 @@ class InsightParams(BaseModel):
         if self.filter_type:
             params["filter.type"] = self.filter_type
         if self.signal_entities:
-            params["signal.interests.entities"] = ",".join(s.strip() for s in self.signal_entities if s.strip())
+            params["signal.interests.entities"] = ",".join(
+                s.strip() for s in self.signal_entities if s.strip()
+            )
         if self.signal_tags:
-            params["signal.interests.tags"] = ",".join(s.strip() for s in self.signal_tags if s.strip())
+            params["signal.interests.tags"] = ",".join(
+                s.strip() for s in self.signal_tags if s.strip()
+            )
         if self.location_wkt:
             params["filter.location"] = self.location_wkt
         if self.location_radius is not None:
             params["filter.location.radius"] = str(self.location_radius)
         if self.filter_tags:
-            params["filter.tags"] = ",".join(t.strip() for t in self.filter_tags if t.strip())
+            params["filter.tags"] = ",".join(
+                t.strip() for t in self.filter_tags if t.strip()
+            )
         if self.exclude_entities:
-            params["filter.exclude.entities"] = ",".join(e.strip() for e in self.exclude_entities if e.strip())
+            params["filter.exclude.entities"] = ",".join(
+                e.strip() for e in self.exclude_entities if e.strip()
+            )
         if self.explainability:
             params["feature.explainability"] = "true"
         return params

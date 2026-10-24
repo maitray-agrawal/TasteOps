@@ -40,7 +40,9 @@ async def test_mcp_tool_listing_and_security(mock_settings):
         "get_cultural_matrix",
     ]
     for expected in expected_tools:
-        assert expected in tool_names, f"Expected MCP tool '{expected}' not found in server tools."
+        assert expected in tool_names, (
+            f"Expected MCP tool '{expected}' not found in server tools."
+        )
 
     # Verify no raw Qloo HTTP execution tool is exposed
     assert "call_qloo" not in tool_names
@@ -84,7 +86,9 @@ async def test_mcp_resolve_entity(mock_settings):
         client = QlooClient(settings=mock_settings)
         server = create_cultural_intelligence_mcp(client)
 
-        data = await invoke_tool(server, "resolve_entity", {"query": "Blue Bottle", "expected_type": "place"})
+        data = await invoke_tool(
+            server, "resolve_entity", {"query": "Blue Bottle", "expected_type": "place"}
+        )
 
         assert data["is_resolved"] is True
         assert data["resolved_entity_id"] == "ent_blue_bottle"
@@ -112,7 +116,11 @@ async def test_mcp_resolve_tag(mock_settings):
         client = QlooClient(settings=mock_settings)
         server = create_cultural_intelligence_mcp(client)
 
-        data = await invoke_tool(server, "resolve_tag", {"query": "Japanese Minimalism", "expected_category": "style"})
+        data = await invoke_tool(
+            server,
+            "resolve_tag",
+            {"query": "Japanese Minimalism", "expected_category": "style"},
+        )
 
         assert data["is_resolved"] is True
         assert data["resolved_tag_id"] == "tag_jp_minimalism"
@@ -135,7 +143,9 @@ async def test_mcp_get_cultural_profile(mock_settings):
         client = QlooClient(settings=mock_settings)
         server = create_cultural_intelligence_mcp(client)
 
-        data = await invoke_tool(server, "get_cultural_profile", {"entity_id": "ent_123", "take": 3})
+        data = await invoke_tool(
+            server, "get_cultural_profile", {"entity_id": "ent_123", "take": 3}
+        )
 
         assert data["entity_id"] == "ent_123"
         assert "affinities" in data
@@ -155,6 +165,7 @@ async def test_mcp_domain_specific_tools(mock_settings):
     }
 
     async with respx.mock(base_url="https://hackathon.api.qloo.com") as mock_router:
+
         def insight_side_effect(request: httpx.Request):
             filter_type = request.url.params.get("filter.type", "")
             cat = filter_type.replace("urn:entity:", "")
@@ -167,18 +178,24 @@ async def test_mcp_domain_specific_tools(mock_settings):
         server = create_cultural_intelligence_mcp(client)
 
         # 1. Artists
-        artists_data = await invoke_tool(server, "get_related_artists", {"anchor_entities": ["ent_1"], "take": 5})
+        artists_data = await invoke_tool(
+            server, "get_related_artists", {"anchor_entities": ["ent_1"], "take": 5}
+        )
         assert artists_data["category"] == "artist"
         assert artists_data["total_count"] == 1
         assert artists_data["recommendations"][0]["name"] == "Bonobo"
 
         # 2. Books
-        books_data = await invoke_tool(server, "get_related_books", {"anchor_entities": ["ent_1"], "take": 5})
+        books_data = await invoke_tool(
+            server, "get_related_books", {"anchor_entities": ["ent_1"], "take": 5}
+        )
         assert books_data["category"] == "book"
         assert books_data["recommendations"][0]["name"] == "Wabi-Sabi for Artists"
 
         # 3. Brands
-        brands_data = await invoke_tool(server, "get_related_brands", {"anchor_entities": ["ent_1"], "take": 5})
+        brands_data = await invoke_tool(
+            server, "get_related_brands", {"anchor_entities": ["ent_1"], "take": 5}
+        )
         assert brands_data["category"] == "brand"
         assert brands_data["recommendations"][0]["name"] == "Audio-Technica"
 
@@ -186,13 +203,20 @@ async def test_mcp_domain_specific_tools(mock_settings):
         places_data = await invoke_tool(
             server,
             "get_related_places",
-            {"anchor_entities": ["ent_1"], "latitude": 40.7128, "longitude": -74.0060, "radius_meters": 3000},
+            {
+                "anchor_entities": ["ent_1"],
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+                "radius_meters": 3000,
+            },
         )
         assert places_data["category"] == "place"
         assert places_data["recommendations"][0]["name"] == "Public Records"
 
         # 5. Movies
-        movies_data = await invoke_tool(server, "get_related_movies", {"anchor_entities": ["ent_1"], "take": 5})
+        movies_data = await invoke_tool(
+            server, "get_related_movies", {"anchor_entities": ["ent_1"], "take": 5}
+        )
         assert movies_data["category"] == "movie"
         assert movies_data["recommendations"][0]["name"] == "Drive My Car"
 
@@ -224,7 +248,11 @@ async def test_mcp_get_cultural_matrix(mock_settings):
             },
         }
 
-        data = await invoke_tool(server, "get_cultural_matrix", {"cultural_twin": twin_payload, "take_per_category": 5})
+        data = await invoke_tool(
+            server,
+            "get_cultural_matrix",
+            {"cultural_twin": twin_payload, "take_per_category": 5},
+        )
 
         assert data["status"] == "success"
         assert data["total_recommendations"] > 0

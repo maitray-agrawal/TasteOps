@@ -26,7 +26,8 @@ class QlooEntity(BaseModel):
         default_factory=list, description="Associated tag keywords or tag IDs"
     )
     metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional properties (location, address, etc.)"
+        default_factory=dict,
+        description="Additional properties (location, address, etc.)",
     )
 
     @model_validator(mode="before")

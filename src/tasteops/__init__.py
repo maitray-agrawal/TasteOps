@@ -1,8 +1,15 @@
 """TasteOps Cultural Intelligence Operating System.
 
-Developer 1 Cultural Intelligence Infrastructure.
+Cultural Intelligence Infrastructure and Deterministic Agent Orchestration.
 """
 
+from tasteops.agents import (
+    CulturalIntelligenceMCPAdapter,
+    CulturalStrategist,
+    ExperienceArchitect,
+    GovernanceAgent,
+    PartnershipAgent,
+)
 from tasteops.cache import AsyncTTLCache, CacheBackend
 from tasteops.client import QlooClient
 from tasteops.config import QlooSettings
@@ -25,11 +32,14 @@ from tasteops.models import (
     EntityResolutionResult,
     InsightParams,
     LocationInput,
+    PhysicalSpaceBrief,
     QlooEntity,
     QlooError,
     QlooInsight,
     QlooTag,
     ResolutionEvidence,
+    ResolvedEntity,
+    ResolvedTag,
     SearchParams,
     TagCandidate,
     TagParams,
@@ -41,22 +51,35 @@ from tasteops.services import (
     InsightsService,
     TagResolver,
 )
+from tasteops.workflows import (
+    CulturalActivationPlan,
+    WorkflowContext,
+    WorkflowEngine,
+    WorkflowState,
+)
 
 __all__ = [
     "AsyncTTLCache",
     "CacheBackend",
     "CategoryQueryMetadata",
+    "CulturalActivationPlan",
+    "CulturalIntelligenceMCPAdapter",
     "CulturalMatrix",
     "CulturalMatrixEvidence",
     "CulturalMatrixService",
     "CulturalRecommendation",
+    "CulturalStrategist",
     "CulturalTwin",
     "EntityCandidate",
     "EntityResolutionResult",
     "EntityResolver",
+    "ExperienceArchitect",
+    "GovernanceAgent",
     "InsightParams",
     "InsightsService",
     "LocationInput",
+    "PartnershipAgent",
+    "PhysicalSpaceBrief",
     "QlooAuthenticationError",
     "QlooClient",
     "QlooEntity",
@@ -71,9 +94,14 @@ __all__ = [
     "QlooTimeoutError",
     "QlooValidationError",
     "ResolutionEvidence",
+    "ResolvedEntity",
+    "ResolvedTag",
     "SearchParams",
     "TagCandidate",
     "TagParams",
     "TagResolutionResult",
     "TagResolver",
+    "WorkflowContext",
+    "WorkflowEngine",
+    "WorkflowState",
 ]

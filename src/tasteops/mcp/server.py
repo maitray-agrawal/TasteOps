@@ -85,7 +85,12 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         """Resolves natural language anchor term into verified Qloo entity ID."""
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
-        logger.info("[Req: %s] resolve_entity: query='%s', type=%s", request_id, query, expected_type)
+        logger.info(
+            "[Req: %s] resolve_entity: query='%s', type=%s",
+            request_id,
+            query,
+            expected_type,
+        )
 
         try:
             result = await entity_resolver.resolve(
@@ -133,7 +138,12 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         """Resolves natural language vibe into verified Qloo taxonomy tag."""
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
-        logger.info("[Req: %s] resolve_tag: query='%s', category=%s", request_id, query, expected_category)
+        logger.info(
+            "[Req: %s] resolve_tag: query='%s', category=%s",
+            request_id,
+            query,
+            expected_category,
+        )
 
         try:
             result = await tag_resolver.resolve(
@@ -180,7 +190,12 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         """Profiles a single anchor entity across music, brands, and spaces."""
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
-        logger.info("[Req: %s] get_cultural_profile: id=%s, name=%s", request_id, entity_id, entity_name)
+        logger.info(
+            "[Req: %s] get_cultural_profile: id=%s, name=%s",
+            request_id,
+            entity_id,
+            entity_name,
+        )
 
         try:
             target_id = entity_id
@@ -272,8 +287,15 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
                 "latency_ms": round(elapsed_ms, 2),
             }
         except Exception as e:
-            logger.error("[Req: %s] Query domain '%s' error: %s", request_id, category, e)
-            return {"request_id": request_id, "category": category, "error": str(e), "recommendations": []}
+            logger.error(
+                "[Req: %s] Query domain '%s' error: %s", request_id, category, e
+            )
+            return {
+                "request_id": request_id,
+                "category": category,
+                "error": str(e),
+                "recommendations": [],
+            }
 
     @server.tool(
         name="get_related_artists",
@@ -284,7 +306,9 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain("artist", anchor_entities or [], resolved_tags or [], take)
+        return await _query_single_domain(
+            "artist", anchor_entities or [], resolved_tags or [], take
+        )
 
     @server.tool(
         name="get_related_books",
@@ -295,7 +319,9 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain("book", anchor_entities or [], resolved_tags or [], take)
+        return await _query_single_domain(
+            "book", anchor_entities or [], resolved_tags or [], take
+        )
 
     @server.tool(
         name="get_related_brands",
@@ -306,7 +332,9 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain("brand", anchor_entities or [], resolved_tags or [], take)
+        return await _query_single_domain(
+            "brand", anchor_entities or [], resolved_tags or [], take
+        )
 
     @server.tool(
         name="get_related_places",
@@ -322,8 +350,12 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
     ) -> dict[str, Any]:
         loc = None
         if latitude is not None and longitude is not None:
-            loc = LocationInput(latitude=latitude, longitude=longitude, radius_meters=radius_meters)
-        return await _query_single_domain("place", anchor_entities or [], resolved_tags or [], take, location=loc)
+            loc = LocationInput(
+                latitude=latitude, longitude=longitude, radius_meters=radius_meters
+            )
+        return await _query_single_domain(
+            "place", anchor_entities or [], resolved_tags or [], take, location=loc
+        )
 
     @server.tool(
         name="get_related_movies",
@@ -334,7 +366,9 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
         resolved_tags: list[str] | None = None,
         take: int = 10,
     ) -> dict[str, Any]:
-        return await _query_single_domain("movie", anchor_entities or [], resolved_tags or [], take)
+        return await _query_single_domain(
+            "movie", anchor_entities or [], resolved_tags or [], take
+        )
 
     # -------------------------------------------------------------------------
     # Full Cultural Matrix Tool
@@ -370,7 +404,11 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
                 "latency_ms": round(elapsed_ms, 2),
             }
         except Exception as e:
-            logger.error("[Req: %s] get_cultural_matrix validation/execution error: %s", request_id, e)
+            logger.error(
+                "[Req: %s] get_cultural_matrix validation/execution error: %s",
+                request_id,
+                e,
+            )
             return {
                 "request_id": request_id,
                 "status": "error",
@@ -384,7 +422,10 @@ def create_cultural_intelligence_mcp(client: QlooClient | None = None) -> MCPSer
 def main() -> None:
     """Entrypoint for running the TasteOps Cultural Intelligence MCP server over stdio."""
     import asyncio
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
     server = create_cultural_intelligence_mcp()
     asyncio.run(server.run_stdio_async())
 

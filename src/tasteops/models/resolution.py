@@ -16,14 +16,20 @@ from tasteops.models.tag import QlooTag
 class ResolutionEvidence(BaseModel):
     """Provenance and algorithmic evidence for a resolution decision."""
 
-    source: str = Field(..., description="Qloo endpoint source (e.g. 'qloo_search', 'qloo_tags')")
+    source: str = Field(
+        ..., description="Qloo endpoint source (e.g. 'qloo_search', 'qloo_tags')"
+    )
     raw_query: str = Field(..., description="Original raw natural language input")
-    normalized_query: str = Field(..., description="Preprocessed query string used for matching")
+    normalized_query: str = Field(
+        ..., description="Preprocessed query string used for matching"
+    )
     match_method: str = Field(
         ...,
         description="Matching heuristic applied (e.g. 'exact_case_insensitive', 'token_subset', 'fuzzy_ratio', 'unresolved')",
     )
-    score: float = Field(..., ge=0.0, le=1.0, description="Raw algorithmic match score [0.0 - 1.0]")
+    score: float = Field(
+        ..., ge=0.0, le=1.0, description="Raw algorithmic match score [0.0 - 1.0]"
+    )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="UTC timestamp of resolution",
@@ -38,7 +44,9 @@ class EntityCandidate(BaseModel):
     """Ranked alternative candidate entity from Qloo."""
 
     entity: QlooEntity = Field(..., description="The verified Qloo entity candidate")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Match confidence score [0.0 - 1.0]")
+    confidence: float = Field(
+        ..., ge=0.0, le=1.0, description="Match confidence score [0.0 - 1.0]"
+    )
     match_reason: str = Field(..., description="Explanation of candidate ranking")
 
 
@@ -87,7 +95,9 @@ class TagCandidate(BaseModel):
     """Ranked alternative candidate tag from Qloo."""
 
     tag: QlooTag = Field(..., description="The verified Qloo tag candidate")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Match confidence score [0.0 - 1.0]")
+    confidence: float = Field(
+        ..., ge=0.0, le=1.0, description="Match confidence score [0.0 - 1.0]"
+    )
     match_reason: str = Field(..., description="Explanation of candidate ranking")
 
 

@@ -11,7 +11,8 @@ class QlooInsight(BaseModel):
     id: str = Field(..., description="Unique entity or tag ID for the insight")
     name: str = Field(..., description="Entity or tag name")
     type: str | None = Field(
-        default=None, description="Insight entity or tag category (e.g. urn:entity:place, urn:entity:artist)"
+        default=None,
+        description="Insight entity or tag category (e.g. urn:entity:place, urn:entity:artist)",
     )
     affinity: float = Field(
         ...,
@@ -60,7 +61,7 @@ class QlooInsight(BaseModel):
                     data["affinity"] = round(numeric_score, 4)
                 else:
                     data["affinity"] = 1.0
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 data["affinity"] = 0.0
         elif raw_affinity is not None:
             try:
@@ -70,14 +71,18 @@ class QlooInsight(BaseModel):
                     data["score"] = numeric_affinity
                 else:
                     data["affinity"] = round(numeric_affinity, 4)
-                    data["score"] = raw_score if raw_score is not None else numeric_affinity
-            except (ValueError, TypeError):
+                    data["score"] = (
+                        raw_score if raw_score is not None else numeric_affinity
+                    )
+            except ValueError, TypeError:
                 data["affinity"] = 0.0
         else:
             data["affinity"] = 0.0
 
         # Resolve explainability
-        explain = data.get("explainability") or data.get("reasons") or data.get("explanation")
+        explain = (
+            data.get("explainability") or data.get("reasons") or data.get("explanation")
+        )
         if isinstance(explain, list):
             data["explainability"] = [
                 str(x.get("text") if isinstance(x, dict) and "text" in x else x)

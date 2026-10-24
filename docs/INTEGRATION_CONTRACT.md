@@ -291,3 +291,228 @@ Tool executions return structured JSON error envelopes rather than raw exception
 1. **Authentication Failures (401, 403)**: Are never retried automatically. The system raises `QlooAuthenticationError` immediately to avoid locking API keys.
 2. **Spatial Filters Restricted**: Geographic location filters (`latitude`, `longitude`, `radius`) are only applied to `place` and `destination`. They are automatically omitted from queries for `artist`, `book`, `brand`, and `movie`.
 3. **Deterministic Single-Retry**: If a category returns 0 items, the service applies one deterministic fallback (broadened radius or dropped tag constraints) and retries once. If results remain empty, it returns `[]` without fabricating data.
+
+---
+
+## 10. Agent Intelligence & Orchestration Architecture (Developer 2)
+
+### 10.1. Workflow Philosophy & Boundaries
+- **No Unrestricted Autonomous Loops**: Agents operate within deterministic workflow boundaries governed by `WorkflowEngine`.
+- **Decoupled Transport**: Agents **NEVER** call Qloo REST APIs directly; all cultural intelligence is routed through `CulturalIntelligenceMCPAdapter` invoking the TasteOps Cultural Intelligence MCP Server.
+- **Strict Provenance & Anti-Hallucination**: Every Qloo entity ID, tag, and cultural recommendation used in activations, spatial zones, or brand partnerships must match verified evidence from Qloo resolution and insights. Hallucinated IDs are flagged and rejected by the Governance Agent.
+- **Human Approval Gate**: Execution cannot occur without explicit human approval at `AWAITING_APPROVAL`.
+
+### 10.2. Explicit 13 Workflow States
+The system strictly enforces valid state transitions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> INTENT_PARSED
+    INTENT_PARSED --> CULTURAL_TWIN_CREATED
+    CULTURAL_TWIN_CREATED --> QLOO_RESOLVED
+    QLOO_RESOLVED --> CULTURAL_MATRIX_READY
+    CULTURAL_MATRIX_READY --> AGENTS_RUNNING
+    AGENTS_RUNNING --> PLAN_GENERATED
+    PLAN_GENERATED --> VALIDATED
+    VALIDATED --> PLAN_GENERATED : Validation Failure (Bounded Cycles)
+    VALIDATED --> AWAITING_APPROVAL : Validation Passed
+    AWAITING_APPROVAL --> APPROVED : Human Approval
+    AWAITING_APPROVAL --> FAILED : Human Rejection
+    APPROVED --> EXECUTING
+    EXECUTING --> COMPLETED
+    EXECUTING --> FAILED
+    
+    CREATED --> FAILED
+    INTENT_PARSED --> FAILED
+    CULTURAL_TWIN_CREATED --> FAILED
+    QLOO_RESOLVED --> FAILED : Qloo Retries + Fallback Exhausted
+    CULTURAL_MATRIX_READY --> FAILED
+    AGENTS_RUNNING --> FAILED : Agent Retries Exhausted
+    PLAN_GENERATED --> FAILED
+    VALIDATED --> FAILED : Max Validation Cycles Exhausted
+```
+
+### 10.2. State Transition & Failure Recovery Contracts
+
+| State | Role & Responsibilities | Failure Transition & Recovery Path |
+| :--- | :--- | :--- |
+| `CREATED` | Session initialized with raw intent. | Invalid input format → `FAILED` |
+| `INTENT_PARSED` | User intent decomposed into structured domain hints, venue type, and raw terms. | Unparseable intent → `FAILED` |
+| `CULTURAL_TWIN_CREATED` | Structured `CulturalTwin` draft formed. | Brief validation error → `FAILED` |
+| `QLOO_RESOLVED` | Raw terms and motifs resolved to verified Qloo entity IDs and tags via MCP tools. | Network/Qloo 5xx: `RETRY` (bounded `max_qloo_retries=2`) → `FALLBACK` (sanitized anchors) → `FAILED` |
+| `CULTURAL_MATRIX_READY` | 6-domain CulturalMatrix fetched concurrently via MCP `get_cultural_matrix`. | Insights failure: `RETRY` (bounded `max_qloo_retries=2`) → `FALLBACK` (anchor-only profile) → `FAILED` |
+| `AGENTS_RUNNING` | Specialized agents invoked concurrently (Strategist, Architect, Partnership). | Agent crash/timeout: `RETRY` (bounded `max_agent_retries=2`) → `FAILED` |
+| `PLAN_GENERATED` | Agent outputs synthesized into unified `CulturalActivationPlan`. | Synthesis error → `FAILED` |
+| `VALIDATED` | `GovernanceAgent` audits provenance, ensures 0 invented IDs, checks compliance. | **Validation Failure**: transitions back to `PLAN_GENERATED` for curatorial refinement (bounded by `max_validation_cycles=2`). If cycles exhausted → `FAILED`. |
+| `AWAITING_APPROVAL` | Pipeline pauses; awaits human curator review. | Human curator rejects activation plan → `FAILED` |
+| `APPROVED` | Human curator approves activation plan. | Non-reversible gate; immutable record of approver identity. |
+| `EXECUTING` | Downstream physical space tasks dispatched with full provenance. | Action execution error → `FAILED` |
+| `COMPLETED` | All execution tasks completed with verifiable provenance. | Terminal success state. |
+| `FAILED` | Workflow halted; preserves audit event with detailed root-cause error. | Terminal failure state. |
+
+### 10.3. Loop Prevention & Guardrail Guarantees
+1. **Bounded Qloo Retries (`max_qloo_retries`)**: Network/API errors are retried at most 2 times before falling back to relaxed anchor queries. If fallback fails, state transitions to `FAILED`. Infinite network loops are strictly prohibited.
+2. **Bounded Agent Retries (`max_agent_retries`)**: Specialized agent execution errors are retried at most 2 times. If failures persist, the workflow transitions directly to `FAILED`. Autonomous agent recursion is strictly prohibited.
+3. **Bounded Validation Cycles (`max_validation_cycles`)**: Validation failure routes back from `VALIDATED` to `PLAN_GENERATED` for up to 2 corrective refinement cycles. If the plan remains invalid after 2 cycles, the workflow transitions to `FAILED`.
+4. **State Persistence & Audit Trail (`AuditEvent`)**:
+   - Every single transition emits an immutable `AuditEvent` (`event_id`, `session_id`, `from_state`, `to_state`, `timestamp`, `reason`, `metadata`, `error`).
+   - Pluggable persistence via `BaseStateStore`:
+     - `InMemoryStateStore`: In-memory storage for high-speed ephemeral execution.
+     - `FileStateStore`: Production filesystem storage persisting append-only JSONL audit events (`audit_events.jsonl`) and full JSON context state snapshots (`context.json`).
+
+### 10.4. The 4 Specialized Agents
+
+1. **Cultural Strategist (`CulturalStrategist`)**:
+   - **Purpose**: Transforms a user's physical-space brief (`PhysicalSpaceBrief`) into a structured, validated `CulturalTwin` that serves as the cultural foundation for all downstream agents.
+   - **Input**:
+     - `business_type`: Venue type (e.g. `"Analog Vinyl Listening Bar"`)
+     - `location`: Geographic coordinates or WKT string
+     - `target_audience`: Audience demographic & psychographic summary
+     - `positioning`: Market positioning (e.g. `"Japanese-inspired craft audio sanctuary"`)
+     - `desired_mood`: Atmospheric vibe and energy
+     - `budget`: Budget tier or parameters
+     - `constraints`: Operational and aesthetic guardrails
+     - `anchor_entities`: Natural language anchors and aesthetic motifs
+   - **Resolution & Provenance**:
+     - Resolves natural language anchors and vibes strictly via Cultural Intelligence MCP tools (`resolve_entity` and `resolve_tag`).
+     - **Zero Hallucination**: Never invents Qloo IDs or tags. Unknown terms are omitted from verified collections.
+   - **Cultural Reasoning**:
+     - Generates narrative explanations (`why_it_matters`) connecting each verified entity (brand, artist, place) and tag to the physical space.
+   - **Output (`CulturalTwin`)**:
+     - `audience_profile`: Synthesized demographic and psychographic profile
+     - `cultural_themes`: Core cultural thematic axes
+     - `mood_profile`: Detailed sonic, visual, and temporal mood breakdown
+     - `anchor_entities`: Original input terms from brief
+     - `resolved_entities`: List of `ResolvedEntity` models (id, name, type, confidence, why_it_matters)
+     - `resolved_tags`: List of verified Qloo tag IDs
+     - `cultural_constraints`: Concrete cultural guardrails
+     - `exclusions`: Cultural anti-patterns to avoid
+     - `confidence`: Overall profile confidence score
+   - **Boundary**: Does **NOT** produce recommendations yet (recommendations are generated downstream via `get_cultural_matrix`).
+   - **Downstream Strategy (`execute`)**: Synthesizes positioning statements and cultural pillars once `CulturalMatrix` is available.
+2. **Experience Architect (`ExperienceArchitect`)**:
+   - **Purpose**: Designs a coherent, multi-sensory cultural experience for the physical space based strictly on the `CulturalTwin` and `CulturalMatrix`.
+   - **Input**:
+     - `cultural_twin`: Structured cultural foundation containing audience profile, mood, constraints, and exclusions.
+     - `cultural_matrix`: Verified 6-category candidate matrix from Qloo Insights.
+   - **Curatorial Coherence Rules**:
+     - **Affinity Thresholding**: Filters out candidate signals below affinity threshold (>= 0.50).
+     - **Exclusion Filtering**: Prunes any entity matching items in `cultural_twin.exclusions`.
+     - **Zero Hallucination**: Every recommendation is grounded in an actual `CulturalMatrix` entity with verifiable Qloo provenance.
+   - **6 Cultural Experience Domains Generated**:
+     1. **Sonic Identity (`SonicIdentity`)**: Acoustic profile, playback mediums (e.g. vinyl, reel-to-reel, hi-fi analog), sound system directives, curated recommendations, and daypart sequencing (morning, afternoon, evening, night).
+     2. **Reading / Library Identity (`ReadingLibraryIdentity`)**: Curatorial themes, monograph/periodical selection, spatial display strategy, and book recommendations.
+     3. **Brand Ecosystem (`BrandEcosystem`)**: Material palette, tactile brand pairings, curated amenities, and partnership criteria.
+     4. **Local Experience Ecosystem (`LocalExperienceEcosystem`)**: Neighborhood context, third-place synergies, and curated community place recommendations.
+     5. **Cultural Programming Ideas (`CulturalProgrammingIdeas`)**: Curatorial pillars, recurring activations (listening sessions, reading salons, panel discussions), and scheduling cadences.
+     6. **Atmosphere Guidelines (`AtmosphereGuidelines`)**: Sonic parameters (dB thresholds, frequency weighting), lighting (color temperature, foot-candles), olfactory & thermal guidelines, hospitality tempo, spatial zoning, and sensory pairings.
+   - **Mandatory Recommendation Contract (`ExperienceRecommendation`)**:
+     Every curated recommendation across all domains strictly contains:
+     - `recommendation`: Name and description of the recommended entity.
+     - `qloo_evidence`: Exact Qloo entity ID, affinity score, query source, and explainability provenance.
+     - `cultural_rationale`: Cultural analysis connecting the entity's aesthetics to the space's positioning.
+     - `confidence`: Curatorial confidence score.
+     - `expected_role`: Concrete spatial/functional deployment role in the venue.
+3. **Partnership Agent (`PartnershipAgent`)**:
+   - **Purpose**: Identifies, evaluates, and structures high-resonance brand partnership candidates for physical venues using evidence from Qloo and operational brief constraints.
+   - **Input**:
+     - `cultural_twin`: Structured audience profile, mood, cultural themes, constraints, and exclusions.
+     - `cultural_matrix` / `brand_results`: Verified candidate brands from Qloo Insights.
+     - `business_constraints`: Operational boundaries (e.g. acoustic caps, spatial limitations, no commercial banners).
+     - `budget`: Operating tier or budget parameters.
+   - **6-Dimensional Scoring Engine (0 to 100)**:
+     For every candidate brand, computes:
+     1. **`AudienceFit`**: Direct Qloo cross-affinity percentage.
+     2. **`CulturalFit`**: Thematic and aesthetic alignment with cultural themes, mood, and positioning.
+     3. **`BrandCompatibility`**: Industry and category synergy with the physical venue's business model.
+     4. **`ContextFit`**: Physical space feasibility, spatial footprint, and operational integration.
+     5. **`BudgetFit`**: Alignment with venue budget tier (e.g. consignment/loan vs. sponsorship fees).
+     6. **`Novelty`**: Subcultural freshness and anti-generic appeal (penalizes mass-market retail ubiquity).
+     - **Normalized Composite Score (`overall_score`)**: Weighted composite from 0.0 to 100.0.
+   - **Candidate Return Schema (`BrandPartnershipCandidate`)**:
+     - `brand`: Brand name and category.
+     - `score`: Normalized score 0–100 with full 6-dimensional `score_breakdown`.
+     - `supporting_qloo_evidence`: Immutable Qloo evidence (entity ID, affinity, query, explainability).
+     - `partnership_concept`: Tailored physical collaboration blueprint (listening stations, tableware, amenities).
+     - `estimated_effort`: Level (Low/Medium/High) and operational effort rationale.
+     - `risk`: Objective risk assessment (brand dilution, operational complexity, mitigation).
+     - `recommended_next_action`: Immediate pragmatic action step for management.
+     - `outreach_draft` (`OutreachDraft`): Exploratory outreach communication (subject, opening hook referencing Qloo evidence, value proposition, call to action, disclaimer).
+   - **Strict Guardrails**:
+     - **No Claimed Partnerships**: `is_existing_partner = False` is enforced on all candidates.
+     - **Drafts Only**: Outreach letters are strictly generated as exploratory drafts.
+     - **Zero Hallucination**: 100% of candidate IDs and evidence trace directly to verified Qloo entities.
+4. **Governance / Execution Agent (`GovernanceAgent`)**:
+   - **Purpose**: Converts upstream cultural recommendations into an actionable, dependency-mapped `ExecutionPlan`, executes multi-point compliance validations, strictly enforces the Human-in-the-Loop approval gate, dispatches verified physical/digital execution tasks, and performs post-execution audits.
+   - **Deterministic 5-Phase Workflow**:
+     ```
+     PLAN → VALIDATE → APPROVAL → EXECUTION → AUDIT
+     ```
+   - **Phase 1: PLAN (`ExecutionPlan`)**:
+     Synthesizes recommendations into a structured blueprint prior to human approval:
+     - `actions`: List of typed action items ([`ExecutionPlanAction`](file:///d:/TasteOps/src/tasteops/workflows/schemas.py)) covering sound system calibration, physical tableware procurement, exploratory partner outreach, atmosphere dayparting, and cultural programming.
+     - `dependencies`: Explicit prerequisite mapping (e.g. `act_brand_01` requires `act_sonic_01`).
+     - `estimated_cost`: Granular financial cost estimate and budget allocation.
+     - `risks`: Operational, spatial, acoustic, and brand perception risks with concrete mitigations.
+     - `approvals_required`: List of required sign-off roles (`["General Manager", "Cultural Curator", "Financial Controller"]`).
+     - `evidence`: Supporting Qloo evidence items linking planned actions to cultural intelligence.
+   - **Phase 2: VALIDATE (7-Point Audit Engine)**:
+     Executes strict automated compliance checks before plan can enter the approval gate:
+     1. **Missing Evidence Audit**: Verifies that 100% of recommendations, signals, and partner proposals carry supporting Qloo queries and explainability data.
+     2. **Conflicting Recommendations Audit**: Audits against negative exclusions (prunes contradictory entities) and flags acoustic/atmospheric contradictions (e.g. excessive dB vs. quiet sanctuary).
+     3. **Budget Violations Audit**: Verifies that capital expenditure requirements remain strictly within the venue's configured budget tier.
+     4. **Invalid Entities Audit (Zero Hallucination)**: Audits every referenced entity ID against ground truth Qloo entities. Any unverified ID immediately fails validation.
+     5. **Low Confidence Audit**: Confirms all recommendations satisfy the minimum affinity and confidence thresholds ($\ge 0.50$).
+     6. **Duplicate Actions Audit**: Detects and eliminates redundant or duplicate action IDs and task targets.
+     7. **Unsupported External Actions Audit**: Restricts execution to validated integrations (`spotify_audio_seed`, `partner_outreach_brief`, `spatial_design_spec`, `curatorial_programming`, `hospitality_training`). Blocks unauthorized external mutations.
+   - **Phase 3: APPROVAL (Deterministic Human-in-the-Loop Gate)**:
+     - **Strict Execution Boundary**: The agent must **NEVER** execute external actions before explicit human approval.
+     - Attempts to execute an unapproved or invalid plan raise `UnapprovedExecutionError`.
+     - Human approval (`approve_plan`) records curator identity, timestamp, and transitions state to `APPROVED`.
+   - **Phase 4: EXECUTION (`ExecutionTask`)**:
+     Dispatches concrete execution tasks once approved. Every task strictly contains:
+     - `task_id`: Unique execution task identifier (e.g. `task_e24b7a1c`).
+     - `action`: Concrete execution instruction.
+     - `owner`: Designated human or operational role (e.g. `"Audio Curator"`, `"Spatial Designer"`).
+     - `input`: Parameter dictionary for automated or staff execution.
+     - `status`: Execution status (`"EXECUTED"`).
+     - `timestamp`: UTC execution timestamp.
+     - `provenance`: Traceability payload containing verified Qloo entity ID, plan ID, and curator approver.
+   - **Phase 5: AUDIT (`AuditReport`)**:
+     Produces a post-execution compliance audit certifying approval verification, zero provenance violations, and zero unauthorized action leaks.
+
+### 10.5. Programmatic Workflow Example
+```python
+from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
+from tasteops.workflows.engine import WorkflowEngine
+from tasteops.workflows.states import WorkflowState
+
+# Initialize engine with MCP adapter (no REST API calls)
+adapter = CulturalIntelligenceMCPAdapter()
+engine = WorkflowEngine(mcp_adapter=adapter)
+
+# 1. Run pipeline up to human approval gate
+ctx = await engine.run_pipeline_to_approval_gate(
+    raw_intent="Open an analog vinyl listening cafe with Japanese minimalism in Chelsea",
+    parsed_hints={
+        "venue_name": "Kissa Chelsea",
+        "raw_anchor_entities": ["Blue Bottle", "A24"],
+        "raw_tags": ["Japanese minimalism", "audiophile"],
+        "location": {"latitude": 40.7484, "longitude": -73.9857, "radius_meters": 2000},
+    },
+)
+
+assert ctx.current_state == WorkflowState.AWAITING_APPROVAL
+print(f"Validation passed: {ctx.plan.governance_report.validation_passed}")
+
+# 2. Human Curator reviews & approves
+await engine.approve_plan(ctx, approved_by="Curator: Maitray Agrawal")
+assert ctx.current_state == WorkflowState.APPROVED
+
+# 3. Execute downstream tasks
+await engine.execute_plan(ctx)
+assert ctx.current_state == WorkflowState.COMPLETED
+print(f"Executed {ctx.plan.execution_summary.executed_tasks} physical tasks.")
+```
+
