@@ -17,7 +17,7 @@ TasteOps/
 ├── docs/
 │   └── INTEGRATION_CONTRACT.md       # This integration specification
 ├── src/tasteops/
-│   ├── __init__.py                   # Canonical public exports
+│   ├── __init__.py                   # Canonical public exports (including TasteOpsOrchestrator)
 │   ├── config.py                     # QlooSettings configuration
 │   ├── cache.py                      # AsyncTTLCache and CacheBackend protocol
 │   ├── client.py                     # QlooClient async transport
@@ -37,18 +37,41 @@ TasteOps/
 │   │   ├── tag_resolver.py           # TagResolver
 │   │   ├── insights_service.py       # InsightsService (entity capability manager)
 │   │   └── cultural_matrix_service.py# CulturalMatrixService (concurrent multi-domain matrix)
-│   └── mcp/
-│       ├── __init__.py               # create_cultural_intelligence_mcp export
-│       ├── schemas.py                # MCP tool input/output models
-│       └── server.py                 # MCPServer tool registry and stdio entry point
+│   ├── mcp/
+│   │   ├── __init__.py               # create_cultural_intelligence_mcp export
+│   │   ├── schemas.py                # MCP tool input/output models
+│   │   └── server.py                 # MCPServer tool registry and stdio entry point
+│   ├── agents/
+│   │   ├── base.py                   # BaseAgent protocol and metadata
+│   │   ├── strategist.py             # CulturalStrategist agent
+│   │   ├── architect.py              # ExperienceArchitect agent
+│   │   ├── partnership.py            # PartnershipAgent agent
+│   │   ├── governance.py             # GovernanceAgent with validation & idempotency
+│   │   └── mcp_adapter.py            # CulturalIntelligenceMCPAdapter
+│   └── workflows/
+│       ├── __init__.py               # Workflow exports
+│       ├── states.py                 # 13 explicit WorkflowStates
+│       ├── schemas.py                # ExecutionPlan, ExecutionTask, ApprovalRecord, TaskProvenance
+│       ├── context.py                # WorkflowContext and AgentResults
+│       ├── persistence.py            # BaseStateStore, InMemoryStateStore, FileStateStore
+│       ├── engine.py                 # WorkflowEngine state machine
+│       └── orchestrator.py           # TasteOpsOrchestrator application service
 └── tests/
     ├── conftest.py                   # Pytest fixtures and mock transport
-    └── unit/
-        ├── test_cache.py             # Async TTL cache tests
-        ├── test_cultural_matrix_service.py # Capability, concurrency & fallback tests
-        ├── test_mcp_server.py        # MCP tools and protocol tests
-        ├── test_qloo_client.py       # Client retry, timeout, and auth exclusion tests
-        └── test_resolvers.py         # Entity & tag resolution tests
+    ├── fixtures/
+    │   ├── __init__.py               # Fixture package
+    │   └── demo_mumbai_boutique_hotel.py # Deterministic Mumbai Boutique Hotel fixture
+    ├── unit/
+    │   ├── test_agents.py            # Agent intelligence tests
+    │   ├── test_cache.py             # Async TTL cache tests
+    │   ├── test_cultural_matrix_service.py # Capability, concurrency & fallback tests
+    │   ├── test_mcp_server.py        # MCP tools and protocol tests
+    │   ├── test_qloo_client.py       # Client retry, timeout, and auth exclusion tests
+    │   ├── test_resolvers.py         # Entity & tag resolution tests
+    │   └── test_workflow.py          # State machine transitions & recovery tests
+    └── integration/
+        ├── __init__.py
+        └── test_orchestrator.py      # 14 end-to-end integration test scenarios
 ```
 
 ---
@@ -516,3 +539,283 @@ assert ctx.current_state == WorkflowState.COMPLETED
 print(f"Executed {ctx.plan.execution_summary.executed_tasks} physical tasks.")
 ```
 
+---
+
+## 11. Application & Frontend Integration Layer (Member 2 Final Orchestration Hardening)
+
+### 11.1. TasteOpsOrchestrator Interface
+
+`TasteOpsOrchestrator` provides a clean, unified application-facing service for FastAPI routes and frontend interaction. The API layer never needs to understand internal agent orchestration, state transitions, or retry policies.
+
+```python
+class TasteOpsOrchestrator:
+    def __init__(
+        self,
+        mcp_adapter: CulturalIntelligenceMCPAdapter | None = None,
+        state_store: BaseStateStore | None = None,
+        config: WorkflowConfig | None = None,
+    ) -> None: ...
+
+    async def create_session(
+        self,
+        space_id: str,
+        user_input: str,
+        parsed_hints: dict[str, Any] | None = None,
+    ) -> WorkflowContext: ...
+
+    async def run_until_approval(self, session_id: str) -> WorkflowContext: ...
+
+    async def approve_session(
+        self,
+        session_id: str,
+        approver: str,
+        plan_version: int = 1,
+    ) -> WorkflowContext: ...
+
+    async def reject_session(
+        self,
+        session_id: str,
+        reason: str,
+        reviewer: str,
+    ) -> WorkflowContext: ...
+
+    async def execute_approved_plan(self, session_id: str) -> WorkflowContext: ...
+
+    async def get_session_state(self, session_id: str) -> WorkflowContext: ...
+
+    async def get_audit_events(self, session_id: str) -> list[AuditEvent]: ...
+```
+
+### 11.2. Standardized WorkflowContext Model
+
+The session context is strictly typed using Pydantic models with zero untyped dictionaries:
+
+```python
+class WorkflowContext(BaseModel):
+    session_id: str
+    space_id: str
+    user_input: str
+    cultural_twin: CulturalTwin | None = None
+    cultural_matrix: CulturalMatrix | None = None
+    agent_results: AgentResults | None = None
+    execution_plan: ExecutionPlan | None = None
+    validation_result: GovernanceValidationResult | None = None
+    approval: ApprovalRecord | None = None
+    execution_tasks: list[ExecutionTask] = Field(default_factory=list)
+    current_state: WorkflowState = WorkflowState.CREATED
+    audit_events: list[AuditEvent] = Field(default_factory=list)
+
+    # Backward compatibility with existing pipeline components
+    raw_intent: str = Field(...)
+    plan: CulturalActivationPlan | None = None
+```
+
+#### Typed Agent Results Container (`AgentResults`)
+```python
+class AgentResults(BaseModel):
+    strategist: CulturalStrategyOutput | None = None
+    architect: ExperienceDesignOutput | None = None
+    partnership: BrandPartnershipOutput | None = None
+    governance: GovernanceValidationResult | None = None
+```
+
+### 11.3. Session Lifecycle & State Progression
+
+```
+[POST /sessions]
+      │
+      ▼
+   CREATED
+      │
+[POST /sessions/{id}/run]
+      │
+      ├─► INTENT_PARSED
+      ├─► CULTURAL_TWIN_CREATED
+      ├─► QLOO_RESOLVED (entity & tag resolution via MCP)
+      ├─► CULTURAL_MATRIX_READY (concurrent 6-domain insights via MCP)
+      ├─► AGENTS_RUNNING (Strategist, Architect, Partnership concurrent execution)
+      ├─► PLAN_GENERATED (synthesis into ExecutionPlan v1)
+      ├─► VALIDATED (GovernanceAgent 7-point audit)
+      │       │
+      │       ├── (Validation Failure: bounded refinement loop)
+      │       │
+      ▼
+AWAITING_APPROVAL ◄── PAUSE: Human curator review required
+      │
+      ├───────────────────────────────┐
+      │ [POST /approve]               │ [POST /reject]
+      ▼                               ▼
+   APPROVED                         FAILED (Curator rejected)
+      │
+[POST /sessions/{id}/execute]
+      │
+      ├─► Cryptographic plan hash check
+      ├─► Task provenance verification (all 11 fields)
+      ├─► Idempotent task deduplication
+      ▼
+  EXECUTING
+      │
+      ▼
+  COMPLETED ◄── Terminal success state
+```
+
+### 11.4. Approval Semantics & Cryptographic Plan Binding
+
+The approval gate binds human curator authorization to an exact plan version and its cryptographic hash:
+
+```python
+class ApprovalRecord(BaseModel):
+    session_id: str
+    plan_id: str
+    plan_version: int
+    plan_hash: str                  # SHA-256 of the execution plan content
+    approver: str                   # e.g., "Curator: Maitray Agrawal"
+    approved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_valid: bool = True
+```
+
+#### Plan Mutation Invalidation Rule
+- An approval for Plan v1 **never** authorizes Plan v2.
+- Any mutation to the underlying `CulturalActivationPlan` or `ExecutionPlan` alters the computed SHA-256 hash.
+- Upon calling `execute_approved_plan()`:
+  - If `approval.plan_hash != plan.compute_hash()`, the approval is immediately invalidated (`is_valid = False`), state transitions to `FAILED`, and `UnapprovedExecutionError` is raised.
+
+### 11.5. Execution Task Idempotency
+
+To prevent accidental re-execution of physical space actions (e.g. double-booking an artist, duplicate tableware procurement, or duplicate Spotify seed injection), every execution task enforces idempotency:
+
+```python
+class ExecutionTask(BaseModel):
+    task_id: str
+    idempotency_key: str            # Deterministic: idem_{plan_id}_{owner}_{category}_{target_entity}
+    action: str
+    owner: str
+    input: dict[str, Any]
+    status: str = "PENDING"         # PENDING -> EXECUTED / FAILED
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    provenance: dict[str, Any]      # Standardized TaskProvenance dictionary
+    result: dict[str, Any] | None = None
+```
+
+- **Deduplication Store**: The `GovernanceAgent` maintains an execution task store keyed by `idempotency_key`.
+- If an already-executed task is submitted again, the system skips re-execution and returns the cached task instance along with its original `result` and execution timestamp.
+
+### 11.6. Audit Provenance Guarantee (11 Mandatory Fields)
+
+Every recommendation and execution task must retain full provenance. Execution is strictly blocked if provenance validation fails:
+
+```python
+class TaskProvenance(BaseModel):
+    # Minimum recommendation provenance (5 fields)
+    source: str                     # e.g., "qloo_insights", "qloo_search"
+    source_id: str                  # Verified Qloo Entity ID (e.g., "ent_a24_film")
+    source_type: str                # "brand", "artist", "place", "movie", "book"
+    query: str                      # e.g., "/v2/insights?filter.type=urn:entity:artist"
+    timestamp: datetime
+
+    # Execution provenance (6 fields)
+    task_id: str                    # Unique execution task ID
+    plan_id: str                    # Approved plan ID
+    session_id: str                 # Workflow session ID
+    approved_by: str                # Identity of approving curator
+    approved_at: datetime           # Timestamp of human approval
+    execution_status: str           # "EXECUTED" or "SKIPPED_IDEMPOTENT"
+```
+
+- Any task with a missing entity ID, a blank source ID, or an unverified prefix (`invalid_`, `unverified_`) fails provenance validation and raises `TaskProvenanceError`.
+
+### 11.7. Deterministic Demo Fixture
+
+A sanitized, non-mock-dependent fixture is available at `tests/fixtures/demo_mumbai_boutique_hotel.py`:
+
+- **Business**: Boutique Hotel
+- **Location**: Mumbai, Colaba (`latitude: 18.9220`, `longitude: 72.8347`)
+- **Audience**: Affluent design-conscious professionals
+- **Positioning**: Contemporary Indian luxury
+- **Mood**: Sophisticated / intimate / creative
+- **Cultural Anchors**:
+  - Independent cinema (Whistling Woods, MAMI, Prithvi Theatre)
+  - Alternative music (Peter Cat Recording Co., Lifafa, Parekh & Singh)
+  - Contemporary Indian design (Raw Mango, Nicobar, Studio Lotus)
+- **Sanitization**: All fixture IDs are prefixed with `test_fixture_*` to ensure deterministic isolation from real Qloo production queries.
+
+### 11.8. Failure Behavior & Bounded Recovery
+
+| Failure Scenario | State Transition | Recovery Policy |
+| :--- | :--- | :--- |
+| **Qloo API Unavailable / 5xx** | `QLOO_RESOLVED` → `RETRY` → `FALLBACK` → `FAILED` | Maximum 2 retries; 1 fallback query with relaxed constraints. Halts if exhausted. |
+| **Agent Crash or Exception** | `AGENTS_RUNNING` → `RETRY` → `FAILED` | Maximum 2 bounded retries per agent. Prevents infinite agent execution loops. |
+| **Validation Failure** | `VALIDATED` → `PLAN_GENERATED` → `FAILED` | Bounded refinement loop (max 2 cycles). If unresolvable, transitions to `FAILED`. |
+| **Curator Rejection** | `AWAITING_APPROVAL` → `FAILED` | Terminal rejection state; captures curator rejection reason and timestamp in audit event. |
+| **Plan Mutation Post-Approval** | `APPROVED` → `FAILED` | Immediate invalidation of approval. Raises `UnapprovedExecutionError`. |
+| **Missing / Invalid Provenance** | `APPROVED` → `FAILED` | Halts before task dispatch. Raises `TaskProvenanceError`. |
+
+### 11.9. FastAPI Integration Example
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from tasteops.workflows.orchestrator import TasteOpsOrchestrator
+
+app = FastAPI(title="TasteOps Orchestration API")
+orchestrator = TasteOpsOrchestrator()
+
+class CreateSessionRequest(BaseModel):
+    space_id: str
+    user_input: str
+
+class ApprovalRequest(BaseModel):
+    approver: str
+    plan_version: int = 1
+
+class RejectionRequest(BaseModel):
+    reason: str
+    reviewer: str
+
+@app.post("/sessions")
+async def create_session(req: CreateSessionRequest):
+    ctx = await orchestrator.create_session(space_id=req.space_id, user_input=req.user_input)
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
+
+@app.post("/sessions/{session_id}/run")
+async def run_until_approval(session_id: str):
+    ctx = await orchestrator.run_until_approval(session_id=session_id)
+    return {
+        "session_id": ctx.session_id,
+        "state": ctx.current_state.value,
+        "execution_plan": ctx.execution_plan,
+        "validation_passed": ctx.validation_result.validation_passed if ctx.validation_result else False,
+    }
+
+@app.post("/sessions/{session_id}/approve")
+async def approve_session(session_id: str, req: ApprovalRequest):
+    ctx = await orchestrator.approve_session(
+        session_id=session_id, approver=req.approver, plan_version=req.plan_version
+    )
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value, "approval": ctx.approval}
+
+@app.post("/sessions/{session_id}/reject")
+async def reject_session(session_id: str, req: RejectionRequest):
+    ctx = await orchestrator.reject_session(session_id=session_id, reason=req.reason, reviewer=req.reviewer)
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
+
+@app.post("/sessions/{session_id}/execute")
+async def execute_approved_plan(session_id: str):
+    ctx = await orchestrator.execute_approved_plan(session_id=session_id)
+    return {
+        "session_id": ctx.session_id,
+        "state": ctx.current_state.value,
+        "tasks_executed": len(ctx.execution_tasks),
+        "tasks": ctx.execution_tasks,
+    }
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    ctx = await orchestrator.get_session_state(session_id=session_id)
+    return ctx
+
+@app.get("/sessions/{session_id}/audit")
+async def get_audit(session_id: str):
+    events = await orchestrator.get_audit_events(session_id=session_id)
+    return {"session_id": session_id, "events": events}
+```

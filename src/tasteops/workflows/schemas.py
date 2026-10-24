@@ -587,6 +587,7 @@ class ExecutionPlan(BaseModel):
     """Structured execution plan generated prior to approval."""
 
     plan_id: str = Field(..., description="Execution plan unique ID")
+    version: int = Field(default=1, description="Plan revision number")
     actions: list[ExecutionPlanAction] = Field(
         ..., description="List of planned actions"
     )
@@ -611,10 +612,59 @@ class ExecutionPlan(BaseModel):
     )
 
 
+class TaskProvenance(BaseModel):
+    """Mandatory provenance payload for execution tasks."""
+
+    source: str = Field(..., description="Provenance source, e.g. 'qloo_insights'")
+    source_id: str = Field(..., description="Verified Qloo entity or tag ID")
+    source_type: str = Field(
+        ..., description="Entity type, e.g. 'artist', 'brand', 'place'"
+    )
+    query: str = Field(..., description="Query endpoint or tool invoked")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Timestamp of source resolution",
+    )
+    task_id: str = Field(..., description="Unique execution task identifier")
+    plan_id: str = Field(..., description="Parent plan identifier")
+    session_id: str = Field(default="", description="Parent session identifier")
+    approved_by: str = Field(..., description="Authorizing approver identity")
+    approved_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Authorizing approval timestamp",
+    )
+    execution_status: str = Field(default="EXECUTED", description="Execution status")
+
+
+class ApprovalRecord(BaseModel):
+    """Immutable record of human curator plan sign-off."""
+
+    session_id: str = Field(..., description="Workflow session identifier")
+    plan_id: str = Field(..., description="Identifier of the approved plan")
+    plan_version: int = Field(default=1, description="Version of the approved plan")
+    plan_hash: str = Field(
+        default="",
+        description="Cryptographic content hash of the plan at time of approval",
+    )
+    approver: str = Field(..., description="Identity of the approving human curator")
+    approved_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="UTC timestamp of approval",
+    )
+    is_valid: bool = Field(default=True, description="Whether approval remains valid")
+    invalidation_reason: str | None = Field(
+        default=None, description="Reason if approval was invalidated"
+    )
+
+
 class ExecutionTask(BaseModel):
     """Single concrete action item executed upon plan approval."""
 
     task_id: str = Field(..., description="Unique execution task identifier")
+    idempotency_key: str = Field(
+        default="",
+        description="Unique idempotency key preventing duplicate execution",
+    )
     action: str = Field(default="", description="Action description or instruction")
     owner: str = Field(default="System", description="Responsible role or agent")
     input: dict[str, Any] = Field(
@@ -631,6 +681,10 @@ class ExecutionTask(BaseModel):
     provenance: dict[str, Any] = Field(
         default_factory=dict,
         description="Qloo entity provenance and verification trace",
+    )
+    result: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Execution output result payload",
     )
     # Backward-compatible fields
     category: str = Field(
@@ -650,6 +704,10 @@ class ExecutionTask(BaseModel):
     output_reference: str | None = Field(
         default=None, description="External resource reference URI"
     )
+
+    def model_post_init(self, context: Any) -> None:
+        if not self.idempotency_key:
+            self.idempotency_key = f"idem_{self.task_id}"
 
 
 class AuditReport(BaseModel):
@@ -703,6 +761,7 @@ class CulturalActivationPlan(BaseModel):
     """Holistic physical space activation plan synthesized across all agents."""
 
     plan_id: str
+    version: int = Field(default=1, description="Plan revision number")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     cultural_twin: CulturalTwin
     cultural_matrix: CulturalMatrix
@@ -715,3 +774,23 @@ class CulturalActivationPlan(BaseModel):
         description="Pre-approval execution plan with actions, dependencies, and cost",
     )
     execution_summary: ExecutionSummary | None = None
+
+    def compute_hash(self) -> str:
+        """Computes a deterministic hash of substantive plan content to detect mutations."""
+        import hashlib
+        import json
+
+        data = {
+            "plan_id": self.plan_id,
+            "version": self.version,
+            "strategy": self.strategy.positioning_statement,
+            "pillars": [p.name for p in self.strategy.cultural_pillars],
+            "actions": (
+                [a.action_id for a in self.execution_plan.actions]
+                if self.execution_plan
+                else []
+            ),
+            "partners": [p.partner_name for p in self.partnerships.partnerships],
+        }
+        serialized = json.dumps(data, sort_keys=True)
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()

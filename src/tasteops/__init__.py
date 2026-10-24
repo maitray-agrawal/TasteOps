@@ -53,6 +53,7 @@ from tasteops.services import (
 )
 from tasteops.workflows import (
     CulturalActivationPlan,
+    TasteOpsOrchestrator,
     WorkflowContext,
     WorkflowEngine,
     WorkflowState,
@@ -101,6 +102,7 @@ __all__ = [
     "TagParams",
     "TagResolutionResult",
     "TagResolver",
+    "TasteOpsOrchestrator",
     "WorkflowContext",
     "WorkflowEngine",
     "WorkflowState",

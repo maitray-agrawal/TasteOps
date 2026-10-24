@@ -5,8 +5,13 @@ from tasteops.models.cultural_matrix import (
     ResolvedEntity,
     ResolvedTag,
 )
-from tasteops.workflows.context import StateTransitionRecord, WorkflowContext
+from tasteops.workflows.context import (
+    AgentResults,
+    StateTransitionRecord,
+    WorkflowContext,
+)
 from tasteops.workflows.engine import WorkflowEngine
+from tasteops.workflows.orchestrator import TasteOpsOrchestrator
 from tasteops.workflows.persistence import (
     AuditEvent,
     BaseStateStore,
@@ -14,6 +19,7 @@ from tasteops.workflows.persistence import (
     InMemoryStateStore,
 )
 from tasteops.workflows.schemas import (
+    ApprovalRecord,
     AtmosphereGuidelines,
     AuditReport,
     BrandEcosystem,
@@ -44,6 +50,7 @@ from tasteops.workflows.schemas import (
     ReadingLibraryIdentity,
     SonicIdentity,
     SpatialZone,
+    TaskProvenance,
 )
 from tasteops.workflows.states import (
     InvalidStateTransitionError,
@@ -52,6 +59,8 @@ from tasteops.workflows.states import (
 )
 
 __all__ = [
+    "AgentResults",
+    "ApprovalRecord",
     "AtmosphereGuidelines",
     "AuditEvent",
     "AuditReport",
@@ -91,6 +100,8 @@ __all__ = [
     "SonicIdentity",
     "SpatialZone",
     "StateTransitionRecord",
+    "TaskProvenance",
+    "TasteOpsOrchestrator",
     "WorkflowContext",
     "WorkflowEngine",
     "WorkflowState",

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from tasteops.workflows.schemas import (
+    ApprovalRecord,
     AuditReport,
     ComplianceCheck,
     CulturalActivationPlan,
@@ -31,6 +32,10 @@ class UnapprovedExecutionError(RuntimeError):
     """Raised when an attempt is made to execute external actions before explicit approval."""
 
 
+class ProvenanceValidationError(RuntimeError):
+    """Raised when an execution task lacks mandatory verifiable provenance."""
+
+
 class GovernanceAgent:
     """Agent validating plan compliance, auditing provenance, and managing execution."""
 
@@ -44,6 +49,9 @@ class GovernanceAgent:
         "curatorial_programming",
         "hospitality_training",
     }
+
+    def __init__(self) -> None:
+        self._idempotency_store: dict[str, ExecutionTask] = {}
 
     # -------------------------------------------------------------------------
     # 1. PLAN Phase: Generate ExecutionPlan
@@ -469,6 +477,36 @@ class GovernanceAgent:
             readiness_score=readiness_score,
         )
 
+    def validate_task_provenance(self, task: ExecutionTask) -> None:
+        """Validates that an execution task retains complete verifiable provenance."""
+        required_keys = [
+            "source",
+            "source_id",
+            "source_type",
+            "query",
+            "timestamp",
+            "task_id",
+            "plan_id",
+            "session_id",
+            "approved_by",
+            "approved_at",
+            "execution_status",
+        ]
+        prov = task.provenance or {}
+        missing = [k for k in required_keys if not prov.get(k)]
+        if missing:
+            raise ProvenanceValidationError(
+                f"Execution blocked: Task '{task.task_id}' missing mandatory provenance fields: {missing}"
+            )
+        source_id = str(prov.get("source_id", ""))
+        if (
+            source_id.startswith(("invalid_", "unverified_"))
+            or source_id == "unverified"
+        ):
+            raise ProvenanceValidationError(
+                f"Execution blocked: Task '{task.task_id}' references invalid/unverified Qloo ID '{source_id}'."
+            )
+
     # -------------------------------------------------------------------------
     # 3. APPROVAL & 4. EXECUTION Phases: Enforce Gate & Generate Tasks
     # -------------------------------------------------------------------------
@@ -477,11 +515,16 @@ class GovernanceAgent:
         plan: CulturalActivationPlan,
         is_approved: bool = True,
         approved_by: str | None = None,
+        approval: ApprovalRecord | None = None,
+        session_id: str | None = None,
     ) -> ExecutionSummary:
         """Executes concrete downstream activation tasks once human approval is confirmed.
 
-        Strict Constraint:
-        The agent must NEVER execute external actions before explicit approval.
+        Strict Constraints:
+        - The agent must NEVER execute external actions before explicit approval.
+        - Execution must be idempotent: tasks with matching idempotency keys return existing results.
+        - Approval must match plan_id and plan_version, and plan must not have mutated.
+        - Every execution task must pass strict provenance validation before execution.
         """
         # Strict Human-in-the-Loop Gate Enforcement
         if not is_approved:
@@ -493,6 +536,28 @@ class GovernanceAgent:
             raise UnapprovedExecutionError(
                 "The agent must NEVER execute external actions before explicit approval."
             )
+
+        if approval is not None:
+            if not approval.is_valid:
+                raise UnapprovedExecutionError(
+                    f"Approval is invalidated: {approval.invalidation_reason or 'Invalid approval'}"
+                )
+            if approval.plan_id != plan.plan_id:
+                raise UnapprovedExecutionError(
+                    f"Approval plan_id '{approval.plan_id}' does not match plan '{plan.plan_id}'."
+                )
+            if approval.plan_version != plan.version:
+                raise UnapprovedExecutionError(
+                    f"Approval for plan version {approval.plan_version} does not authorize version {plan.version}."
+                )
+            # Mutation Check: If plan hash changed after approval, invalidate!
+            current_hash = plan.compute_hash()
+            if approval.plan_hash and approval.plan_hash != current_hash:
+                approval.is_valid = False
+                approval.invalidation_reason = "Plan was mutated after approval"
+                raise UnapprovedExecutionError(
+                    "Plan was mutated after approval. Previous approval is invalidated."
+                )
 
         if plan.governance and not plan.governance.is_valid:
             logger.error(
@@ -513,15 +578,33 @@ class GovernanceAgent:
 
         tasks: list[ExecutionTask] = []
         now = datetime.now(UTC)
-        approver_tag = approved_by or "human_curator"
+        approver_tag = (
+            (approval.approver if approval else None) or approved_by or "human_curator"
+        )
+        approval_time = (approval.approved_at if approval else None) or now
+        sess_id = (
+            (approval.session_id if approval else None) or session_id or plan.plan_id
+        )
 
         # 1. Spotify Audio Seeding Task
         if plan.cultural_matrix.artists:
             lead_artist = plan.cultural_matrix.artists[0]
-            task_id = f"task_{uuid.uuid4().hex[:8]}"
-            tasks.append(
-                ExecutionTask(
+            task_id = f"task_{lead_artist.id}_{plan.plan_id[:6]}"
+            idem_key = f"idem_{plan.plan_id}_spotify_{lead_artist.id}"
+
+            if (
+                idem_key in self._idempotency_store
+                and self._idempotency_store[idem_key].status == "EXECUTED"
+            ):
+                logger.info(
+                    "Task with idempotency key '%s' was already executed. Returning previous result.",
+                    idem_key,
+                )
+                tasks.append(self._idempotency_store[idem_key])
+            else:
+                task = ExecutionTask(
                     task_id=task_id,
+                    idempotency_key=idem_key,
                     action=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
                     owner="Audio Curator",
                     input={
@@ -534,10 +617,18 @@ class GovernanceAgent:
                     status="EXECUTED",
                     timestamp=now,
                     provenance={
-                        "entity_id": lead_artist.id,
                         "source": "qloo_insights_artist",
+                        "source_id": lead_artist.id,
+                        "source_type": "artist",
+                        "query": "/v2/insights",
+                        "timestamp": now.isoformat(),
+                        "task_id": task_id,
                         "plan_id": plan.plan_id,
+                        "session_id": sess_id,
                         "approved_by": approver_tag,
+                        "approved_at": approval_time.isoformat(),
+                        "execution_status": "EXECUTED",
+                        "entity_id": lead_artist.id,
                     },
                     category="spotify_audio_seed",
                     description=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
@@ -545,15 +636,30 @@ class GovernanceAgent:
                     target_entity_id=lead_artist.id,
                     executed_at=now,
                     output_reference=f"spotify://seed_artist/{lead_artist.id}",
+                    result={"status": "dispatched", "artist_id": lead_artist.id},
                 )
-            )
+                self.validate_task_provenance(task)
+                self._idempotency_store[idem_key] = task
+                tasks.append(task)
 
         # 2. Partnership Outreach Brief Dispatch Tasks
         for p in plan.partnerships.partnerships[:2]:
-            task_id = f"task_{uuid.uuid4().hex[:8]}"
-            tasks.append(
-                ExecutionTask(
+            task_id = f"task_{p.partner_entity_id}_{plan.plan_id[:6]}"
+            idem_key = f"idem_{plan.plan_id}_partner_{p.partner_entity_id}"
+
+            if (
+                idem_key in self._idempotency_store
+                and self._idempotency_store[idem_key].status == "EXECUTED"
+            ):
+                logger.info(
+                    "Task with idempotency key '%s' was already executed. Returning previous result.",
+                    idem_key,
+                )
+                tasks.append(self._idempotency_store[idem_key])
+            else:
+                task = ExecutionTask(
                     task_id=task_id,
+                    idempotency_key=idem_key,
                     action=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
                     owner="Partnership Director",
                     input={
@@ -565,10 +671,18 @@ class GovernanceAgent:
                     status="EXECUTED",
                     timestamp=now,
                     provenance={
-                        "entity_id": p.partner_entity_id,
                         "source": "qloo_insights_brand",
+                        "source_id": p.partner_entity_id,
+                        "source_type": "brand",
+                        "query": "/v2/insights",
+                        "timestamp": now.isoformat(),
+                        "task_id": task_id,
                         "plan_id": plan.plan_id,
+                        "session_id": sess_id,
                         "approved_by": approver_tag,
+                        "approved_at": approval_time.isoformat(),
+                        "execution_status": "EXECUTED",
+                        "entity_id": p.partner_entity_id,
                     },
                     category="partner_outreach_brief",
                     description=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
@@ -576,16 +690,40 @@ class GovernanceAgent:
                     target_entity_id=p.partner_entity_id,
                     executed_at=now,
                     output_reference=f"brief://partner/{p.partner_entity_id}",
+                    result={
+                        "status": "drafted",
+                        "partner_entity_id": p.partner_entity_id,
+                    },
                 )
-            )
+                self.validate_task_provenance(task)
+                self._idempotency_store[idem_key] = task
+                tasks.append(task)
 
         # 3. Spatial Specification Task
         if plan.experience_design.spatial_zones:
             lead_zone = plan.experience_design.spatial_zones[0]
-            task_id = f"task_{uuid.uuid4().hex[:8]}"
-            tasks.append(
-                ExecutionTask(
+            task_id = f"task_{lead_zone.zone_name.lower().replace(' ', '_')}_{plan.plan_id[:6]}"
+            idem_key = f"idem_{plan.plan_id}_spatial_{lead_zone.zone_name.lower().replace(' ', '_')}"
+
+            if (
+                idem_key in self._idempotency_store
+                and self._idempotency_store[idem_key].status == "EXECUTED"
+            ):
+                logger.info(
+                    "Task with idempotency key '%s' was already executed. Returning previous result.",
+                    idem_key,
+                )
+                tasks.append(self._idempotency_store[idem_key])
+            else:
+                source_id = (
+                    plan.cultural_matrix.places[0].id
+                    if plan.cultural_matrix.places
+                    else f"zone_{lead_zone.zone_name.lower().replace(' ', '_')}"
+                )
+                source_type = "place" if plan.cultural_matrix.places else "spatial_zone"
+                task = ExecutionTask(
                     task_id=task_id,
+                    idempotency_key=idem_key,
                     action=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
                     owner="Spatial Designer",
                     input={
@@ -596,18 +734,33 @@ class GovernanceAgent:
                     status="EXECUTED",
                     timestamp=now,
                     provenance={
-                        "zone": lead_zone.zone_name,
+                        "source": "qloo_insights_place",
+                        "source_id": source_id,
+                        "source_type": source_type,
+                        "query": "/v2/insights",
+                        "timestamp": now.isoformat(),
+                        "task_id": task_id,
                         "plan_id": plan.plan_id,
+                        "session_id": sess_id,
                         "approved_by": approver_tag,
+                        "approved_at": approval_time.isoformat(),
+                        "execution_status": "EXECUTED",
+                        "zone": lead_zone.zone_name,
                     },
                     category="spatial_design_spec",
                     description=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
                     target_partner_or_artist=lead_zone.zone_name,
-                    target_entity_id="zone_lead_spec",
+                    target_entity_id=source_id,
                     executed_at=now,
                     output_reference=f"spec://zone/{lead_zone.zone_name.lower().replace(' ', '_')}",
+                    result={
+                        "status": "generated",
+                        "zone": lead_zone.zone_name,
+                    },
                 )
-            )
+                self.validate_task_provenance(task)
+                self._idempotency_store[idem_key] = task
+                tasks.append(task)
 
         # ---------------------------------------------------------------------
         # 5. AUDIT Phase: Generate Post-Execution Audit Report

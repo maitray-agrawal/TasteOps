@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from tasteops.models.cultural_matrix import (
@@ -32,6 +33,7 @@ from tasteops.workflows.persistence import (
     InMemoryStateStore,
 )
 from tasteops.workflows.schemas import (
+    ApprovalRecord,
     CulturalActivationPlan,
     CulturalStrategyInput,
     ExperienceDesignInput,
@@ -113,14 +115,22 @@ class WorkflowEngine:
     # Transition: Step 1 - Initialize and Parse Intent
     # -------------------------------------------------------------------------
     def initialize_session(
-        self, raw_intent: str, parsed_hints: dict[str, Any] | None = None
+        self,
+        raw_intent: str,
+        parsed_hints: dict[str, Any] | None = None,
+        space_id: str | None = None,
     ) -> WorkflowContext:
         """Creates a fresh session in CREATED state."""
-        ctx = WorkflowContext(raw_intent=raw_intent, parsed_intent=parsed_hints or {})
+        ctx = WorkflowContext(
+            user_input=raw_intent,
+            space_id=space_id,
+            parsed_intent=parsed_hints or {},
+        )
         self._record_and_persist(
             ctx,
             WorkflowState.CREATED,
             reason="Session initialized with raw intent",
+            metadata={"space_id": space_id} if space_id else {},
         )
         return ctx
 
@@ -460,6 +470,7 @@ class WorkflowEngine:
             governance=ctx.governance_output,
             execution_plan=execution_plan,
         )
+        ctx.sync_outputs()
 
         self._record_and_persist(
             ctx,
@@ -568,6 +579,7 @@ class WorkflowEngine:
             WorkflowState.AWAITING_APPROVAL,
             reason="Engine paused at approval gate. Waiting for human curator sign-off.",
         )
+        ctx.sync_outputs()
         return ctx
 
     # -------------------------------------------------------------------------
@@ -576,15 +588,36 @@ class WorkflowEngine:
     async def approve_plan(
         self, ctx: WorkflowContext, approver: str = "human_curator"
     ) -> WorkflowContext:
-        """Transitions AWAITING_APPROVAL -> APPROVED."""
+        """Transitions AWAITING_APPROVAL -> APPROVED with cryptographic plan binding."""
         validate_transition(ctx.current_state, WorkflowState.APPROVED)
+
+        if not ctx.plan:
+            raise RuntimeError("Cannot approve: Plan is missing.")
+
+        plan_hash = ctx.plan.compute_hash()
+        approval_rec = ApprovalRecord(
+            session_id=ctx.session_id,
+            plan_id=ctx.plan.plan_id,
+            plan_version=ctx.plan.version,
+            plan_hash=plan_hash,
+            approver=approver,
+            approved_at=datetime.now(UTC),
+            is_valid=True,
+        )
+        ctx.approval = approval_rec
 
         self._record_and_persist(
             ctx,
             WorkflowState.APPROVED,
             reason=f"Plan approved by authorized curator: {approver}",
-            metadata={"approver": approver},
+            metadata={
+                "approver": approver,
+                "plan_id": ctx.plan.plan_id,
+                "plan_version": ctx.plan.version,
+                "plan_hash": plan_hash,
+            },
         )
+        ctx.sync_outputs()
         return ctx
 
     async def reject_plan(
@@ -592,6 +625,10 @@ class WorkflowEngine:
     ) -> WorkflowContext:
         """Transitions AWAITING_APPROVAL -> FAILED."""
         validate_transition(ctx.current_state, WorkflowState.FAILED)
+
+        if ctx.approval:
+            ctx.approval.is_valid = False
+            ctx.approval.invalidation_reason = f"Rejected: {reason}"
 
         self._record_and_persist(
             ctx,
@@ -601,6 +638,7 @@ class WorkflowEngine:
             error=reason,
         )
         ctx.error_message = reason
+        ctx.sync_outputs()
         return ctx
 
     # -------------------------------------------------------------------------
@@ -618,20 +656,27 @@ class WorkflowEngine:
         if not ctx.plan:
             raise RuntimeError("Cannot execute: Plan is missing.")
 
-        # Identify approver from audit history
-        last_approver = "curator"
-        for record in reversed(ctx.history):
-            if (
-                record.to_state == WorkflowState.APPROVED
-                and "approver" in record.metadata
-            ):
-                last_approver = record.metadata["approver"]
-                break
+        # Identify approver from approval record or audit history
+        last_approver = ctx.approval.approver if ctx.approval else "curator"
+        if not ctx.approval:
+            for record in reversed(ctx.history):
+                if (
+                    record.to_state == WorkflowState.APPROVED
+                    and "approver" in record.metadata
+                ):
+                    last_approver = record.metadata["approver"]
+                    break
 
         execution_summary = await self.governance.execute_plan(
-            ctx.plan, is_approved=True, approved_by=last_approver
+            ctx.plan,
+            is_approved=True,
+            approved_by=last_approver,
+            approval=ctx.approval,
+            session_id=ctx.session_id,
         )
         ctx.plan.execution_summary = execution_summary
+        ctx.execution_tasks = execution_summary.tasks
+        ctx.sync_outputs()
 
         validate_transition(ctx.current_state, WorkflowState.COMPLETED)
         self._record_and_persist(
@@ -652,10 +697,11 @@ class WorkflowEngine:
         self,
         raw_intent: str,
         parsed_hints: dict[str, Any] | None = None,
+        space_id: str | None = None,
         take_per_category: int = 10,
     ) -> WorkflowContext:
         """Executes workflow deterministically from CREATED to AWAITING_APPROVAL."""
-        ctx = self.initialize_session(raw_intent, parsed_hints)
+        ctx = self.initialize_session(raw_intent, parsed_hints, space_id=space_id)
         await self.parse_intent(ctx)
         if ctx.current_state == WorkflowState.FAILED:
             return ctx
