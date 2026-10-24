@@ -61,9 +61,13 @@ class CulturalStrategist:
         6. Return foundational CulturalTwin without recommendations.
         """
         if isinstance(brief, dict):
-            brief_obj = PhysicalSpaceBrief(**brief)
-        else:
+            brief_obj = PhysicalSpaceBrief.model_validate(brief)
+        elif isinstance(brief, PhysicalSpaceBrief):
             brief_obj = brief
+        else:
+            raise TypeError(
+                f"Expected PhysicalSpaceBrief or dict, got {type(brief).__name__}"
+            )
 
         logger.info(
             "[%s] Transforming physical-space brief for '%s' (Anchors: %d)",
@@ -384,6 +388,13 @@ class CulturalStrategist:
     # -------------------------------------------------------------------------
     async def execute(self, payload: CulturalStrategyInput) -> CulturalStrategyOutput:
         """Executes strategic synthesis over the CulturalTwin and CulturalMatrix."""
+        if isinstance(payload, dict):
+            payload = CulturalStrategyInput.model_validate(payload)
+        elif not isinstance(payload, CulturalStrategyInput):
+            raise TypeError(
+                f"Expected CulturalStrategyInput or dict, got {type(payload).__name__}"
+            )
+
         twin = payload.cultural_twin
         matrix = payload.cultural_matrix
 

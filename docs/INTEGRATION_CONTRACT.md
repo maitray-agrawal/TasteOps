@@ -17,7 +17,7 @@ TasteOps/
 ├── docs/
 │   └── INTEGRATION_CONTRACT.md       # This integration specification
 ├── src/tasteops/
-│   ├── __init__.py                   # Canonical public exports
+│   ├── __init__.py                   # Canonical public exports (including TasteOpsOrchestrator)
 │   ├── config.py                     # QlooSettings configuration
 │   ├── cache.py                      # AsyncTTLCache and CacheBackend protocol
 │   ├── client.py                     # QlooClient async transport
@@ -37,18 +37,41 @@ TasteOps/
 │   │   ├── tag_resolver.py           # TagResolver
 │   │   ├── insights_service.py       # InsightsService (entity capability manager)
 │   │   └── cultural_matrix_service.py# CulturalMatrixService (concurrent multi-domain matrix)
-│   └── mcp/
-│       ├── __init__.py               # create_cultural_intelligence_mcp export
-│       ├── schemas.py                # MCP tool input/output models
-│       └── server.py                 # MCPServer tool registry and stdio entry point
+│   ├── mcp/
+│   │   ├── __init__.py               # create_cultural_intelligence_mcp export
+│   │   ├── schemas.py                # MCP tool input/output models
+│   │   └── server.py                 # MCPServer tool registry and stdio entry point
+│   ├── agents/
+│   │   ├── base.py                   # BaseAgent protocol and metadata
+│   │   ├── strategist.py             # CulturalStrategist agent
+│   │   ├── architect.py              # ExperienceArchitect agent
+│   │   ├── partnership.py            # PartnershipAgent agent
+│   │   ├── governance.py             # GovernanceAgent with validation & idempotency
+│   │   └── mcp_adapter.py            # CulturalIntelligenceMCPAdapter
+│   └── workflows/
+│       ├── __init__.py               # Workflow exports
+│       ├── states.py                 # 13 explicit WorkflowStates
+│       ├── schemas.py                # ExecutionPlan, ExecutionTask, ApprovalRecord, TaskProvenance
+│       ├── context.py                # WorkflowContext and AgentResults
+│       ├── persistence.py            # BaseStateStore, InMemoryStateStore, FileStateStore
+│       ├── engine.py                 # WorkflowEngine state machine
+│       └── orchestrator.py           # TasteOpsOrchestrator application service
 └── tests/
     ├── conftest.py                   # Pytest fixtures and mock transport
-    └── unit/
-        ├── test_cache.py             # Async TTL cache tests
-        ├── test_cultural_matrix_service.py # Capability, concurrency & fallback tests
-        ├── test_mcp_server.py        # MCP tools and protocol tests
-        ├── test_qloo_client.py       # Client retry, timeout, and auth exclusion tests
-        └── test_resolvers.py         # Entity & tag resolution tests
+    ├── fixtures/
+    │   ├── __init__.py               # Fixture package
+    │   └── demo_mumbai_boutique_hotel.py # Deterministic Mumbai Boutique Hotel fixture
+    ├── unit/
+    │   ├── test_agents.py            # Agent intelligence tests
+    │   ├── test_cache.py             # Async TTL cache tests
+    │   ├── test_cultural_matrix_service.py # Capability, concurrency & fallback tests
+    │   ├── test_mcp_server.py        # MCP tools and protocol tests
+    │   ├── test_qloo_client.py       # Client retry, timeout, and auth exclusion tests
+    │   ├── test_resolvers.py         # Entity & tag resolution tests
+    │   └── test_workflow.py          # State machine transitions & recovery tests
+    └── integration/
+        ├── __init__.py
+        └── test_orchestrator.py      # 14 end-to-end integration test scenarios
 ```
 
 ---
@@ -114,47 +137,126 @@ server = create_cultural_intelligence_mcp()
 
 ---
 
-## 5. Registered MCP Tools & Argument Schemas
+## 5. Registered MCP Tools & Strongly-Typed Schemas
 
-The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_qloo`) are strictly prohibited and not exposed.
+The MCP server exposes 10 high-level cultural intelligence tools. Raw HTTP calls to Qloo (e.g. `call_qloo`) are strictly prohibited and not exposed. Every tool enforces:
+1. **Typed Input & Output:** Strict Pydantic models in `tasteops.mcp.schemas`.
+2. **Validation:** Parameter boundaries, length restrictions, geographic coordinate bounds, and threshold ranges.
+3. **Deterministic Error Behavior:** Safe error trapping returning structured payloads with `request_id` and root-cause error descriptions rather than uncaught exceptions.
+4. **Provenance:** Traceable evidence retained across entity resolution (`evidence`), tag taxonomy (`evidence`), and recommendations (`source_query`, `source_signal`, `explainability`).
+5. **Request ID:** A unique UUID4 `request_id` on every tool execution.
+6. **Confidence:** Explicit confidence scores `[0.0 - 1.0]` for resolutions and recommendations.
 
 ### 5.1. `health_check`
-- **Description:** Verifies server readiness, Qloo base URL configuration, and returns diagnostic metrics.
-- **Arguments:** None.
+- **Description:** Performs health diagnostics on the Cultural Intelligence MCP server and configuration.
+- **Input Schema:** `HealthCheckInput` (no arguments required).
+- **Output Schema:** `HealthCheckOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `status` (`str`): `"healthy"` or `"degraded"`.
+  - `server` (`str`): `"tasteops-cultural-intelligence"`.
+  - `version` (`str`): Semantic server version (`"1.0.0"`).
+  - `base_url` (`str`): Configured Qloo API base URL.
+  - `timestamp` (`str`): ISO-8601 UTC timestamp.
+  - `latency_ms` (`float`): Execution latency in milliseconds.
+  - `error` (`str | None`): Error details if degraded.
 
 ### 5.2. `resolve_entity`
 - **Description:** Resolves natural language cultural anchor strings (venue, artist, brand) into verified Qloo entity IDs.
-- **Arguments:**
-  - `query` (`str`, required): Natural language anchor (e.g. `"Blue Bottle"`, `"A24"`).
+- **Input Schema:** `ResolveEntityInput`
+  - `query` (`str`, required): Natural language anchor (min length 1, e.g. `"Blue Bottle"`, `"A24"`).
   - `expected_type` (`str | None`, optional): Domain hint (`"place"`, `"brand"`, `"artist"`).
-  - `min_confidence` (`float`, default `0.5`): Minimum score `[0.0 - 1.0]` required to accept match.
+  - `min_confidence` (`float`, default `0.5`, bounds `0.0` - `1.0`): Minimum score required to accept top match.
+- **Output Schema:** `ResolveEntityOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `is_resolved` (`bool`): `True` if top match exceeds `min_confidence`.
+  - `input` (`str`): Normalized raw query.
+  - `resolved_entity_id` (`str | None`): Verified Qloo entity ID (e.g. `"ent_a24_film"`).
+  - `entity_name` (`str | None`): Standardized entity name.
+  - `entity_type` (`str | None`): Domain category.
+  - `confidence` (`float`): Match confidence score `[0.0 - 1.0]`.
+  - `source` (`str`): Resolution source (`"qloo_search"`).
+  - `evidence` (`dict`): Provenance dictionary (`source`, `raw_query`, `normalized_query`, `match_method`, `score`, `timestamp`).
+  - `alternatives_count` (`int`): Count of candidate alternatives evaluated.
+  - `alternatives` (`list[dict]`): Top candidate alternatives with individual scores and match reasons.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.3. `resolve_tag`
-- **Description:** Resolves aesthetic motifs, vibes, or genre terms into verified Qloo taxonomy tags. Rejects unknown tags.
-- **Arguments:**
-  - `query` (`str`, required): Natural language motif (e.g. `"Japanese minimalism"`, `"lo-fi beats"`).
+- **Description:** Resolves aesthetic motifs, vibes, or genre terms into verified Qloo taxonomy tags. Rejects unknown tags (zero tag fabrication).
+- **Input Schema:** `ResolveTagInput`
+  - `query` (`str`, required): Natural language motif (min length 1, e.g. `"Japanese minimalism"`, `"lo-fi beats"`).
   - `expected_category` (`str | None`, optional): Category hint (`"style"`, `"music"`, `"dining"`).
-  - `min_confidence` (`float`, default `0.5`): Minimum acceptance threshold.
+  - `min_confidence` (`float`, default `0.5`, bounds `0.0` - `1.0`): Minimum acceptance threshold.
+- **Output Schema:** `ResolveTagOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `is_resolved` (`bool`): `True` if tag verified in taxonomy.
+  - `input` (`str`): Normalized raw query.
+  - `resolved_tag_id` (`str | None`): Verified taxonomy tag ID (e.g. `"tag_jp_minimalism"`).
+  - `tag_name` (`str | None`): Normalized tag title.
+  - `category` (`str | None`): Taxonomy category.
+  - `confidence` (`float`): Match score `[0.0 - 1.0]`.
+  - `source` (`str`): Provenance source (`"qloo_tags"`).
+  - `evidence` (`dict`): Provenance dictionary (`source`, `match_method`, `score`, `timestamp`).
+  - `alternatives_count` (`int`): Count of candidate alternatives.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.4. `get_cultural_profile`
-- **Description:** Produces an instant cross-domain taste profile for an anchor entity.
-- **Arguments:**
-  - `entity_id` (`str | None`): Verified Qloo entity ID.
-  - `entity_name` (`str | None`): Alternative entity name (resolved automatically if `entity_id` omitted).
-  - `take` (`int`, default `5`): Recommendations per domain.
+- **Description:** Produces an instant cross-domain taste profile for an anchor entity across music, brands, and spaces.
+- **Input Schema:** `GetCulturalProfileInput`
+  - `entity_id` (`str | None`, optional): Verified Qloo entity ID.
+  - `entity_name` (`str | None`, optional): Natural language entity name (resolved automatically if `entity_id` omitted).
+  - `take` (`int`, default `5`, bounds `1` - `20`): Recommendations per domain.
+- **Validation:** Must provide at least one of `entity_id` or `entity_name`.
+- **Output Schema:** `GetCulturalProfileOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `entity_id` (`str | None`): Profiled Qloo entity ID.
+  - `entity_name` (`str | None`): Display name.
+  - `affinities` (`CulturalProfileAffinities`): Object containing `artists`, `brands`, and `places` lists with individual confidence and provenance.
+  - `total_affinities` (`int`): Total recommendations count.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.5. Domain-Specific Affinity Tools
-- **`get_related_artists`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_books`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_brands`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
-- **`get_related_places`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `latitude: float | None`, `longitude: float | None`, `radius_meters: int = 5000`, `take: int = 10`
-- **`get_related_movies`**: `anchor_entities: list[str]`, `resolved_tags: list[str]`, `take: int = 10`
+- **Tools:**
+  - `get_related_artists` (music recommendations)
+  - `get_related_books` (literature and monograph recommendations)
+  - `get_related_brands` (lifestyle and equipment brand recommendations)
+  - `get_related_places` (local venues and spatial synergies)
+  - `get_related_movies` (cinematic and film movement recommendations)
+- **Input Schemas:**
+  - Non-spatial domains (`artists`, `books`, `brands`, `movies`): `GetRelatedCategoryInput`
+    - `anchor_entities` (`list[str]`, default `[]`): Seed entity IDs.
+    - `resolved_tags` (`list[str]`, default `[]`): Seed tag IDs.
+    - `take` (`int`, default `10`, bounds `1` - `50`): Maximum recommendations.
+  - Spatial domain (`places`): `GetRelatedPlacesInput`
+    - `anchor_entities` (`list[str]`, default `[]`): Seed entity IDs.
+    - `resolved_tags` (`list[str]`, default `[]`): Seed tag IDs.
+    - `latitude` (`float | None`, bounds `-90.0` - `90.0`): Latitude for spatial bounding.
+    - `longitude` (`float | None`, bounds `-180.0` - `180.0`): Longitude for spatial bounding.
+    - `radius_meters` (`int`, default `5000`, bounds `100` - `50000`): Search radius in meters.
+    - `take` (`int`, default `10`, bounds `1` - `50`): Maximum places.
+- **Output Schema:** `CategoryRecommendationsOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `category` (`str`): Target domain category name.
+  - `recommendations` (`list[dict]`): List of recommendations, each containing `id`, `name`, `type`, `affinity`, `confidence`, `source_query`, `source_signal`, `explainability`.
+  - `total_count` (`int`): Items returned.
+  - `query_metadata` (`list[dict]`): Telemetry and query provenance.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ### 5.6. `get_cultural_matrix`
 - **Description:** Assembles a holistic 6-domain CulturalMatrix for a physical space's `CulturalTwin` concurrently.
-- **Arguments:**
-  - `cultural_twin` (`dict`, required): Object adhering to the [`CulturalTwin`](file:///d:/TasteOps/src/tasteops/models/cultural_matrix.py#L35-L53) schema.
-  - `take_per_category` (`int`, default `10`): Max items per category.
+- **Input Schema:** `GetCulturalMatrixInput`
+  - `cultural_twin` (`dict`, required): Object adhering to the [`CulturalTwin`](file:///d:/TasteOps/src/tasteops/models/cultural_matrix.py#L35-L53) schema (`business_type`, `mood`, `anchor_entities`, `resolved_tags`, `location`).
+  - `take_per_category` (`int`, default `10`, bounds `1` - `30`): Recommendations per domain.
+- **Output Schema:** `GetCulturalMatrixOutput`
+  - `request_id` (`str`): Unique UUID request identifier.
+  - `status` (`str`): `"success"` or `"error"`.
+  - `cultural_matrix` (`dict | None`): Complete 6-domain payload (`artists`, `books`, `brands`, `places`, `movies`, `destinations`, `evidence`, `query_metadata`).
+  - `total_recommendations` (`int`): Aggregate recommendation count.
+  - `latency_ms` (`float`): Execution latency.
+  - `error` (`str | None`): Error description on failure.
 
 ---
 
@@ -195,7 +297,8 @@ The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_q
       "match_reason": "token_subset_match"
     }
   ],
-  "latency_ms": 14.2
+  "latency_ms": 14.2,
+  "error": null
 }
 ```
 
@@ -251,15 +354,16 @@ The MCP server exposes 10 high-level tools. Raw HTTP calls to Qloo (e.g. `call_q
         }
       }
     ]
-  }
+  },
+  "error": null
 }
 ```
 
 ---
 
-## 7. Error Envelope Format
+## 7. Deterministic Error Envelope Format
 
-Tool executions return structured JSON error envelopes rather than raw exceptions:
+When tool validation fails or an upstream query is unresolvable, tools return structured JSON error envelopes rather than uncaught exceptions:
 
 ```json
 {
@@ -269,6 +373,7 @@ Tool executions return structured JSON error envelopes rather than raw exception
   "cultural_matrix": null
 }
 ```
+
 
 ---
 
@@ -516,3 +621,283 @@ assert ctx.current_state == WorkflowState.COMPLETED
 print(f"Executed {ctx.plan.execution_summary.executed_tasks} physical tasks.")
 ```
 
+---
+
+## 11. Application & Frontend Integration Layer (Member 2 Final Orchestration Hardening)
+
+### 11.1. TasteOpsOrchestrator Interface
+
+`TasteOpsOrchestrator` provides a clean, unified application-facing service for FastAPI routes and frontend interaction. The API layer never needs to understand internal agent orchestration, state transitions, or retry policies.
+
+```python
+class TasteOpsOrchestrator:
+    def __init__(
+        self,
+        mcp_adapter: CulturalIntelligenceMCPAdapter | None = None,
+        state_store: BaseStateStore | None = None,
+        config: WorkflowConfig | None = None,
+    ) -> None: ...
+
+    async def create_session(
+        self,
+        space_id: str,
+        user_input: str,
+        parsed_hints: dict[str, Any] | None = None,
+    ) -> WorkflowContext: ...
+
+    async def run_until_approval(self, session_id: str) -> WorkflowContext: ...
+
+    async def approve_session(
+        self,
+        session_id: str,
+        approver: str,
+        plan_version: int = 1,
+    ) -> WorkflowContext: ...
+
+    async def reject_session(
+        self,
+        session_id: str,
+        reason: str,
+        reviewer: str,
+    ) -> WorkflowContext: ...
+
+    async def execute_approved_plan(self, session_id: str) -> WorkflowContext: ...
+
+    async def get_session_state(self, session_id: str) -> WorkflowContext: ...
+
+    async def get_audit_events(self, session_id: str) -> list[AuditEvent]: ...
+```
+
+### 11.2. Standardized WorkflowContext Model
+
+The session context is strictly typed using Pydantic models with zero untyped dictionaries:
+
+```python
+class WorkflowContext(BaseModel):
+    session_id: str
+    space_id: str
+    user_input: str
+    cultural_twin: CulturalTwin | None = None
+    cultural_matrix: CulturalMatrix | None = None
+    agent_results: AgentResults | None = None
+    execution_plan: ExecutionPlan | None = None
+    validation_result: GovernanceValidationResult | None = None
+    approval: ApprovalRecord | None = None
+    execution_tasks: list[ExecutionTask] = Field(default_factory=list)
+    current_state: WorkflowState = WorkflowState.CREATED
+    audit_events: list[AuditEvent] = Field(default_factory=list)
+
+    # Backward compatibility with existing pipeline components
+    raw_intent: str = Field(...)
+    plan: CulturalActivationPlan | None = None
+```
+
+#### Typed Agent Results Container (`AgentResults`)
+```python
+class AgentResults(BaseModel):
+    strategist: CulturalStrategyOutput | None = None
+    architect: ExperienceDesignOutput | None = None
+    partnership: BrandPartnershipOutput | None = None
+    governance: GovernanceValidationResult | None = None
+```
+
+### 11.3. Session Lifecycle & State Progression
+
+```
+[POST /sessions]
+      │
+      ▼
+   CREATED
+      │
+[POST /sessions/{id}/run]
+      │
+      ├─► INTENT_PARSED
+      ├─► CULTURAL_TWIN_CREATED
+      ├─► QLOO_RESOLVED (entity & tag resolution via MCP)
+      ├─► CULTURAL_MATRIX_READY (concurrent 6-domain insights via MCP)
+      ├─► AGENTS_RUNNING (Strategist, Architect, Partnership concurrent execution)
+      ├─► PLAN_GENERATED (synthesis into ExecutionPlan v1)
+      ├─► VALIDATED (GovernanceAgent 7-point audit)
+      │       │
+      │       ├── (Validation Failure: bounded refinement loop)
+      │       │
+      ▼
+AWAITING_APPROVAL ◄── PAUSE: Human curator review required
+      │
+      ├───────────────────────────────┐
+      │ [POST /approve]               │ [POST /reject]
+      ▼                               ▼
+   APPROVED                         FAILED (Curator rejected)
+      │
+[POST /sessions/{id}/execute]
+      │
+      ├─► Cryptographic plan hash check
+      ├─► Task provenance verification (all 11 fields)
+      ├─► Idempotent task deduplication
+      ▼
+  EXECUTING
+      │
+      ▼
+  COMPLETED ◄── Terminal success state
+```
+
+### 11.4. Approval Semantics & Cryptographic Plan Binding
+
+The approval gate binds human curator authorization to an exact plan version and its cryptographic hash:
+
+```python
+class ApprovalRecord(BaseModel):
+    session_id: str
+    plan_id: str
+    plan_version: int
+    plan_hash: str                  # SHA-256 of the execution plan content
+    approver: str                   # e.g., "Curator: Maitray Agrawal"
+    approved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_valid: bool = True
+```
+
+#### Plan Mutation Invalidation Rule
+- An approval for Plan v1 **never** authorizes Plan v2.
+- Any mutation to the underlying `CulturalActivationPlan` or `ExecutionPlan` alters the computed SHA-256 hash.
+- Upon calling `execute_approved_plan()`:
+  - If `approval.plan_hash != plan.compute_hash()`, the approval is immediately invalidated (`is_valid = False`), state transitions to `FAILED`, and `UnapprovedExecutionError` is raised.
+
+### 11.5. Execution Task Idempotency
+
+To prevent accidental re-execution of physical space actions (e.g. double-booking an artist, duplicate tableware procurement, or duplicate Spotify seed injection), every execution task enforces idempotency:
+
+```python
+class ExecutionTask(BaseModel):
+    task_id: str
+    idempotency_key: str            # Deterministic: idem_{plan_id}_{owner}_{category}_{target_entity}
+    action: str
+    owner: str
+    input: dict[str, Any]
+    status: str = "PENDING"         # PENDING -> EXECUTED / FAILED
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    provenance: dict[str, Any]      # Standardized TaskProvenance dictionary
+    result: dict[str, Any] | None = None
+```
+
+- **Deduplication Store**: The `GovernanceAgent` maintains an execution task store keyed by `idempotency_key`.
+- If an already-executed task is submitted again, the system skips re-execution and returns the cached task instance along with its original `result` and execution timestamp.
+
+### 11.6. Audit Provenance Guarantee (11 Mandatory Fields)
+
+Every recommendation and execution task must retain full provenance. Execution is strictly blocked if provenance validation fails:
+
+```python
+class TaskProvenance(BaseModel):
+    # Minimum recommendation provenance (5 fields)
+    source: str                     # e.g., "qloo_insights", "qloo_search"
+    source_id: str                  # Verified Qloo Entity ID (e.g., "ent_a24_film")
+    source_type: str                # "brand", "artist", "place", "movie", "book"
+    query: str                      # e.g., "/v2/insights?filter.type=urn:entity:artist"
+    timestamp: datetime
+
+    # Execution provenance (6 fields)
+    task_id: str                    # Unique execution task ID
+    plan_id: str                    # Approved plan ID
+    session_id: str                 # Workflow session ID
+    approved_by: str                # Identity of approving curator
+    approved_at: datetime           # Timestamp of human approval
+    execution_status: str           # "EXECUTED" or "SKIPPED_IDEMPOTENT"
+```
+
+- Any task with a missing entity ID, a blank source ID, or an unverified prefix (`invalid_`, `unverified_`) fails provenance validation and raises `TaskProvenanceError`.
+
+### 11.7. Deterministic Demo Fixture
+
+A sanitized, non-mock-dependent fixture is available at `tests/fixtures/demo_mumbai_boutique_hotel.py`:
+
+- **Business**: Boutique Hotel
+- **Location**: Mumbai, Colaba (`latitude: 18.9220`, `longitude: 72.8347`)
+- **Audience**: Affluent design-conscious professionals
+- **Positioning**: Contemporary Indian luxury
+- **Mood**: Sophisticated / intimate / creative
+- **Cultural Anchors**:
+  - Independent cinema (Whistling Woods, MAMI, Prithvi Theatre)
+  - Alternative music (Peter Cat Recording Co., Lifafa, Parekh & Singh)
+  - Contemporary Indian design (Raw Mango, Nicobar, Studio Lotus)
+- **Sanitization**: All fixture IDs are prefixed with `test_fixture_*` to ensure deterministic isolation from real Qloo production queries.
+
+### 11.8. Failure Behavior & Bounded Recovery
+
+| Failure Scenario | State Transition | Recovery Policy |
+| :--- | :--- | :--- |
+| **Qloo API Unavailable / 5xx** | `QLOO_RESOLVED` → `RETRY` → `FALLBACK` → `FAILED` | Maximum 2 retries; 1 fallback query with relaxed constraints. Halts if exhausted. |
+| **Agent Crash or Exception** | `AGENTS_RUNNING` → `RETRY` → `FAILED` | Maximum 2 bounded retries per agent. Prevents infinite agent execution loops. |
+| **Validation Failure** | `VALIDATED` → `PLAN_GENERATED` → `FAILED` | Bounded refinement loop (max 2 cycles). If unresolvable, transitions to `FAILED`. |
+| **Curator Rejection** | `AWAITING_APPROVAL` → `FAILED` | Terminal rejection state; captures curator rejection reason and timestamp in audit event. |
+| **Plan Mutation Post-Approval** | `APPROVED` → `FAILED` | Immediate invalidation of approval. Raises `UnapprovedExecutionError`. |
+| **Missing / Invalid Provenance** | `APPROVED` → `FAILED` | Halts before task dispatch. Raises `TaskProvenanceError`. |
+
+### 11.9. FastAPI Integration Example
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from tasteops.workflows.orchestrator import TasteOpsOrchestrator
+
+app = FastAPI(title="TasteOps Orchestration API")
+orchestrator = TasteOpsOrchestrator()
+
+class CreateSessionRequest(BaseModel):
+    space_id: str
+    user_input: str
+
+class ApprovalRequest(BaseModel):
+    approver: str
+    plan_version: int = 1
+
+class RejectionRequest(BaseModel):
+    reason: str
+    reviewer: str
+
+@app.post("/sessions")
+async def create_session(req: CreateSessionRequest):
+    ctx = await orchestrator.create_session(space_id=req.space_id, user_input=req.user_input)
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
+
+@app.post("/sessions/{session_id}/run")
+async def run_until_approval(session_id: str):
+    ctx = await orchestrator.run_until_approval(session_id=session_id)
+    return {
+        "session_id": ctx.session_id,
+        "state": ctx.current_state.value,
+        "execution_plan": ctx.execution_plan,
+        "validation_passed": ctx.validation_result.validation_passed if ctx.validation_result else False,
+    }
+
+@app.post("/sessions/{session_id}/approve")
+async def approve_session(session_id: str, req: ApprovalRequest):
+    ctx = await orchestrator.approve_session(
+        session_id=session_id, approver=req.approver, plan_version=req.plan_version
+    )
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value, "approval": ctx.approval}
+
+@app.post("/sessions/{session_id}/reject")
+async def reject_session(session_id: str, req: RejectionRequest):
+    ctx = await orchestrator.reject_session(session_id=session_id, reason=req.reason, reviewer=req.reviewer)
+    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
+
+@app.post("/sessions/{session_id}/execute")
+async def execute_approved_plan(session_id: str):
+    ctx = await orchestrator.execute_approved_plan(session_id=session_id)
+    return {
+        "session_id": ctx.session_id,
+        "state": ctx.current_state.value,
+        "tasks_executed": len(ctx.execution_tasks),
+        "tasks": ctx.execution_tasks,
+    }
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    ctx = await orchestrator.get_session_state(session_id=session_id)
+    return ctx
+
+@app.get("/sessions/{session_id}/audit")
+async def get_audit(session_id: str):
+    events = await orchestrator.get_audit_events(session_id=session_id)
+    return {"session_id": session_id, "events": events}
+```

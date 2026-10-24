@@ -33,3 +33,5 @@ dev = [
 [tool.ruff.lint]
 ignore = ["BLE001"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]

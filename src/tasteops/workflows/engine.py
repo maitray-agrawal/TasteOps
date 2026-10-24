@@ -16,10 +16,13 @@ Guarantees:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from tasteops.agents.governance import UnapprovedExecutionError
 from tasteops.models.cultural_matrix import (
     CulturalTwin,
     LocationInput,
@@ -32,6 +35,7 @@ from tasteops.workflows.persistence import (
     InMemoryStateStore,
 )
 from tasteops.workflows.schemas import (
+    ApprovalRecord,
     CulturalActivationPlan,
     CulturalStrategyInput,
     ExperienceDesignInput,
@@ -82,6 +86,13 @@ class WorkflowEngine:
         self.max_qloo_retries = max_qloo_retries
         self.max_agent_retries = max_agent_retries
         self.max_validation_cycles = max_validation_cycles
+        self._session_locks: dict[str, asyncio.Lock] = {}
+
+    def _get_session_lock(self, session_id: str) -> asyncio.Lock:
+        """Retrieves or creates a concurrency lock for a specific session."""
+        if session_id not in self._session_locks:
+            self._session_locks[session_id] = asyncio.Lock()
+        return self._session_locks[session_id]
 
     def _record_and_persist(
         self,
@@ -113,14 +124,22 @@ class WorkflowEngine:
     # Transition: Step 1 - Initialize and Parse Intent
     # -------------------------------------------------------------------------
     def initialize_session(
-        self, raw_intent: str, parsed_hints: dict[str, Any] | None = None
+        self,
+        raw_intent: str,
+        parsed_hints: dict[str, Any] | None = None,
+        space_id: str | None = None,
     ) -> WorkflowContext:
         """Creates a fresh session in CREATED state."""
-        ctx = WorkflowContext(raw_intent=raw_intent, parsed_intent=parsed_hints or {})
+        ctx = WorkflowContext(
+            user_input=raw_intent,
+            space_id=space_id,
+            parsed_intent=parsed_hints or {},
+        )
         self._record_and_persist(
             ctx,
             WorkflowState.CREATED,
             reason="Session initialized with raw intent",
+            metadata={"space_id": space_id} if space_id else {},
         )
         return ctx
 
@@ -460,6 +479,7 @@ class WorkflowEngine:
             governance=ctx.governance_output,
             execution_plan=execution_plan,
         )
+        ctx.sync_outputs()
 
         self._record_and_persist(
             ctx,
@@ -568,6 +588,7 @@ class WorkflowEngine:
             WorkflowState.AWAITING_APPROVAL,
             reason="Engine paused at approval gate. Waiting for human curator sign-off.",
         )
+        ctx.sync_outputs()
         return ctx
 
     # -------------------------------------------------------------------------
@@ -576,22 +597,68 @@ class WorkflowEngine:
     async def approve_plan(
         self, ctx: WorkflowContext, approver: str = "human_curator"
     ) -> WorkflowContext:
-        """Transitions AWAITING_APPROVAL -> APPROVED."""
-        validate_transition(ctx.current_state, WorkflowState.APPROVED)
+        """Transitions AWAITING_APPROVAL -> APPROVED with cryptographic plan binding and idempotency."""
+        lock = self._get_session_lock(ctx.session_id)
+        async with lock:
+            # Idempotency guard: If already approved and plan hash is unchanged, return existing context
+            if (
+                ctx.current_state
+                in {
+                    WorkflowState.APPROVED,
+                    WorkflowState.EXECUTING,
+                    WorkflowState.COMPLETED,
+                }
+                and ctx.approval
+                and ctx.approval.is_valid
+            ):
+                current_hash = ctx.plan.compute_hash() if ctx.plan else None
+                if ctx.approval.plan_hash == current_hash:
+                    logger.info(
+                        "Session '%s' is already approved with identical plan hash. Returning existing approval (idempotent).",
+                        ctx.session_id,
+                    )
+                    return ctx
 
-        self._record_and_persist(
-            ctx,
-            WorkflowState.APPROVED,
-            reason=f"Plan approved by authorized curator: {approver}",
-            metadata={"approver": approver},
-        )
-        return ctx
+            validate_transition(ctx.current_state, WorkflowState.APPROVED)
+
+            if not ctx.plan:
+                raise RuntimeError("Cannot approve: Plan is missing.")
+
+            plan_hash = ctx.plan.compute_hash()
+            approval_rec = ApprovalRecord(
+                session_id=ctx.session_id,
+                plan_id=ctx.plan.plan_id,
+                plan_version=ctx.plan.version,
+                plan_hash=plan_hash,
+                approver=approver,
+                approved_at=datetime.now(UTC),
+                is_valid=True,
+            )
+            ctx.approval = approval_rec
+
+            self._record_and_persist(
+                ctx,
+                WorkflowState.APPROVED,
+                reason=f"Plan approved by authorized curator: {approver}",
+                metadata={
+                    "approver": approver,
+                    "plan_id": ctx.plan.plan_id,
+                    "plan_version": ctx.plan.version,
+                    "plan_hash": plan_hash,
+                },
+            )
+            ctx.sync_outputs()
+            return ctx
 
     async def reject_plan(
         self, ctx: WorkflowContext, reason: str = "Curator rejected plan"
     ) -> WorkflowContext:
         """Transitions AWAITING_APPROVAL -> FAILED."""
         validate_transition(ctx.current_state, WorkflowState.FAILED)
+
+        if ctx.approval:
+            ctx.approval.is_valid = False
+            ctx.approval.invalidation_reason = f"Rejected: {reason}"
 
         self._record_and_persist(
             ctx,
@@ -601,49 +668,95 @@ class WorkflowEngine:
             error=reason,
         )
         ctx.error_message = reason
+        ctx.sync_outputs()
         return ctx
 
     # -------------------------------------------------------------------------
     # Transition: Step 8 - Execute and Complete
     # -------------------------------------------------------------------------
     async def execute_plan(self, ctx: WorkflowContext) -> WorkflowContext:
-        """Transitions APPROVED -> EXECUTING -> COMPLETED."""
-        validate_transition(ctx.current_state, WorkflowState.EXECUTING)
-        self._record_and_persist(
-            ctx,
-            WorkflowState.EXECUTING,
-            reason="Governance agent dispatching execution tasks",
-        )
-
-        if not ctx.plan:
-            raise RuntimeError("Cannot execute: Plan is missing.")
-
-        # Identify approver from audit history
-        last_approver = "curator"
-        for record in reversed(ctx.history):
+        """Transitions APPROVED -> EXECUTING -> COMPLETED with idempotency and lock protection."""
+        lock = self._get_session_lock(ctx.session_id)
+        async with lock:
+            # Idempotency guard: If already completed, return existing executed context
             if (
-                record.to_state == WorkflowState.APPROVED
-                and "approver" in record.metadata
+                ctx.current_state == WorkflowState.COMPLETED
+                and ctx.plan
+                and ctx.plan.execution_summary
             ):
-                last_approver = record.metadata["approver"]
-                break
+                logger.info(
+                    "Session '%s' execution already completed. Returning existing execution result (idempotent).",
+                    ctx.session_id,
+                )
+                return ctx
 
-        execution_summary = await self.governance.execute_plan(
-            ctx.plan, is_approved=True, approved_by=last_approver
-        )
-        ctx.plan.execution_summary = execution_summary
+            # Handle process restart or resumption
+            if ctx.current_state == WorkflowState.APPROVED:
+                validate_transition(ctx.current_state, WorkflowState.EXECUTING)
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.EXECUTING,
+                    reason="Governance agent dispatching execution tasks",
+                )
+            elif (
+                ctx.current_state == WorkflowState.EXECUTING
+                and ctx.plan is not None
+                and (
+                    ctx.approval is not None
+                    or any(r.to_state == WorkflowState.APPROVED for r in ctx.history)
+                )
+            ):
+                logger.info(
+                    "Resuming execution for session '%s' already in EXECUTING state (process restart recovery).",
+                    ctx.session_id,
+                )
+            else:
+                validate_transition(ctx.current_state, WorkflowState.EXECUTING)
 
-        validate_transition(ctx.current_state, WorkflowState.COMPLETED)
-        self._record_and_persist(
-            ctx,
-            WorkflowState.COMPLETED,
-            reason="All downstream activation tasks confirmed with provenance",
-            metadata={
-                "total_tasks": execution_summary.total_tasks,
-                "executed_tasks": execution_summary.executed_tasks,
-            },
-        )
-        return ctx
+            if not ctx.plan:
+                raise RuntimeError("Cannot execute: Plan is missing.")
+
+            # Verify explicit approval record is present
+            if not ctx.approval and not any(
+                record.to_state == WorkflowState.APPROVED for record in ctx.history
+            ):
+                raise UnapprovedExecutionError(
+                    "Execution blocked: Plan has not been approved (approval record is absent)."
+                )
+
+            # Identify approver from approval record or audit history
+            last_approver = ctx.approval.approver if ctx.approval else "curator"
+            if not ctx.approval:
+                for record in reversed(ctx.history):
+                    if (
+                        record.to_state == WorkflowState.APPROVED
+                        and "approver" in record.metadata
+                    ):
+                        last_approver = record.metadata["approver"]
+                        break
+
+            execution_summary = await self.governance.execute_plan(
+                ctx.plan,
+                is_approved=True,
+                approved_by=last_approver,
+                approval=ctx.approval,
+                session_id=ctx.session_id,
+            )
+            ctx.plan.execution_summary = execution_summary
+            ctx.execution_tasks = execution_summary.tasks
+            ctx.sync_outputs()
+
+            validate_transition(ctx.current_state, WorkflowState.COMPLETED)
+            self._record_and_persist(
+                ctx,
+                WorkflowState.COMPLETED,
+                reason="All downstream activation tasks confirmed with provenance",
+                metadata={
+                    "total_tasks": execution_summary.total_tasks,
+                    "executed_tasks": execution_summary.executed_tasks,
+                },
+            )
+            return ctx
 
     # -------------------------------------------------------------------------
     # Full Pipeline Helper: Up to Human Gate
@@ -652,10 +765,11 @@ class WorkflowEngine:
         self,
         raw_intent: str,
         parsed_hints: dict[str, Any] | None = None,
+        space_id: str | None = None,
         take_per_category: int = 10,
     ) -> WorkflowContext:
         """Executes workflow deterministically from CREATED to AWAITING_APPROVAL."""
-        ctx = self.initialize_session(raw_intent, parsed_hints)
+        ctx = self.initialize_session(raw_intent, parsed_hints, space_id=space_id)
         await self.parse_intent(ctx)
         if ctx.current_state == WorkflowState.FAILED:
             return ctx
