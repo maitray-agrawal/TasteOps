@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS execution_plans (
     plan_hash TEXT NOT NULL,
     estimated_cost TEXT,
     actions_count INTEGER NOT NULL DEFAULT 0,
+    actions_json TEXT NOT NULL DEFAULT '[]',
     risks_json TEXT NOT NULL DEFAULT '[]',
     approvals_required_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
