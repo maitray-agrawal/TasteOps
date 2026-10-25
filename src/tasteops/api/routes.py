@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
@@ -316,3 +316,83 @@ async def get_audit_events(
     """Retrieves all persisted immutable audit events for a workflow session."""
     events = orchestrator.get_audit_events(session_id)
     return events
+
+
+# ==============================================================================
+# Curatorial Execution Artifact Endpoints
+# ==============================================================================
+
+
+@router.get(
+    "/api/v1/sessions/{session_id}/artifacts/procurement.csv",
+    summary="Download validated procurement purchase order CSV",
+    tags=["Artifacts"],
+)
+async def download_procurement_csv(
+    session_id: str,
+    orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+) -> Response:
+    """Exports validated 8-column purchase order CSV with verified Qloo entity provenance."""
+    try:
+        ctx = orchestrator.get_session_state(session_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    from tasteops.workflows.artifacts import generate_procurement_csv
+
+    csv_content = generate_procurement_csv(ctx)
+    filename = f"PO_{session_id[:8]}.csv"
+    return Response(
+        content=csv_content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/api/v1/sessions/{session_id}/artifacts/spotify_playlist.json",
+    summary="Get Spotify-ready playlist specification artifact",
+    tags=["Artifacts"],
+)
+async def get_spotify_playlist_artifact(
+    session_id: str,
+    orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+) -> dict[str, Any]:
+    """Retrieves structured, staged Spotify playlist artifact with track metadata and provenance."""
+    try:
+        ctx = orchestrator.get_session_state(session_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    from tasteops.workflows.artifacts import generate_spotify_playlist_artifact
+
+    return generate_spotify_playlist_artifact(ctx)
+
+
+@router.get(
+    "/api/v1/sessions/{session_id}/artifacts/brand_dossiers.json",
+    summary="Get brand partnership dossiers with outreach drafts",
+    tags=["Artifacts"],
+)
+async def get_brand_dossiers_artifact(
+    session_id: str,
+    orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+) -> list[dict[str, Any]]:
+    """Retrieves structured partnership dossiers with draft communications and cultural alignment scores."""
+    try:
+        ctx = orchestrator.get_session_state(session_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    from tasteops.workflows.artifacts import generate_brand_dossiers_artifact
+
+    return generate_brand_dossiers_artifact(ctx)

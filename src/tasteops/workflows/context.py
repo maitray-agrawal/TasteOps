@@ -75,6 +75,10 @@ class WorkflowContext(BaseModel):
     validation_result: GovernanceValidationOutput | None = None
     approval: ApprovalRecord | None = None
     execution_tasks: list[ExecutionTask] = Field(default_factory=list)
+    agent_telemetry: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Per-agent execution timing, entity counts, status, and validation metrics",
+    )
 
     history: list[StateTransitionRecord] = Field(default_factory=list)
     audit_events: list[AuditEvent] = Field(default_factory=list)

@@ -22,6 +22,9 @@ export const ENDPOINTS = Object.freeze({
   SESSION_REJECT: (id) => `/sessions/${encodeURIComponent(id)}/reject`,
   SESSION_EXECUTE: (id) => `/sessions/${encodeURIComponent(id)}/execute`,
   SESSION_AUDIT: (id) => `/sessions/${encodeURIComponent(id)}/audit`,
+  SESSION_ARTIFACT_CSV: (id) => `/sessions/${encodeURIComponent(id)}/artifacts/procurement.csv`,
+  SESSION_ARTIFACT_SPOTIFY: (id) => `/sessions/${encodeURIComponent(id)}/artifacts/spotify_playlist.json`,
+  SESSION_ARTIFACT_BRANDS: (id) => `/sessions/${encodeURIComponent(id)}/artifacts/brand_dossiers.json`,
   CONFIG: '/config',
   HEALTH: '/health',
   READY: '/ready',
@@ -320,6 +323,24 @@ export class TasteOpsAPIClient {
       body: JSON.stringify({}),
     });
     return this._normalizeSession(res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Execution Artifact Operations
+  // ---------------------------------------------------------------------------
+  getProcurementCsvUrl(sessionId) {
+    if (!sessionId) return `${this.baseUrl}/sessions/default/artifacts/procurement.csv`;
+    return `${this.baseUrl}${ENDPOINTS.SESSION_ARTIFACT_CSV(sessionId)}`;
+  }
+
+  async getSpotifyArtifact(sessionId) {
+    if (!sessionId) throw new Error('Session ID is required');
+    return this._fetch(ENDPOINTS.SESSION_ARTIFACT_SPOTIFY(sessionId), { method: 'GET' });
+  }
+
+  async getBrandDossiers(sessionId) {
+    if (!sessionId) throw new Error('Session ID is required');
+    return this._fetch(ENDPOINTS.SESSION_ARTIFACT_BRANDS(sessionId), { method: 'GET' });
   }
 
   // ---------------------------------------------------------------------------

@@ -206,7 +206,14 @@ def create_app(
 
     for ui_path in (
         "/",
+        "/home",
         "/dashboard",
+        "/create-space",
+        "/cultural-twin",
+        "/agents",
+        "/execution-plan",
+        "/results",
+        "/saved-spaces",
         "/spaces/new",
         "/spaces/{space_id:path}",
         "/sessions/{session_id:path}",

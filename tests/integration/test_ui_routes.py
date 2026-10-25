@@ -219,6 +219,30 @@ def test_end_to_end_ui_api_flow(ui_test_client):
     assert WorkflowState.APPROVED.value in states
     assert WorkflowState.COMPLETED.value in states
 
+    # 7. Execution Artifacts (CSV, Staged Spotify Spec, Brand Dossiers)
+    csv_resp = ui_test_client.get(
+        f"/api/v1/sessions/{session_id}/artifacts/procurement.csv"
+    )
+    assert csv_resp.status_code == 200
+    assert "text/csv" in csv_resp.headers["content-type"]
+    assert "ISBN,Title,Author,Publisher,Quantity" in csv_resp.text
+
+    spot_resp = ui_test_client.get(
+        f"/api/v1/sessions/{session_id}/artifacts/spotify_playlist.json"
+    )
+    assert spot_resp.status_code == 200
+    spot_data = spot_resp.json()
+    assert spot_data["status"] == "STAGED"
+    assert "spotify:playlist:" in spot_data["spotify_uri"]
+
+    brand_resp = ui_test_client.get(
+        f"/api/v1/sessions/{session_id}/artifacts/brand_dossiers.json"
+    )
+    assert brand_resp.status_code == 200
+    brand_data = brand_resp.json()
+    assert len(brand_data) > 0
+    assert brand_data[0]["status"] == "DRAFTED"
+
 
 def test_reject_session_flow(ui_test_client):
     """Verifies plan rejection transitions workflow to FAILED state."""
