@@ -588,6 +588,9 @@ class ExecutionPlan(BaseModel):
 
     plan_id: str = Field(..., description="Execution plan unique ID")
     version: int = Field(default=1, description="Plan revision number")
+    plan_hash: str | None = Field(
+        default=None, description="Cryptographic content hash of the plan"
+    )
     actions: list[ExecutionPlanAction] = Field(
         ..., description="List of planned actions"
     )

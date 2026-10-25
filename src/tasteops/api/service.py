@@ -48,10 +48,16 @@ class TasteOpsApplicationService:
         orchestrator: TasteOpsOrchestrator | None = None,
         store: BaseStateStore | None = None,
         settings: QlooSettings | None = None,
+        space_repo: Any | None = None,
     ) -> None:
         self.store = store or InMemoryStateStore()
         self.orchestrator = orchestrator or TasteOpsOrchestrator(store=self.store)
         self.settings = settings
+        self.space_repo = space_repo
+        if self.space_repo is None and hasattr(self.store, "db"):
+            from tasteops.persistence.space_repository import SQLiteSpaceRepository
+
+            self.space_repo = SQLiteSpaceRepository(self.store.db)
         self._spaces: dict[str, SpaceResponse] = {}
 
     # -------------------------------------------------------------------------
@@ -59,6 +65,9 @@ class TasteOpsApplicationService:
     # -------------------------------------------------------------------------
     def create_space(self, request: SpaceCreateRequest) -> SpaceResponse:
         """Registers a new physical space venue."""
+        if self.space_repo is not None:
+            return self.space_repo.save_space(request)
+
         space_id = f"space_{uuid.uuid4().hex[:12]}"
         now = datetime.now(UTC)
 
@@ -89,6 +98,12 @@ class TasteOpsApplicationService:
 
     def get_space(self, space_id: str) -> SpaceResponse:
         """Retrieves a registered space by ID."""
+        if self.space_repo is not None:
+            space = self.space_repo.get_space(space_id)
+            if not space:
+                raise SpaceNotFoundError(f"Space '{space_id}' not found.")
+            return space
+
         space = self._spaces.get(space_id)
         if not space:
             raise SpaceNotFoundError(f"Space '{space_id}' not found.")
@@ -96,6 +111,8 @@ class TasteOpsApplicationService:
 
     def list_spaces(self) -> list[SpaceResponse]:
         """Lists all registered physical spaces."""
+        if self.space_repo is not None:
+            return self.space_repo.list_spaces()
         return list(self._spaces.values())
 
     # -------------------------------------------------------------------------

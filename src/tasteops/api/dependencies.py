@@ -32,10 +32,34 @@ def get_qloo_settings() -> QlooSettings | None:
         return None
 
 
+from tasteops.persistence.database import Database
+from tasteops.persistence.space_repository import (
+    BaseSpaceRepository,
+    SQLiteSpaceRepository,
+)
+from tasteops.persistence.store import SQLiteStateStore
+
+
 @lru_cache(maxsize=1)
-def get_state_store() -> BaseStateStore:
-    """Provides default persistent state store for workflow contexts and audit events."""
-    return InMemoryStateStore()
+def get_database() -> Database:
+    """Provides persistent database manager."""
+    return Database("storage/tasteops.db")
+
+
+@lru_cache(maxsize=1)
+def get_space_repository(
+    db: Annotated[Database, Depends(get_database)],
+) -> BaseSpaceRepository:
+    """Provides repository for physical spaces and briefs."""
+    return SQLiteSpaceRepository(db)
+
+
+@lru_cache(maxsize=1)
+def get_state_store(
+    db: Annotated[Database, Depends(get_database)],
+) -> BaseStateStore:
+    """Provides persistent state store for workflow contexts and audit events."""
+    return SQLiteStateStore(db)
 
 
 @lru_cache(maxsize=1)
@@ -51,12 +75,14 @@ def get_service(
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
     store: Annotated[BaseStateStore, Depends(get_state_store)],
     settings: Annotated[QlooSettings | None, Depends(get_qloo_settings)],
+    space_repo: Annotated[BaseSpaceRepository, Depends(get_space_repository)],
 ) -> TasteOpsApplicationService:
     """Provides the application service facade coordinating spaces and orchestrator workflows."""
     return TasteOpsApplicationService(
         orchestrator=orchestrator,
         store=store,
         settings=settings,
+        space_repo=space_repo,
     )
 
 
