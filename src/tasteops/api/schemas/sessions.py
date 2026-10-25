@@ -25,12 +25,91 @@ class SessionResponse(BaseModel):
     )
 
 
+class CulturalMatrixSummary(BaseModel):
+    """Safe, summarized cultural intelligence matrix metrics without raw provider dumps."""
+
+    total_entities: int = Field(default=0, description="Total verified entities retrieved from Qloo")
+    fingerprint: str | None = Field(default=None, description="Deterministic matrix fingerprint")
+    domains_present: list[str] = Field(default_factory=list, description="Cultural domains analyzed")
+    category_counts: dict[str, int] = Field(default_factory=dict, description="Counts of items per category")
+    top_affinities: dict[str, list[dict[str, Any]]] = Field(
+        default_factory=dict, description="Top cultural recommendations per category"
+    )
+    evidence_count: int = Field(default=0, description="Total provenance evidence records")
+
+
+class AgentSummaries(BaseModel):
+    """Sanitized summaries of agent outputs without chain-of-thought or raw prompts."""
+
+    cultural_strategist: dict[str, Any] | None = Field(
+        default=None, description="Strategic positioning and cultural pillars summary"
+    )
+    experience_architect: dict[str, Any] | None = Field(
+        default=None, description="Spatial zones and sensory design summary"
+    )
+    partnership_agent: dict[str, Any] | None = Field(
+        default=None, description="Curated brand and artist collaboration summary"
+    )
+    governance_agent: dict[str, Any] | None = Field(
+        default=None, description="Provenance and compliance verification summary"
+    )
+
+
+class ValidationSummary(BaseModel):
+    """Typed summary of governance validation checks and provenance verification."""
+
+    is_valid: bool = Field(..., description="Whether plan passed all compliance and provenance checks")
+    provenance_verified: bool = Field(default=True, description="Whether all entities trace to verified Qloo signals")
+    compliance_score: float = Field(default=1.0, ge=0.0, le=1.0, description="Aggregate compliance confidence score")
+    risk_flags: list[str] = Field(default_factory=list, description="Identified operational or cultural risk flags")
+    recommendations: list[str] = Field(default_factory=list, description="Governance curatorial recommendations")
+
+
+class ExecutionPlanSummary(BaseModel):
+    """Structured execution plan summary for human curator review."""
+
+    plan_id: str = Field(..., description="Unique execution plan ID")
+    version: int = Field(default=1, description="Plan version")
+    plan_hash: str | None = Field(default=None, description="Cryptographic content hash")
+    estimated_cost: str = Field(..., description="Estimated cost and resource allocation")
+    actions_count: int = Field(default=0, description="Total planned actions")
+    actions: list[dict[str, Any]] = Field(default_factory=list, description="Action items")
+    risks: list[str] = Field(default_factory=list, description="Identified risks")
+    approvals_required: list[str] = Field(default_factory=list, description="Required sign-off roles")
+
+
+class ApprovalStateSummary(BaseModel):
+    """Authoritative human curator approval state."""
+
+    is_approved: bool = Field(default=False, description="Whether plan has received valid curator sign-off")
+    status: str = Field(default="PENDING", description="Approval status (PENDING / APPROVED / REJECTED / REVOKED)")
+    approver: str | None = Field(default=None, description="Approving curator identity")
+    role: str | None = Field(default=None, description="Curator organizational role")
+    approved_at: datetime | str | None = Field(default=None, description="Timestamp of approval")
+    plan_hash: str | None = Field(default=None, description="Cryptographic hash of approved plan")
+    notes: str | None = Field(default=None, description="Review notes or feedback")
+
+
+class ExecutionStateSummary(BaseModel):
+    """Execution status and task dispatch progress."""
+
+    status: str = Field(default="NOT_STARTED", description="Execution status (NOT_STARTED / EXECUTING / COMPLETED / FAILED)")
+    total_tasks: int = Field(default=0, description="Total execution tasks")
+    executed_tasks: int = Field(default=0, description="Number of executed tasks")
+    failed_tasks: int = Field(default=0, description="Number of failed tasks")
+    tasks: list[dict[str, Any]] = Field(default_factory=list, description="Task details")
+
+
 class SessionDetailResponse(BaseModel):
-    """Comprehensive session detail envelope."""
+    """Comprehensive, safe, typed workflow session detail envelope."""
 
     session_id: str = Field(..., description="Unique workflow session UUID")
     space_id: str | None = Field(default=None, description="Associated space identifier")
     current_state: str = Field(..., description="Current deterministic workflow state")
+    status: str = Field(
+        default="IN_PROGRESS",
+        description="High-level workflow status (IN_PROGRESS, AWAITING_APPROVAL, APPROVED, EXECUTING, COMPLETED, FAILED)",
+    )
     user_input: str = Field(..., description="Natural language activation brief")
     parsed_intent: dict[str, Any] = Field(
         default_factory=dict, description="Structured parsed space brief"
@@ -38,11 +117,37 @@ class SessionDetailResponse(BaseModel):
     cultural_twin: dict[str, Any] | None = Field(
         default=None, description="Synthesized Cultural Twin profile"
     )
-    cultural_matrix: dict[str, Any] | None = Field(
-        default=None, description="Qloo-grounded cultural affinity matrix"
+    cultural_matrix_summary: CulturalMatrixSummary | dict[str, Any] | None = Field(
+        default=None, description="Safe summary of Qloo cultural affinities"
     )
+    agent_summaries: AgentSummaries | dict[str, Any] = Field(
+        default_factory=dict, description="Safe summaries of domain agent outputs"
+    )
+    validation: ValidationSummary | dict[str, Any] | None = Field(
+        default=None, description="Governance compliance and provenance report"
+    )
+    execution_plan: ExecutionPlanSummary | dict[str, Any] | None = Field(
+        default=None, description="Structured execution plan"
+    )
+    approval_state: ApprovalStateSummary | dict[str, Any] = Field(
+        default_factory=dict, description="Human curator approval state"
+    )
+    execution_state: ExecutionStateSummary | dict[str, Any] = Field(
+        default_factory=dict, description="Execution tasks and dispatch state"
+    )
+    errors: list[str] = Field(
+        default_factory=list, description="Sanitized error messages without stack traces"
+    )
+    timestamps: dict[str, Any] = Field(
+        default_factory=dict, description="Key lifecycle timestamps"
+    )
+
+    # Backward-compatibility fields
     plan: dict[str, Any] | None = Field(
         default=None, description="Generated activation plan"
+    )
+    cultural_matrix: dict[str, Any] | None = Field(
+        default=None, description="Qloo-grounded cultural affinity matrix"
     )
     validation_result: dict[str, Any] | None = Field(
         default=None, description="Governance compliance and provenance report"

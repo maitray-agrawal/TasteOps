@@ -92,17 +92,35 @@ class SQLiteSessionRepository(BaseSessionRepository):
                 )
 
             # 1. Upsert workflow_sessions
+            status_str = "IN_PROGRESS"
+            if ctx.current_state == WorkflowState.AWAITING_APPROVAL:
+                status_str = "AWAITING_APPROVAL"
+            elif ctx.current_state == WorkflowState.APPROVED:
+                status_str = "APPROVED"
+            elif ctx.current_state == WorkflowState.EXECUTING:
+                status_str = "EXECUTING"
+            elif ctx.current_state == WorkflowState.COMPLETED:
+                status_str = "COMPLETED"
+            elif ctx.current_state == WorkflowState.FAILED:
+                status_str = "FAILED"
+
+            val_res = ctx.validation_result or ctx.governance_output or (ctx.plan.governance if ctx.plan else None)
+            val_json = val_res.model_dump_json() if val_res and hasattr(val_res, "model_dump_json") else "{}"
+
             cursor.execute(
                 """
                 INSERT INTO workflow_sessions (
-                    session_id, space_id, user_input, current_state, parsed_intent_json,
+                    session_id, space_id, user_input, current_state, status,
+                    parsed_intent_json, validation_result_json,
                     validation_cycle_count, qloo_retry_count, agent_retry_count,
                     error_message, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     current_state = excluded.current_state,
+                    status = excluded.status,
                     parsed_intent_json = excluded.parsed_intent_json,
+                    validation_result_json = excluded.validation_result_json,
                     validation_cycle_count = excluded.validation_cycle_count,
                     qloo_retry_count = excluded.qloo_retry_count,
                     agent_retry_count = excluded.agent_retry_count,
@@ -114,7 +132,9 @@ class SQLiteSessionRepository(BaseSessionRepository):
                     ctx.space_id,
                     ctx.user_input,
                     ctx.current_state.value,
+                    status_str,
                     parsed_intent_json,
+                    val_json,
                     ctx.validation_cycle_count,
                     ctx.qloo_retry_count,
                     ctx.agent_retry_count,
@@ -328,6 +348,78 @@ class SQLiteSessionRepository(BaseSessionRepository):
                     ),
                 )
 
+            # 5b. Upsert Agent Runs
+            strat = ctx.strategy_output or (ctx.plan.strategy if ctx.plan else None)
+            if strat:
+                run_id = f"run_{ctx.session_id[:8]}_strat"
+                strat_json = strat.model_dump_json() if hasattr(strat, "model_dump_json") else json.dumps(str(strat))
+                cursor.execute(
+                    """
+                    INSERT INTO agent_runs (
+                        run_id, session_id, agent_name, output_summary_json, status, created_at
+                    )
+                    VALUES (?, ?, 'CulturalStrategist', ?, 'COMPLETED', ?)
+                    ON CONFLICT(run_id) DO UPDATE SET
+                        output_summary_json = excluded.output_summary_json,
+                        status = excluded.status;
+                    """,
+                    (run_id, ctx.session_id, strat_json, now),
+                )
+
+            if exp:
+                run_id = f"run_{ctx.session_id[:8]}_exp"
+                exp_json = exp.model_dump_json() if hasattr(exp, "model_dump_json") else json.dumps(str(exp))
+                cursor.execute(
+                    """
+                    INSERT INTO agent_runs (
+                        run_id, session_id, agent_name, output_summary_json, status, created_at
+                    )
+                    VALUES (?, ?, 'ExperienceArchitect', ?, 'COMPLETED', ?)
+                    ON CONFLICT(run_id) DO UPDATE SET
+                        output_summary_json = excluded.output_summary_json,
+                        status = excluded.status;
+                    """,
+                    (run_id, ctx.session_id, exp_json, now),
+                )
+
+            part = ctx.partnership_output or (ctx.plan.partnerships if ctx.plan else None)
+            if part:
+                run_id = f"run_{ctx.session_id[:8]}_part"
+                part_json = part.model_dump_json() if hasattr(part, "model_dump_json") else json.dumps(str(part))
+                cursor.execute(
+                    """
+                    INSERT INTO agent_runs (
+                        run_id, session_id, agent_name, output_summary_json, status, created_at
+                    )
+                    VALUES (?, ?, 'PartnershipAgent', ?, 'COMPLETED', ?)
+                    ON CONFLICT(run_id) DO UPDATE SET
+                        output_summary_json = excluded.output_summary_json,
+                        status = excluded.status;
+                    """,
+                    (run_id, ctx.session_id, part_json, now),
+                )
+
+            if val_res:
+                run_id = f"run_{ctx.session_id[:8]}_gov"
+                cursor.execute(
+                    """
+                    INSERT INTO agent_runs (
+                        run_id, session_id, agent_name, output_summary_json, status, created_at
+                    )
+                    VALUES (?, ?, 'GovernanceAgent', ?, ?, ?)
+                    ON CONFLICT(run_id) DO UPDATE SET
+                        output_summary_json = excluded.output_summary_json,
+                        status = excluded.status;
+                    """,
+                    (
+                        run_id,
+                        ctx.session_id,
+                        val_json,
+                        "COMPLETED" if getattr(val_res, "is_valid", True) else "FAILED",
+                        now,
+                    ),
+                )
+
             # 6. Upsert ExecutionPlan (versioned)
             exec_plan = ctx.execution_plan or (ctx.plan.execution_plan if ctx.plan else None)
             if exec_plan:
@@ -462,7 +554,8 @@ class SQLiteSessionRepository(BaseSessionRepository):
             cursor.execute(
                 """
                 SELECT session_id, space_id, user_input, current_state, parsed_intent_json,
-                       validation_cycle_count, qloo_retry_count, agent_retry_count, error_message
+                       validation_cycle_count, qloo_retry_count, agent_retry_count, error_message,
+                       validation_result_json
                 FROM workflow_sessions
                 WHERE session_id = ?;
                 """,
@@ -486,6 +579,14 @@ class SQLiteSessionRepository(BaseSessionRepository):
                 agent_retry_count=sess_row["agent_retry_count"],
                 error_message=sess_row["error_message"],
             )
+
+            val_json = sess_row["validation_result_json"] if "validation_result_json" in sess_row.keys() else None
+            if val_json and val_json != "{}":
+                try:
+                    ctx.validation_result = GovernanceValidationOutput.model_validate_json(val_json)
+                    ctx.governance_output = ctx.validation_result
+                except Exception as exc:
+                    logger.debug("Non-critical: Validation output recovery relaxed: %s", exc)
 
             # 2. Recover CulturalTwin
             cursor.execute(
@@ -630,8 +731,25 @@ class SQLiteSessionRepository(BaseSessionRepository):
                     invalidation_reason=appr_row["notes"] if not appr_row["is_valid"] else None,
                 )
 
-            # 8. Recover Audit Events
+            # 8. Recover Agent Runs (CulturalStrategist, PartnershipAgent, GovernanceAgent)
+            cursor.execute(
+                "SELECT agent_name, output_summary_json FROM agent_runs WHERE session_id = ?;",
+                (session_id,),
+            )
+            for r in cursor.fetchall():
+                try:
+                    if r["agent_name"] == "CulturalStrategist" and not ctx.strategy_output:
+                        ctx.strategy_output = CulturalStrategyOutput.model_validate_json(r["output_summary_json"])
+                    elif r["agent_name"] == "PartnershipAgent" and not ctx.partnership_output:
+                        ctx.partnership_output = PartnershipOutput.model_validate_json(r["output_summary_json"])
+                    elif r["agent_name"] == "GovernanceAgent" and not ctx.governance_output:
+                        ctx.governance_output = GovernanceValidationOutput.model_validate_json(r["output_summary_json"])
+                except Exception as exc:
+                    logger.debug("Non-critical: Agent run recovery relaxed: %s", exc)
+
+            # 9. Recover Audit Events
             ctx.audit_events = self.get_audit_events(session_id)
+            ctx.sync_outputs()
 
             return ctx
         finally:

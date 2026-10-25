@@ -6,6 +6,7 @@ recording curator approvals/rejections, and dispatching execution tasks.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response, status
@@ -20,51 +21,255 @@ from tasteops.api.schemas.sessions import (
     SessionEventsResponse,
 )
 from tasteops.workflows.context import WorkflowContext
+from tasteops.workflows.states import WorkflowState
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
 
 def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
-    """Serializes a WorkflowContext into a typed SessionDetailResponse envelope."""
+    """Serializes a WorkflowContext into a typed, safe SessionDetailResponse envelope."""
+    # 1. High-level status
+    status_str = "IN_PROGRESS"
+    if ctx.current_state == WorkflowState.AWAITING_APPROVAL:
+        status_str = "AWAITING_APPROVAL"
+    elif ctx.current_state == WorkflowState.APPROVED:
+        status_str = "APPROVED"
+    elif ctx.current_state == WorkflowState.EXECUTING:
+        status_str = "EXECUTING"
+    elif ctx.current_state == WorkflowState.COMPLETED:
+        status_str = "COMPLETED"
+    elif ctx.current_state == WorkflowState.FAILED:
+        status_str = "FAILED"
+
+    # 2. Cultural Twin (Safe typed view without chain-of-thought)
     cultural_twin_dict: dict[str, Any] | None = None
     if ctx.cultural_twin:
-        cultural_twin_dict = (
-            ctx.cultural_twin.model_dump()
-            if hasattr(ctx.cultural_twin, "model_dump")
-            else dict(ctx.cultural_twin)
-        )
+        ct = ctx.cultural_twin
+        cultural_twin_dict = {
+            "audience_profile": getattr(ct, "audience_profile", ""),
+            "cultural_themes": getattr(ct, "cultural_themes", []),
+            "mood_profile": getattr(ct, "mood_profile", ""),
+            "anchor_entities": getattr(ct, "anchor_entities", []),
+            "resolved_entities": [
+                {
+                    "id": getattr(e, "id", ""),
+                    "name": getattr(e, "name", ""),
+                    "type": getattr(e, "type", ""),
+                    "confidence": getattr(e, "confidence", 1.0),
+                    "why_it_matters": getattr(e, "why_it_matters", ""),
+                }
+                for e in getattr(ct, "resolved_entities", [])
+            ],
+            "resolved_tags": getattr(ct, "resolved_tags", []),
+            "cultural_constraints": getattr(ct, "cultural_constraints", []),
+            "confidence": getattr(ct, "confidence", 1.0),
+        }
 
+    # 3. Cultural Matrix Summary (Metrics without raw provider dumps)
     cultural_matrix_dict: dict[str, Any] | None = None
+    cultural_matrix_summary: dict[str, Any] | None = None
     if ctx.cultural_matrix:
+        mat = ctx.cultural_matrix
         cultural_matrix_dict = (
-            ctx.cultural_matrix.model_dump()
-            if hasattr(ctx.cultural_matrix, "model_dump")
-            else dict(ctx.cultural_matrix)
+            mat.model_dump() if hasattr(mat, "model_dump") else dict(mat)
         )
+        cat_counts = {
+            "artists": len(getattr(mat, "artists", [])),
+            "books": len(getattr(mat, "books", [])),
+            "brands": len(getattr(mat, "brands", [])),
+            "places": len(getattr(mat, "places", [])),
+            "movies": len(getattr(mat, "movies", [])),
+            "destinations": len(getattr(mat, "destinations", [])),
+        }
+        top_affinities: dict[str, list[dict[str, Any]]] = {}
+        for cat in ["artists", "books", "brands", "places", "movies", "destinations"]:
+            recs = getattr(mat, cat, [])
+            if recs:
+                top_affinities[cat] = [
+                    {
+                        "id": getattr(r, "id", ""),
+                        "name": getattr(r, "name", ""),
+                        "affinity": getattr(r, "affinity", 0.0),
+                        "source_query": getattr(r, "source_query", ""),
+                    }
+                    for r in recs[:5]
+                ]
+        cultural_matrix_summary = {
+            "total_entities": sum(cat_counts.values()),
+            "fingerprint": getattr(mat, "fingerprint", None),
+            "domains_present": [k for k, v in cat_counts.items() if v > 0],
+            "category_counts": cat_counts,
+            "top_affinities": top_affinities,
+            "evidence_count": len(getattr(mat, "evidence", [])),
+        }
 
+    # 4. Agent Summaries
+    strat = ctx.strategy_output or (ctx.plan.strategy if ctx.plan else None)
+    exp = ctx.experience_output or (ctx.plan.experience_design if ctx.plan else None)
+    part = ctx.partnership_output or (ctx.plan.partnerships if ctx.plan else None)
+    gov = ctx.validation_result or ctx.governance_output or (ctx.plan.governance if ctx.plan else None)
+
+    agent_summaries: dict[str, Any] = {}
+    if strat:
+        pillars = getattr(strat, "cultural_pillars", [])
+        agent_summaries["cultural_strategist"] = {
+            "positioning": getattr(strat, "positioning_statement", ""),
+            "pillars_count": len(pillars),
+            "pillars": [getattr(p, "name", str(p)) for p in pillars],
+            "target_audience": getattr(strat, "target_audience", ""),
+        }
+    if exp:
+        zones = getattr(exp, "spatial_zones", [])
+        sonic = getattr(exp, "sonic_identity", None)
+        reading = getattr(exp, "reading_library_identity", None)
+        brand = getattr(exp, "brand_ecosystem", None)
+        agent_summaries["experience_architect"] = {
+            "spatial_zones_count": len(zones),
+            "sonic_profile": getattr(sonic, "acoustic_profile", "") if sonic else None,
+            "reading_library": getattr(reading, "overview", "") if reading else None,
+            "material_palette": getattr(brand, "material_palette", []) if brand else [],
+        }
+    if part:
+        partnerships = getattr(part, "partnerships", [])
+        agent_summaries["partnership_agent"] = {
+            "partnerships_count": len(partnerships),
+            "partners": [
+                {
+                    "name": getattr(p, "partner_name", ""),
+                    "type": getattr(p, "partnership_type", ""),
+                    "tier": getattr(p, "tier", ""),
+                }
+                for p in partnerships
+            ],
+        }
+    if gov:
+        agent_summaries["governance_agent"] = {
+            "is_valid": gov.is_valid,
+            "provenance_verified": getattr(gov, "provenance_verified", True),
+            "compliance_score": getattr(gov, "compliance_score", 1.0),
+            "risk_flags_count": len(getattr(gov, "risk_flags", [])),
+        }
+
+    # 5. Validation Summary
+    validation_dict: dict[str, Any] | None = None
+    if gov:
+        validation_dict = {
+            "is_valid": gov.is_valid,
+            "provenance_verified": getattr(gov, "provenance_verified", True),
+            "compliance_score": getattr(gov, "compliance_score", 1.0),
+            "risk_flags": getattr(gov, "risk_flags", []),
+            "recommendations": getattr(gov, "recommendations", []),
+        }
+
+    # 6. Execution Plan
     plan_dict: dict[str, Any] | None = None
     if ctx.plan:
-        plan_dict = (
-            ctx.plan.model_dump()
-            if hasattr(ctx.plan, "model_dump")
-            else dict(ctx.plan)
-        )
+        plan_dict = ctx.plan.model_dump() if hasattr(ctx.plan, "model_dump") else dict(ctx.plan)
 
-    validation_dict: dict[str, Any] | None = None
-    if ctx.validation_result:
-        validation_dict = (
-            ctx.validation_result.model_dump()
-            if hasattr(ctx.validation_result, "model_dump")
-            else dict(ctx.validation_result)
-        )
+    exec_plan = ctx.execution_plan or (ctx.plan.execution_plan if ctx.plan else None)
+    execution_plan_dict: dict[str, Any] | None = None
+    if exec_plan:
+        actions = [
+            {
+                "action_id": a.action_id,
+                "title": getattr(a, "title", a.action_id),
+                "category": getattr(a, "category", "general"),
+                "description": a.description,
+                "owner": a.owner,
+            }
+            for a in getattr(exec_plan, "actions", [])
+        ]
+        plan_hash = getattr(exec_plan, "plan_hash", None) or (ctx.plan.compute_hash() if ctx.plan else None)
+        execution_plan_dict = {
+            "plan_id": exec_plan.plan_id,
+            "version": exec_plan.version,
+            "plan_hash": plan_hash,
+            "estimated_cost": exec_plan.estimated_cost,
+            "actions_count": len(actions),
+            "actions": actions,
+            "risks": getattr(exec_plan, "risks", []),
+            "approvals_required": getattr(exec_plan, "approvals_required", []),
+        }
 
+    # 7. Approval State
     approval_dict: dict[str, Any] | None = None
     if ctx.approval:
-        approval_dict = (
-            ctx.approval.model_dump()
-            if hasattr(ctx.approval, "model_dump")
-            else dict(ctx.approval)
+        approval_dict = ctx.approval.model_dump() if hasattr(ctx.approval, "model_dump") else dict(ctx.approval)
+
+    approval_state: dict[str, Any] = {
+        "is_approved": False,
+        "status": "PENDING",
+        "approver": None,
+        "role": None,
+        "approved_at": None,
+        "plan_hash": None,
+        "notes": None,
+    }
+    if ctx.approval:
+        approval_state["is_approved"] = bool(ctx.approval.is_valid)
+        approval_state["status"] = "APPROVED" if ctx.approval.is_valid else "INVALIDATED"
+        approval_state["approver"] = ctx.approval.approver
+        approval_state["role"] = getattr(ctx.approval, "role", "Lead Cultural Strategist")
+        approval_state["approved_at"] = (
+            ctx.approval.approved_at.isoformat()
+            if hasattr(ctx.approval.approved_at, "isoformat")
+            else str(ctx.approval.approved_at)
         )
+        approval_state["plan_hash"] = ctx.approval.plan_hash
+        approval_state["notes"] = getattr(ctx.approval, "notes", getattr(ctx.approval, "invalidation_reason", None))
+
+    # 8. Execution State
+    executed_tasks = sum(1 for t in ctx.execution_tasks if t.status == "EXECUTED")
+    failed_tasks = sum(1 for t in ctx.execution_tasks if t.status == "FAILED")
+    total_tasks = len(ctx.execution_tasks)
+    exec_status = "NOT_STARTED"
+    if total_tasks > 0:
+        if executed_tasks == total_tasks:
+            exec_status = "COMPLETED"
+        elif executed_tasks > 0 or failed_tasks > 0:
+            exec_status = "EXECUTING"
+    execution_state = {
+        "status": exec_status,
+        "total_tasks": total_tasks,
+        "executed_tasks": executed_tasks,
+        "failed_tasks": failed_tasks,
+        "tasks": [
+            {
+                "task_id": t.task_id,
+                "action": t.action,
+                "owner": t.owner,
+                "status": t.status,
+                "output_reference": t.output_reference,
+            }
+            for t in ctx.execution_tasks
+        ],
+    }
+
+    # 9. Errors (Sanitized, no stack traces or chain of thought)
+    errors: list[str] = []
+    if ctx.error_message:
+        clean_lines = []
+        for line in ctx.error_message.splitlines():
+            s = line.strip()
+            if s and not s.startswith("Traceback") and not s.startswith('File "'):
+                clean_lines.append(s)
+        errors = [clean_lines[-1]] if clean_lines else [ctx.error_message.strip()]
+
+    # 10. Timestamps
+    now_iso = datetime.now(UTC).isoformat()
+    created_at = ctx.history[0].timestamp.isoformat() if ctx.history else now_iso
+    updated_at = ctx.history[-1].timestamp.isoformat() if ctx.history else now_iso
+    completed_at = (
+        ctx.history[-1].timestamp.isoformat()
+        if ctx.current_state in {WorkflowState.COMPLETED, WorkflowState.FAILED}
+        else None
+    )
+    timestamps = {
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "approved_at": approval_state["approved_at"],
+        "completed_at": completed_at,
+    }
 
     links = {
         "self": f"/api/v1/sessions/{ctx.session_id}",
@@ -81,14 +286,24 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
         session_id=ctx.session_id,
         space_id=ctx.space_id,
         current_state=ctx.current_state.value,
+        status=status_str,
         user_input=ctx.user_input,
         parsed_intent=ctx.parsed_intent,
         cultural_twin=cultural_twin_dict,
-        cultural_matrix=cultural_matrix_dict,
+        cultural_matrix_summary=cultural_matrix_summary,
+        agent_summaries=agent_summaries,
+        validation=validation_dict,
+        execution_plan=execution_plan_dict,
+        approval_state=approval_state,
+        execution_state=execution_state,
+        errors=errors,
+        timestamps=timestamps,
+        # Backward-compatibility fields
         plan=plan_dict,
+        cultural_matrix=cultural_matrix_dict,
         validation_result=validation_dict,
         approval=approval_dict,
-        execution_tasks_count=len(ctx.execution_tasks),
+        execution_tasks_count=total_tasks,
         error_message=ctx.error_message,
         links=links,
     )
