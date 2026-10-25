@@ -174,6 +174,13 @@ class EmailConnector(BaseConnector):
 
         except ConnectorError:
             raise
+        except httpx.TimeoutException as exc:
+            logger.error("[%s] External email API timed out: %s", self.name, exc)
+            raise ConnectorExecutionFailedError(
+                self.name,
+                f"Email external dispatch timed out (ambiguous provider outcome): {exc}",
+                details={"error": str(exc), "ambiguous": True},
+            ) from exc
         except Exception as exc:
             logger.error("[%s] External execution failed: %s", self.name, exc)
             raise ConnectorExecutionFailedError(

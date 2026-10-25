@@ -13,6 +13,7 @@ import logging
 import re
 import secrets
 import socket
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger("tasteops.security")
@@ -21,6 +22,7 @@ SAFE_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # Denied IP ranges for SSRF prevention (cloud metadata, loopback, RFC 1918 private subnets)
 BLOCKED_IP_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),  # Unspecified / Current network
     ipaddress.ip_network("127.0.0.0/8"),  # Loopback
     ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 Private
     ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918 Private
@@ -36,6 +38,7 @@ BLOCKED_IP_NETWORKS = [
     ipaddress.ip_network("224.0.0.0/4"),  # Multicast
     ipaddress.ip_network("240.0.0.0/4"),  # Reserved
     ipaddress.ip_network("::1/128"),  # IPv6 Loopback
+    ipaddress.ip_network("::/128"),  # IPv6 Unspecified
     ipaddress.ip_network("fc00::/7"),  # IPv6 Unique Local
     ipaddress.ip_network("fe80::/10"),  # IPv6 Link-Local
 ]
@@ -70,11 +73,16 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
     if not hostname:
         raise ValueError("URL does not contain a valid hostname.")
 
-    # Reject cloud metadata special hostnames directly
+    # Reject cloud metadata and local loopback hostnames directly
     lower_host = hostname.lower()
-    if lower_host in ("metadata.google.internal", "instance-data", "169.254.169.254"):
+    if lower_host in (
+        "metadata.google.internal",
+        "instance-data",
+        "169.254.169.254",
+        "localhost",
+    ) or lower_host.endswith(".localhost"):
         raise ValueError(
-            f"SSRF Protection: Access to cloud metadata endpoint '{hostname}' is blocked."
+            f"SSRF Protection: Access to cloud metadata or localhost endpoint '{hostname}' is blocked."
         )
 
     if allow_private:
@@ -101,6 +109,19 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
             ):
                 target_ip = resolved_ip.ipv4_mapped
 
+            # Enforce built-in IP classification properties
+            if (
+                target_ip.is_loopback
+                or target_ip.is_private
+                or target_ip.is_link_local
+                or target_ip.is_multicast
+                or target_ip.is_reserved
+                or target_ip.is_unspecified
+            ):
+                raise ValueError(
+                    f"SSRF Protection: Hostname '{hostname}' resolves to restricted IP address {resolved_ip}."
+                )
+
             for blocked_net in BLOCKED_IP_NETWORKS:
                 if target_ip in blocked_net:
                     raise ValueError(
@@ -114,6 +135,57 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
         # unless they explicitly match blocked IP patterns
 
     return True
+
+
+def validate_redirect_target(
+    response_or_location: Any, base_url: str | None = None
+) -> None:
+    """Validates that an HTTP redirect location is safe against SSRF before the client follows it.
+
+    Args:
+        response_or_location: An httpx.Response object or redirect location URL string.
+        base_url: Optional base URL if resolving a relative location string.
+
+    Raises:
+        ValueError: If redirect targets an SSRF-restricted destination.
+    """
+    if (
+        hasattr(response_or_location, "is_redirect")
+        and response_or_location.is_redirect
+    ):
+        location = response_or_location.headers.get("location")
+        if location:
+            redirect_url = str(response_or_location.url.join(location))
+            validate_safe_url(redirect_url)
+    elif isinstance(response_or_location, str):
+        target = response_or_location
+        if base_url and not target.startswith(("http://", "https://")):
+            from urllib.parse import urljoin
+
+            target = urljoin(base_url, target)
+        validate_safe_url(target)
+
+
+def create_safe_async_client(**kwargs: Any) -> Any:
+    """Creates an httpx.AsyncClient with SSRF redirect protection and strict timeout defaults."""
+    import httpx
+
+    kwargs.setdefault("follow_redirects", False)
+    kwargs.setdefault("timeout", 10.0)
+
+    # Wrap or attach redirect validation hook if follow_redirects is explicitly enabled
+    if kwargs.get("follow_redirects") is True:
+
+        async def _check_redirect_hook(response: httpx.Response) -> None:
+            validate_redirect_target(response)
+
+        existing_hooks = kwargs.get("event_hooks", {})
+        response_hooks = list(existing_hooks.get("response", []))
+        response_hooks.append(_check_redirect_hook)
+        existing_hooks["response"] = response_hooks
+        kwargs["event_hooks"] = existing_hooks
+
+    return httpx.AsyncClient(**kwargs)
 
 
 def constant_time_compare(val1: str | None, val2: str | None) -> bool:

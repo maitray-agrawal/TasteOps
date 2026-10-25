@@ -224,8 +224,10 @@ async def test_concurrent_execute_requests_run_safely():
 @pytest.mark.asyncio
 async def test_retry_after_timeout_preserves_idempotency():
     """Verify that when an execution attempt times out, retrying re-uses already executed tasks."""
+    from tasteops.connectors import create_configured_mock_registry
+
     plan = await _create_test_plan("plan_timeout_retry")
-    gov = GovernanceAgent()
+    gov = GovernanceAgent(connector_registry=create_configured_mock_registry())
     approval = ApprovalRecord(
         session_id="sess_timeout",
         plan_id=plan.plan_id,

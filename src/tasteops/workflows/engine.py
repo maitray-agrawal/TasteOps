@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
     from tasteops.agents.partnership import PartnershipAgent
     from tasteops.agents.strategist import CulturalStrategist
+    from tasteops.connectors.registry import ConnectorRegistry
 
 logger = logging.getLogger("tasteops.workflows.engine")
 
@@ -68,6 +69,7 @@ class WorkflowEngine:
         partnership: PartnershipAgent | None = None,
         governance: GovernanceAgent | None = None,
         store: BaseStateStore | None = None,
+        connector_registry: ConnectorRegistry | None = None,
         max_qloo_retries: int = 2,
         max_agent_retries: int = 2,
         max_validation_cycles: int = 2,
@@ -77,12 +79,26 @@ class WorkflowEngine:
         from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
         from tasteops.agents.partnership import PartnershipAgent
         from tasteops.agents.strategist import CulturalStrategist
+        from tasteops.connectors import create_default_registry
 
         self.mcp = mcp_adapter or CulturalIntelligenceMCPAdapter()
         self.strategist = strategist or CulturalStrategist(mcp_adapter=self.mcp)
         self.architect = architect or ExperienceArchitect()
         self.partnership = partnership or PartnershipAgent()
-        self.governance = governance or GovernanceAgent()
+        self.connector_registry = connector_registry or (
+            governance.connector_registry
+            if governance and hasattr(governance, "connector_registry")
+            else create_default_registry()
+        )
+        self.governance = governance or GovernanceAgent(
+            connector_registry=self.connector_registry
+        )
+        if (
+            governance is not None
+            and hasattr(self.governance, "connector_registry")
+            and connector_registry is not None
+        ):
+            self.governance.connector_registry = connector_registry
         self.store = store or InMemoryStateStore()
 
         # Guardrail bounds against infinite loops
@@ -801,28 +817,50 @@ class WorkflowEngine:
                         last_approver = record.metadata["approver"]
                         break
 
-            execution_summary = await self.governance.execute_plan(
-                ctx.plan,
-                is_approved=True,
-                approved_by=last_approver,
-                approval=ctx.approval,
-                session_id=ctx.session_id,
-            )
-            ctx.plan.execution_summary = execution_summary
-            ctx.execution_tasks = execution_summary.tasks
-            ctx.sync_outputs()
+            try:
+                execution_summary = await self.governance.execute_plan(
+                    ctx.plan,
+                    is_approved=True,
+                    approved_by=last_approver,
+                    approval=ctx.approval,
+                    session_id=ctx.session_id,
+                    store=self.store,
+                    ctx=ctx,
+                )
+                ctx.plan.execution_summary = execution_summary
+                ctx.execution_tasks = execution_summary.tasks
+                ctx.sync_outputs()
 
-            validate_transition(ctx.current_state, WorkflowState.COMPLETED)
-            self._record_and_persist(
-                ctx,
-                WorkflowState.COMPLETED,
-                reason="All downstream activation tasks confirmed with provenance",
-                metadata={
-                    "total_tasks": execution_summary.total_tasks,
-                    "executed_tasks": execution_summary.executed_tasks,
-                },
-            )
-            return ctx
+                validate_transition(ctx.current_state, WorkflowState.COMPLETED)
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.COMPLETED,
+                    reason="All downstream activation tasks processed through connector registry",
+                    metadata={
+                        "total_tasks": execution_summary.total_tasks,
+                        "executed_tasks": execution_summary.executed_tasks,
+                        "failed_tasks": execution_summary.failed_tasks,
+                    },
+                )
+                return ctx
+            except Exception as exc:
+                if ctx.current_state == WorkflowState.EXECUTING and not isinstance(
+                    exc, UnapprovedExecutionError
+                ):
+                    try:
+                        validate_transition(ctx.current_state, WorkflowState.FAILED)
+                        self._record_and_persist(
+                            ctx,
+                            WorkflowState.FAILED,
+                            reason=f"Execution pipeline failed: {exc}",
+                            error=str(exc),
+                        )
+                    except Exception as inner_exc:
+                        logger.warning(
+                            "Failed to record FAILED transition during execution error: %s",
+                            inner_exc,
+                        )
+                raise
 
     # -------------------------------------------------------------------------
     # Full Pipeline Helper: Up to Human Gate

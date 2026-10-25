@@ -22,7 +22,11 @@ from tasteops.connectors.base import (
 )
 from tasteops.connectors.email import EmailConnector
 from tasteops.connectors.procurement import ProcurementConnector
-from tasteops.connectors.registry import ConnectorRegistry, create_default_registry
+from tasteops.connectors.registry import (
+    ConnectorRegistry,
+    create_configured_mock_registry,
+    create_default_registry,
+)
 from tasteops.connectors.spotify import SpotifyConnector
 
 __all__ = [
@@ -41,5 +45,6 @@ __all__ = [
     "MissingConnectorError",
     "ProcurementConnector",
     "SpotifyConnector",
+    "create_configured_mock_registry",
     "create_default_registry",
 ]

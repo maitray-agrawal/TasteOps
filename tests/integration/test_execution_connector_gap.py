@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from tasteops.api.main import create_app
 from tasteops.config import ServerSettings
 from tasteops.connectors import (
-    ConnectorNotConfiguredError,
     DuplicateExecutionError,
     SpotifyConnector,
     create_default_registry,
@@ -44,15 +43,12 @@ def test_client(mock_mcp_adapter, tmp_path):
 def test_api_route_simulated_execution_vs_connector_registry_truthfulness(
     test_client,
 ):
-    """Audits the behavioral difference between current API route execution and ConnectorRegistry.
+    """Verifies that API route execution strictly adheres to ConnectorRegistry truthfulness.
 
-    Current Behavior (main):
-        POST /api/v1/sessions/{id}/execute returns status='COMPLETED' with simulated 'EXECUTED'
-        tasks even when SPOTIFY_CLIENT_ID or SENDGRID_API_KEY are absent from the environment.
-
-    Connector Contract (PR #16):
-        ConnectorRegistry.dispatch_task refuses to fake execution and raises
-        ConnectorNotConfiguredError when credentials are missing.
+    Truthful Contract:
+        POST /api/v1/sessions/{id}/execute returns tasks with status='NOT_CONFIGURED' and
+        output_reference=None when provider credentials are absent from the environment.
+        Zero fabricated execution success is permitted.
     """
     # 1. Drive session to approval via UI test client
     init_resp = test_client.post(
@@ -75,25 +71,17 @@ def test_api_route_simulated_execution_vs_connector_registry_truthfulness(
     tasks = exec_data.get("execution_tasks", [])
     assert len(tasks) > 0
 
-    # 3. Notice: API route currently reports tasks as 'EXECUTED' (simulated)
+    # 3. Truthful execution: missing credentials strictly yield NOT_CONFIGURED, never fabricated EXECUTED
     spotify_tasks = [t for t in tasks if "spotify" in t.get("action", "").lower()]
     if spotify_tasks:
-        assert spotify_tasks[0]["status"] == "EXECUTED"
+        assert spotify_tasks[0]["status"] == "NOT_CONFIGURED"
+        assert spotify_tasks[0]["output_reference"] is None
+        assert spotify_tasks[0]["result"]["status"] == "NOT_CONFIGURED"
 
-        # 4. Now audit what ConnectorRegistry does with the exact same task
-        registry = create_default_registry()
-        task_model = ExecutionTask(**spotify_tasks[0])
-
-        # When credentials are missing, ConnectorRegistry MUST raise ConnectorNotConfiguredError
-        with pytest.raises(ConnectorNotConfiguredError):
-            pytest.importorskip("asyncio").run(
-                registry.dispatch_task(
-                    task=task_model,
-                    session_id=session_id,
-                    plan_id=exec_data["plan"]["plan_id"],
-                    plan_version=exec_data["plan"]["version"],
-                )
-            )
+    # Execution summary reflects failed/unconfigured tasks accurately
+    summary = exec_data["plan"]["execution_summary"]
+    assert summary["executed_tasks"] == 0
+    assert summary["failed_tasks"] == len(tasks)
 
 
 @pytest.mark.asyncio

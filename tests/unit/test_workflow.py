@@ -58,7 +58,12 @@ async def test_full_workflow_to_completion(mock_settings, mock_mcp_adapter):
         mock_router.get("/v2/tags").respond(status_code=200, json=mock_tags)
         mock_router.get("/v2/insights").respond(status_code=200, json=mock_insights)
 
-        engine = WorkflowEngine(mcp_adapter=adapter)
+        from tasteops.connectors import create_configured_mock_registry
+
+        engine = WorkflowEngine(
+            mcp_adapter=adapter,
+            connector_registry=create_configured_mock_registry(),
+        )
 
         raw_intent = (
             "Open an analog vinyl listening cafe with Japanese minimalism in Chelsea"

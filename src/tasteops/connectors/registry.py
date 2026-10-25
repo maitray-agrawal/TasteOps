@@ -146,6 +146,12 @@ class ConnectorRegistry:
         self._executed_store[request.idempotency_key] = result
         return result
 
+    def record_execution(
+        self, idempotency_key: str, result: ConnectorExecutionResult
+    ) -> None:
+        """Records an external execution result in registry idempotency store (used for hydration)."""
+        self._executed_store[idempotency_key] = result
+
     async def dispatch_task(
         self,
         task: ExecutionTask,
@@ -181,6 +187,43 @@ def create_default_registry() -> ConnectorRegistry:
 
     # 3. Procurement & Equipment Connector
     procurement = ProcurementConnector()
+    registry.register(
+        procurement,
+        alias_capabilities=["procurement", "spatial_design_spec", "materials_order"],
+    )
+
+    return registry
+
+
+def create_configured_mock_registry(
+    http_client: Any | None = None,
+) -> ConnectorRegistry:
+    """Constructs a ConnectorRegistry pre-configured with mock provider credentials for test/dev."""
+    registry = ConnectorRegistry()
+
+    spotify = SpotifyConnector(
+        client_id="mock_spotify_client_id_test",
+        client_secret="mock_spotify_client_secret_test",
+        http_client=http_client,
+    )
+    registry.register(
+        spotify, alias_capabilities=["spotify", "sonic_identity", "audio_seeding"]
+    )
+
+    email = EmailConnector(
+        api_key="mock_sendgrid_key_test_12345",
+        from_email="curator@tasteops.ai",
+        http_client=http_client,
+    )
+    registry.register(
+        email, alias_capabilities=["email", "partner_outreach", "outreach_brief"]
+    )
+
+    procurement = ProcurementConnector(
+        api_key="mock_procurement_key_test_12345",
+        endpoint_url="https://api.procurement.tasteops.internal/v1/orders",
+        http_client=http_client,
+    )
     registry.register(
         procurement,
         alias_capabilities=["procurement", "spatial_design_spec", "materials_order"],

@@ -400,8 +400,10 @@ async def test_execution_impossible_when_already_completed():
 @pytest.mark.asyncio
 async def test_duplicate_execution_is_idempotent_no_duplicate_tasks():
     """Prove that direct service-level re-invocation respects idempotency and never duplicates external actions."""
+    from tasteops.connectors import create_configured_mock_registry
+
     plan = await _create_valid_plan()
-    gov = GovernanceAgent()
+    gov = GovernanceAgent(connector_registry=create_configured_mock_registry())
 
     approval = ApprovalRecord(
         session_id="sess_idem_gate",

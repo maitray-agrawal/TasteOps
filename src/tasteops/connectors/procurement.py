@@ -149,6 +149,12 @@ class ProcurementConnector(BaseConnector):
             if self._http_client:
                 if not self._endpoint_url:
                     raise InvalidConfigurationError(self.name, "Missing endpoint_url")
+                from tasteops.security import (
+                    validate_redirect_target,
+                    validate_safe_url,
+                )
+
+                validate_safe_url(self._endpoint_url)
                 resp = await self._http_client.post(
                     self._endpoint_url,
                     headers={"Authorization": f"Bearer {self._api_key}"},
@@ -158,6 +164,7 @@ class ProcurementConnector(BaseConnector):
                         "order_items": order_items,
                     },
                 )
+                validate_redirect_target(resp)
                 if resp.status_code >= 400:
                     raise ConnectorExecutionFailedError(
                         self.name,
@@ -196,6 +203,13 @@ class ProcurementConnector(BaseConnector):
 
         except ConnectorError:
             raise
+        except httpx.TimeoutException as exc:
+            logger.error("[%s] External procurement API timed out: %s", self.name, exc)
+            raise ConnectorExecutionFailedError(
+                self.name,
+                f"Procurement API timed out (ambiguous provider outcome): {exc}",
+                details={"error": str(exc), "ambiguous": True},
+            ) from exc
         except Exception as exc:
             logger.error("[%s] External execution failed: %s", self.name, exc)
             raise ConnectorExecutionFailedError(

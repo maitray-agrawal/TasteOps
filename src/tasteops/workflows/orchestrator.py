@@ -39,11 +39,25 @@ class TasteOpsOrchestrator:
         engine: WorkflowEngine | None = None,
         store: BaseStateStore | None = None,
         mcp_adapter: CulturalIntelligenceMCPAdapter | None = None,
+        connector_registry: Any | None = None,
     ) -> None:
+        from tasteops.connectors import ConnectorRegistry, create_default_registry
+
         self.store = store or InMemoryStateStore()
-        self.engine = engine or WorkflowEngine(
-            mcp_adapter=mcp_adapter, store=self.store
+        self.connector_registry: ConnectorRegistry = connector_registry or (
+            getattr(engine, "connector_registry", None) or create_default_registry()
         )
+        self.engine = engine or WorkflowEngine(
+            mcp_adapter=mcp_adapter,
+            store=self.store,
+            connector_registry=self.connector_registry,
+        )
+        if (
+            engine is not None
+            and hasattr(self.engine, "connector_registry")
+            and connector_registry is not None
+        ):
+            self.engine.connector_registry = connector_registry
         self._active_sessions: dict[str, WorkflowContext] = {}
 
     def _resolve_context(
