@@ -90,6 +90,7 @@ class TagParams(BaseModel):
         }
         if self.query:
             params["query"] = self.query
+            params["filter.query"] = self.query
         if self.type:
             params["type"] = self.type.strip()
         return params

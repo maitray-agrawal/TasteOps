@@ -365,8 +365,14 @@ class QlooClient:
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
-            if "results" in payload and isinstance(payload["results"], list):
-                return payload["results"]
+            if "results" in payload:
+                res = payload["results"]
+                if isinstance(res, list):
+                    return res
+                if isinstance(res, dict):
+                    for k in ("entities", "tags", "insights", "results", "data"):
+                        if k in res and isinstance(res[k], list):
+                            return res[k]
             if "data" in payload and isinstance(payload["data"], list):
                 return payload["data"]
             if "entities" in payload and isinstance(payload["entities"], list):

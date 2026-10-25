@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -82,8 +83,12 @@ async def readiness_check(
     """
     qloo_configured = False
     try:
-        qloo_settings = QlooSettings()
-        qloo_configured = bool(qloo_settings.raw_api_key)
+        raw_key = os.getenv("QLOO_API_KEY")
+        if raw_key is not None:
+            qloo_configured = bool(raw_key.strip())
+        else:
+            qloo_settings = QlooSettings()
+            qloo_configured = bool(qloo_settings.raw_api_key)
     except Exception:
         qloo_configured = False
 
