@@ -12,10 +12,10 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi import APIRouter, Header, Path, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
-from tasteops.api.dependencies import ServiceDep
+from tasteops.api.dependencies import AuthDep, ServiceDep
 from tasteops.api.events import format_sse
 from tasteops.api.schemas.sessions import (
     ApproveSessionRequest,
@@ -775,7 +775,10 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     description="Retrieves the complete state, cultural twin, matrix, plan, and validation result of a session.",
     responses={404: {"description": "Session not found"}},
 )
-async def get_session(session_id: str, service: ServiceDep) -> SessionDetailResponse:
+async def get_session(
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+) -> SessionDetailResponse:
     ctx = service.get_session(session_id)
     return format_session_detail(ctx)
 
@@ -789,7 +792,8 @@ async def get_session(session_id: str, service: ServiceDep) -> SessionDetailResp
     responses={404: {"description": "Session not found"}},
 )
 async def get_session_events(
-    session_id: str, service: ServiceDep
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
 ) -> SessionEventsResponse:
     ctx = service.get_session(session_id)
     audit_events, history = service.get_session_events(session_id)
@@ -816,8 +820,8 @@ async def get_session_events(
     responses={404: {"description": "Session not found"}},
 )
 async def verify_session_ledger(
-    session_id: str,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     return service.verify_audit_chain(session_id)
 
@@ -834,7 +838,8 @@ async def verify_session_ledger(
     },
 )
 async def get_session_blueprint(
-    session_id: str, service: ServiceDep
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
 ) -> SessionBlueprintResponse:
     blueprint = service.get_session_blueprint(session_id)
     return SessionBlueprintResponse(**blueprint)
@@ -854,9 +859,9 @@ async def get_session_blueprint(
     },
 )
 async def stream_session_events(
-    session_id: str,
     request: Request,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     last_event_id_query: str | None = Query(None, alias="last_event_id"),
     wait: bool = Query(True, description="Keep stream open for live events if session is active"),
@@ -948,9 +953,10 @@ async def stream_session_events(
     },
 )
 async def approve_session(
-    session_id: str,
     request: ApproveSessionRequest,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+    _actor: AuthDep = "dev-curator",
 ) -> SessionDetailResponse:
     ctx = await service.approve_session(
         session_id=session_id,
@@ -974,9 +980,10 @@ async def approve_session(
     },
 )
 async def reject_session(
-    session_id: str,
     request: RejectSessionRequest,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+    _actor: AuthDep = "dev-curator",
 ) -> SessionDetailResponse:
     ctx = await service.reject_session(
         session_id=session_id,
@@ -999,8 +1006,9 @@ async def reject_session(
     },
 )
 async def execute_session(
-    session_id: str,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+    _actor: AuthDep = "dev-curator",
 ) -> ExecutionResponse:
     ctx = await service.execute_session(session_id)
     tasks = _format_execution_tasks(ctx)
@@ -1046,10 +1054,11 @@ async def execute_session(
     },
 )
 async def execute_task_connector(
-    session_id: str,
-    task_id: str,
     request: ConnectorExecutionRequest,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+    _actor: AuthDep = "dev-curator",
 ) -> ConnectorExecutionResult:
     # Ensure URL session_id and task_id match request body
     if request.session_id != session_id:
@@ -1069,8 +1078,8 @@ async def execute_task_connector(
     },
 )
 async def list_session_connectors(
-    session_id: str,
-    service: ServiceDep,
+    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
 ) -> list[dict[str, Any]]:
     # Verify session exists
     service.get_session(session_id)

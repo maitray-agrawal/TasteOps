@@ -6,9 +6,9 @@ and trigger cultural intelligence analyses.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Path, Response, status
 
-from tasteops.api.dependencies import ServiceDep
+from tasteops.api.dependencies import AuthDep, ServiceDep
 from tasteops.api.routes.sessions import format_session_detail
 from tasteops.api.schemas.sessions import SessionDetailResponse
 from tasteops.api.schemas.spaces import (
@@ -31,6 +31,7 @@ async def create_space(
     request: SpaceCreateRequest,
     service: ServiceDep,
     response: Response,
+    _actor: AuthDep = "dev-curator",
 ) -> SpaceResponse:
     space = service.create_space(request)
     response.headers["Location"] = f"/api/v1/spaces/{space.space_id}"
@@ -45,7 +46,10 @@ async def create_space(
     description="Retrieves a registered physical space profile by its unique identifier.",
     responses={404: {"description": "Space not found"}},
 )
-async def get_space(space_id: str, service: ServiceDep) -> SpaceResponse:
+async def get_space(
+    space_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    service: ServiceDep = None,  # type: ignore[assignment]
+) -> SpaceResponse:
     return service.get_space(space_id)
 
 
@@ -66,9 +70,10 @@ async def get_space(space_id: str, service: ServiceDep) -> SpaceResponse:
     },
 )
 async def analyze_space(
-    space_id: str,
+    space_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
     request: AnalyzeSpaceRequest | None = None,
     service: ServiceDep = None,  # type: ignore[assignment]
+    _actor: AuthDep = "dev-curator",
 ) -> SessionDetailResponse:
     req = request or AnalyzeSpaceRequest()
     ctx = await service.analyze_space(space_id=space_id, request=req)

@@ -1,0 +1,68 @@
+name: TasteOps CI & Security Audit
+
+on:
+  push:
+    branches: [ "main", "feature/**" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install Dependencies
+        run: |
+          uv sync --all-extras
+
+      - name: Run Test Suite
+        env:
+          QLOO_API_KEY: "test_mock_ci_key"
+          ENVIRONMENT: "development"
+        run: |
+          uv run pytest -v
+
+  security-scan:
+    name: Security & SAST Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Bandit & Pip-Audit
+        run: |
+          pip install --upgrade bandit pip-audit
+
+      - name: Static Security Analysis (Bandit)
+        run: |
+          bandit -r src/ -ll -x tests/
+
+      - name: Secret Scan Guard
+        run: |
+          echo "Scanning for accidental committed secrets..."
+          ! grep -rE "([A-Za-z0-9_-]{20,})" --exclude-dir=".git" --exclude-dir=".pytest_cache" --exclude="*.lock" --exclude="conftest.py" --include="*.py" | grep -iE "api_key\s*=\s*['\"][A-Za-z0-9]{16,}['\"]"

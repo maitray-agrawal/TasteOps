@@ -1,0 +1,36 @@
+# Git and local IDE artifacts
+.git
+.gitignore
+.github
+.gemini
+.agents
+.vscode
+.idea
+
+# Secrets and environment files - CRITICAL: Never copy to image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases and storage
+storage/
+*.db
+*.sqlite3
+*.jsonl
+
+# Documentation and scratch files
+docs/
+scratch/

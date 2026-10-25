@@ -69,10 +69,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(RequestCorrelationMiddleware)
 
     # Environment-Controlled CORS
+    is_wildcard = "*" in app_settings.cors_origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=app_settings.cors_origins,
-        allow_credentials=True,
+        allow_credentials=not is_wildcard,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["X-Correlation-ID", "Location", "Retry-After"],

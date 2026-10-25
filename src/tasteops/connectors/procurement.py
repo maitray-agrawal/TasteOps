@@ -60,6 +60,13 @@ class ProcurementConnector(BaseConnector):
         if not (url.startswith("http://") or url.startswith("https://")):
             return ConfigurationStatus.INVALID_CONFIGURATION
 
+        from tasteops.security import validate_safe_url
+
+        try:
+            validate_safe_url(url)
+        except ValueError:
+            return ConfigurationStatus.INVALID_CONFIGURATION
+
         return ConfigurationStatus.CONFIGURED
 
     def validate(self, request: ConnectorExecutionRequest | None = None) -> bool:
@@ -71,6 +78,17 @@ class ProcurementConnector(BaseConnector):
                 "Procurement credentials (PROCUREMENT_API_KEY or ERP_API_KEY) are not configured.",
             )
         if status == ConfigurationStatus.INVALID_CONFIGURATION:
+            url = (self._endpoint_url or os.getenv("PROCUREMENT_ENDPOINT_URL") or "").strip()
+            from tasteops.security import validate_safe_url
+
+            try:
+                validate_safe_url(url)
+            except ValueError as val_err:
+                raise InvalidConfigurationError(
+                    self.name,
+                    f"SSRF violation or invalid procurement endpoint URL: {val_err}",
+                ) from val_err
+
             raise InvalidConfigurationError(
                 self.name,
                 "Malformed procurement API key or endpoint URL.",

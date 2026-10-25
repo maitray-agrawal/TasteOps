@@ -47,9 +47,23 @@ class APISettings(BaseSettings):
         description="Deployment environment (development, staging, production)",
     )
     cors_origins: list[str] = Field(
-        default_factory=lambda: ["*"],
+        default_factory=lambda: [
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost:3000",
+        ],
         alias="CORS_ORIGINS",
         description="Allowed CORS origins list or JSON array string",
+    )
+    api_key: str | None = Field(
+        default=None,
+        alias="TASTEOPS_API_KEY",
+        description="Master API key for authenticating management and execution operations",
+    )
+    auth_enforced: bool = Field(
+        default=False,
+        alias="TASTEOPS_AUTH_ENFORCED",
+        description="Enforces mandatory authentication across all environments",
     )
     log_level: str = Field(
         default="INFO",

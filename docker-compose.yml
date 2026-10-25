@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tasteops/api:latest
+    container_name: tasteops-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - TASTEOPS_AUTH_ENFORCED=true
+      - TASTEOPS_API_KEY=${TASTEOPS_API_KEY:?Error: TASTEOPS_API_KEY must be set}
+      - QLOO_API_KEY=${QLOO_API_KEY:?Error: QLOO_API_KEY must be set}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:8000"]}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - PROCUREMENT_API_KEY=${PROCUREMENT_API_KEY:-}
+    volumes:
+      - tasteops_storage:/app/storage
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    networks:
+      - tasteops-network
+
+volumes:
+  tasteops_storage:
+    name: tasteops_data
+
+networks:
+  tasteops-network:
+    driver: bridge

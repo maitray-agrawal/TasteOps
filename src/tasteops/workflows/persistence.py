@@ -111,8 +111,19 @@ class FileStateStore(BaseStateStore):
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._in_memory_fallback = InMemoryStateStore()
 
+    def _validate_session_id(self, session_id: str) -> None:
+        """Guarantees session_id does not contain path traversal characters."""
+        from tasteops.security import validate_identifier
+
+        validate_identifier(session_id, "session_id")
+        resolved = (self.base_dir / session_id).resolve()
+        base_resolved = self.base_dir.resolve()
+        if not str(resolved).startswith(str(base_resolved)):
+            raise ValueError(f"Path traversal detected in session_id: '{session_id}'")
+
     def _get_session_dir(self, session_id: str) -> Path:
-        session_dir = self.base_dir / session_id
+        self._validate_session_id(session_id)
+        session_dir = (self.base_dir / session_id).resolve()
         session_dir.mkdir(parents=True, exist_ok=True)
         return session_dir
 
@@ -147,6 +158,13 @@ class FileStateStore(BaseStateStore):
             )
 
     def load_context(self, session_id: str) -> WorkflowContext | None:
+        # Validate against path traversal
+        try:
+            self._validate_session_id(session_id)
+        except ValueError as val_err:
+            logger.warning("Rejected malicious session_id in load_context: %s", val_err)
+            return None
+
         # Check in-memory first
         in_mem = self._in_memory_fallback.load_context(session_id)
         if in_mem:
@@ -167,6 +185,12 @@ class FileStateStore(BaseStateStore):
             return None
 
     def get_audit_events(self, session_id: str) -> list[AuditEvent]:
+        try:
+            self._validate_session_id(session_id)
+        except ValueError as val_err:
+            logger.warning("Rejected malicious session_id in get_audit_events: %s", val_err)
+            return []
+
         events = self._in_memory_fallback.get_audit_events(session_id)
         if events:
             return events

@@ -26,3 +26,9 @@ qloo_cache/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local databases and runtime storage
+storage/
+*.db
+*.sqlite3
+*.jsonl
