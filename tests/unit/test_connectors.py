@@ -105,14 +105,14 @@ async def test_spotify_connector_mocked_execution_success():
     """Verify successful Spotify audio seeding using a mocked HTTP transport."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url == "https://api.spotify.com/v1/audio-seed"
+        assert str(request.url) == "https://api.spotify.com/v1/me/playlists"
+        assert request.headers.get("Authorization") == "Bearer valid_sp_secret_67890"
         return httpx.Response(
-            200,
+            201,
             json={
-                "artist_id": "art_four_tet_42",
-                "artist_name": "Four Tet",
-                "daypart": "evening",
-                "spotify_uri": "spotify:artist:art_four_tet_42",
+                "id": "playlist_four_tet_42",
+                "name": "TasteOps Curated — Four Tet (Evening)",
+                "uri": "spotify:playlist:playlist_four_tet_42",
             },
         )
 
@@ -139,8 +139,9 @@ async def test_spotify_connector_mocked_execution_success():
     assert result.task_id == "task_sp_01"
     assert result.connector_name == "Spotify Web API"
     assert result.status == "COMPLETED"
-    assert result.output_reference == "spotify://seed_artist/art_four_tet_42"
+    assert result.output_reference == "spotify:playlist:playlist_four_tet_42"
     assert result.payload["artist_name"] == "Four Tet"
+    assert result.payload["playlist_id"] == "playlist_four_tet_42"
     assert result.provenance["session_id"] == "sess_123"
     assert result.provenance["idempotency_key"] == "idem_sp_01"
 
@@ -236,14 +237,20 @@ async def test_email_connector_mocked_execution_success():
     """Verify successful Email outreach dispatch using a mocked HTTP transport."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url == "https://api.sendgrid.com/v3/mail/send"
+        assert str(request.url) == "https://api.sendgrid.com/v3/mail/send"
+        assert (
+            request.headers.get("Authorization") == "Bearer SG.valid_email_key_987654"
+        )
+        import json
+
+        body = json.loads(request.content)
+        assert "personalizations" in body
+        assert "from" in body
+        assert "content" in body
+        assert body["personalizations"][0]["to"][0]["name"] == "Raw Mango"
         return httpx.Response(
             202,
-            json={
-                "message_id": "msg_sg_raw_mango_99",
-                "partner_id": "part_raw_mango_01",
-                "status": "queued_for_delivery",
-            },
+            headers={"X-Message-Id": "msg_sg_raw_mango_99"},
         )
 
     mock_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -274,6 +281,9 @@ async def test_email_connector_mocked_execution_success():
     assert result.status == "COMPLETED"
     assert result.output_reference == "brief://partner/ent_raw_mango_01"
     assert result.payload["message_id"] == "msg_sg_raw_mango_99"
+    assert result.payload["provider_status"] == "PROVIDER_ACCEPTED"
+    assert result.payload["is_confirmed_delivered"] is False
+    assert result.payload["delivery_status"] == "ACCEPTED_FOR_DELIVERY"
     assert result.provenance["session_id"] == "sess_123"
 
 
@@ -340,6 +350,7 @@ async def test_procurement_connector_mocked_execution_success():
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers.get("authorization") == "Bearer valid_erp_key_12345"
+        assert request.headers.get("Idempotency-Key") == "idem_po_01"
         return httpx.Response(
             201,
             json={
@@ -354,6 +365,7 @@ async def test_procurement_connector_mocked_execution_success():
         api_key="valid_erp_key_12345",
         endpoint_url="https://erp.tasteops.internal/orders",
         http_client=mock_client,
+        allow_private=True,
     )
 
     req = ConnectorExecutionRequest(
@@ -433,7 +445,16 @@ async def test_registry_missing_connector_fails_explicitly():
 async def test_registry_rejects_duplicate_execution_attempts_for_same_idempotency_key():
     """Requirement: The backend must reject duplicate execution attempts for the same idempotency key."""
     registry = ConnectorRegistry()
-    spotify = SpotifyConnector(client_id="cid12345", client_secret="sec12345")
+    mock_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, json={"artist_id": "art_1", "status": "active_seed"}
+            )
+        )
+    )
+    spotify = SpotifyConnector(
+        client_id="cid12345", client_secret="sec12345", http_client=mock_client
+    )
     registry.register(spotify)
 
     req1 = ConnectorExecutionRequest(
@@ -511,7 +532,16 @@ async def test_registry_requires_all_5_mandatory_request_fields():
 async def test_dispatch_from_execution_task_model():
     """Verify dispatch_task converts an ExecutionTask model into a ConnectorExecutionRequest."""
     registry = ConnectorRegistry()
-    spotify = SpotifyConnector(client_id="cid12345", client_secret="sec12345")
+    mock_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, json={"artist_id": "art_1", "status": "active_seed"}
+            )
+        )
+    )
+    spotify = SpotifyConnector(
+        client_id="cid12345", client_secret="sec12345", http_client=mock_client
+    )
     registry.register(spotify)
 
     task = ExecutionTask(

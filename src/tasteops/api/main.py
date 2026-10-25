@@ -108,14 +108,18 @@ def create_app(
     # In production, disallow credentials if wildcard origin is configured
     allow_credentials = not allow_all
     logger.info(
-        "Configured CORS origins: %s (credentials: %s)", cors_origins, allow_credentials
+        "Configured CORS origins: %s (regex: %s, credentials: %s)",
+        cors_origins,
+        cfg.cors_origin_regex,
+        allow_credentials,
     )
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins if not allow_all else ["*"],
+        allow_origin_regex=cfg.cors_origin_regex if not allow_all else None,
         allow_credentials=allow_credentials,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
         allow_headers=["*"],
     )
 

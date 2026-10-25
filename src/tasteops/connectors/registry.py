@@ -7,6 +7,7 @@ Provider credentials remain strictly isolated on the server.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -30,10 +31,18 @@ class ConnectorRegistry:
 
     Enforces:
     1. Explicit missing connector failure (no silent defaults).
-    2. Rejection of duplicate execution attempts for identical idempotency keys.
+    2. Atomic reservation and rejection of duplicate execution attempts for identical idempotency keys.
     3. Mandatory presence of all 5 request telemetry fields (session_id, plan_id,
        plan_version, task_id, idempotency_key).
     4. Server-side credential isolation.
+
+    Durability and Process Restart Policy:
+    ConnectorRegistry maintains in-memory execution records (`_executed_store`) and active
+    in-flight reservations (`_in_flight`) for the lifetime of the active process.
+    Durability across process restarts is achieved via the workflow state store
+    (`BaseStateStore` / `FileStateStore`): completed execution tasks, plans, and audit events
+    are persisted durably to disk. When the engine resumes or recovers after process restart,
+    it re-populates idempotency records from prior persisted execution summaries.
     """
 
     def __init__(self) -> None:
@@ -41,6 +50,9 @@ class ConnectorRegistry:
         self._connectors: dict[str, BaseConnector] = {}
         # Tracks executed idempotency keys: idempotency_key -> ConnectorExecutionResult
         self._executed_store: dict[str, ConnectorExecutionResult] = {}
+        # Tracks in-flight executions for atomic reservation across concurrent coroutines
+        self._in_flight: set[str] = set()
+        self._lock = asyncio.Lock()
 
     def register(
         self, connector: BaseConnector, alias_capabilities: list[str] | None = None
@@ -115,23 +127,38 @@ class ConnectorRegistry:
                 "Execution request must include non-empty 'idempotency_key'."
             )
 
-        # 2. Reject duplicate execution attempts for the same idempotency key
-        if request.idempotency_key in self._executed_store:
-            logger.warning(
-                "Duplicate execution attempt rejected for idempotency key '%s' (Task ID: %s)",
-                request.idempotency_key,
-                request.task_id,
-            )
-            raise DuplicateExecutionError(
-                idempotency_key=request.idempotency_key,
-                task_id=request.task_id,
-            )
+        # 2. Atomic Idempotency Reservation
+        async with self._lock:
+            if request.idempotency_key in self._executed_store:
+                logger.warning(
+                    "Duplicate execution attempt rejected for idempotency key '%s' (Task ID: %s)",
+                    request.idempotency_key,
+                    request.task_id,
+                )
+                raise DuplicateExecutionError(
+                    idempotency_key=request.idempotency_key,
+                    task_id=request.task_id,
+                )
+            if request.idempotency_key in self._in_flight:
+                logger.warning(
+                    "Concurrent duplicate execution attempt rejected for idempotency key '%s' (Task ID: %s)",
+                    request.idempotency_key,
+                    request.task_id,
+                )
+                raise DuplicateExecutionError(
+                    idempotency_key=request.idempotency_key,
+                    task_id=request.task_id,
+                )
+            # Atomically reserve key before releasing lock and executing
+            self._in_flight.add(request.idempotency_key)
 
         # 3. Missing connector check: Fail explicitly if no connector registered
         target_capability = request.task_type or request.metadata.get("category", "")
         connector = self.get_connector(target_capability)
 
         if connector is None:
+            async with self._lock:
+                self._in_flight.discard(request.idempotency_key)
             logger.error(
                 "No connector registered for capability '%s'. Failing explicitly.",
                 target_capability,
@@ -139,11 +166,19 @@ class ConnectorRegistry:
             raise MissingConnectorError(target_capability or request.task_id)
 
         # 4. Connector validation & execution
-        connector.validate(request)
-        result = await connector.execute(request)
+        try:
+            connector.validate(request)
+            result = await connector.execute(request)
+        except Exception:
+            async with self._lock:
+                self._in_flight.discard(request.idempotency_key)
+            raise
 
-        # 5. Record executed idempotency key
-        self._executed_store[request.idempotency_key] = result
+        # 5. Atomically record executed idempotency key and release in-flight reservation
+        async with self._lock:
+            self._in_flight.discard(request.idempotency_key)
+            self._executed_store[request.idempotency_key] = result
+
         return result
 
     async def dispatch_task(

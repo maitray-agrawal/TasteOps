@@ -75,10 +75,10 @@ def test_api_route_simulated_execution_vs_connector_registry_truthfulness(
     tasks = exec_data.get("execution_tasks", [])
     assert len(tasks) > 0
 
-    # 3. Notice: API route currently reports tasks as 'EXECUTED' (simulated)
+    # 3. Execution status: when unconfigured, provider tasks must be STAGED or NOT_CONFIGURED
     spotify_tasks = [t for t in tasks if "spotify" in t.get("action", "").lower()]
     if spotify_tasks:
-        assert spotify_tasks[0]["status"] == "EXECUTED"
+        assert spotify_tasks[0]["status"] in ("STAGED", "NOT_CONFIGURED")
 
         # 4. Now audit what ConnectorRegistry does with the exact same task
         registry = create_default_registry()
@@ -99,10 +99,21 @@ def test_api_route_simulated_execution_vs_connector_registry_truthfulness(
 @pytest.mark.asyncio
 async def test_connector_registry_idempotency_boundary():
     """Verifies that ConnectorRegistry rejects duplicate execution requests with identical keys."""
+    import httpx
+
     registry = create_default_registry()
-    # Configure spotify with dummy credentials for execution test
+    # Configure spotify with dummy credentials and mock HTTP transport for execution test
+    mock_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, json={"artist_id": "sp_art_miles", "status": "active_seed"}
+            )
+        )
+    )
     spotify = SpotifyConnector(
-        client_id="mock_client_id_12345", client_secret="mock_secret_12345"
+        client_id="mock_client_id_12345",
+        client_secret="mock_secret_12345",
+        http_client=mock_client,
     )
     registry.register(spotify)
 

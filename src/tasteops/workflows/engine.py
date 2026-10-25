@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
     from tasteops.agents.partnership import PartnershipAgent
     from tasteops.agents.strategist import CulturalStrategist
+    from tasteops.connectors import ConnectorRegistry
 
 logger = logging.getLogger("tasteops.workflows.engine")
 
@@ -71,6 +72,7 @@ class WorkflowEngine:
         max_qloo_retries: int = 2,
         max_agent_retries: int = 2,
         max_validation_cycles: int = 2,
+        connector_registry: ConnectorRegistry | None = None,
     ) -> None:
         from tasteops.agents.architect import ExperienceArchitect
         from tasteops.agents.governance import GovernanceAgent
@@ -82,7 +84,10 @@ class WorkflowEngine:
         self.strategist = strategist or CulturalStrategist(mcp_adapter=self.mcp)
         self.architect = architect or ExperienceArchitect()
         self.partnership = partnership or PartnershipAgent()
-        self.governance = governance or GovernanceAgent()
+        self.governance = governance or GovernanceAgent(
+            connector_registry=connector_registry
+        )
+        self.connector_registry = self.governance.connector_registry
         self.store = store or InMemoryStateStore()
 
         # Guardrail bounds against infinite loops

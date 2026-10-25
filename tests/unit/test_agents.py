@@ -27,6 +27,7 @@ from tasteops.workflows.schemas import (
     ExperienceDesignInput,
     GovernanceValidationInput,
     PartnershipInput,
+    TaskStatus,
 )
 
 
@@ -767,7 +768,7 @@ async def test_governance_agent_executes_tasks_with_provenance_and_audit(
             "Spatial Designer",
         ]
         assert isinstance(task.input, dict)
-        assert task.status == "EXECUTED"
+        assert task.status == TaskStatus.STAGED
         assert task.timestamp is not None
         assert isinstance(task.provenance, dict)
         assert "entity_id" in task.provenance or "zone" in task.provenance

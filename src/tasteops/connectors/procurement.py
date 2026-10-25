@@ -37,6 +37,8 @@ class ProcurementConnector(BaseConnector):
         api_key: str | None = None,
         endpoint_url: str | None = None,
         http_client: httpx.AsyncClient | None = None,
+        allowed_hosts: list[str] | set[str] | None = None,
+        allow_private: bool | None = None,
     ) -> None:
         self._api_key = (
             api_key or os.getenv("PROCUREMENT_API_KEY") or os.getenv("ERP_API_KEY")
@@ -46,6 +48,29 @@ class ProcurementConnector(BaseConnector):
             "https://api.procurement.tasteops.internal/v1/orders",
         )
         self._http_client = http_client
+
+        # Host allowlist: explicit list, or parsed from PROCUREMENT_ALLOWED_HOSTS env var
+        env_allowed = os.getenv("PROCUREMENT_ALLOWED_HOSTS")
+        if allowed_hosts is not None:
+            self._allowed_hosts: set[str] | None = {
+                h.strip().lower() for h in allowed_hosts if h.strip()
+            }
+        elif env_allowed:
+            self._allowed_hosts = {
+                h.strip().lower() for h in env_allowed.split(",") if h.strip()
+            }
+        else:
+            self._allowed_hosts = None
+
+        if allow_private is not None:
+            self._allow_private = allow_private
+        elif os.getenv("PROCUREMENT_ALLOW_PRIVATE") is not None:
+            self._allow_private = os.getenv(
+                "PROCUREMENT_ALLOW_PRIVATE", ""
+            ).lower() in ("true", "1")
+        else:
+            # Default to True for enterprise internal ERP endpoints (.internal / .local / private enterprise network)
+            self._allow_private = True
 
     @property
     def configuration_status(self) -> ConfigurationStatus:
@@ -72,7 +97,12 @@ class ProcurementConnector(BaseConnector):
         from tasteops.security import validate_safe_url
 
         try:
-            validate_safe_url(url)
+            # Validate URL with host allowlist and network policy
+            validate_safe_url(
+                url,
+                allow_private=self._allow_private,
+                allowed_hosts=self._allowed_hosts,
+            )
         except ValueError:
             return ConfigurationStatus.INVALID_CONFIGURATION
 
@@ -93,7 +123,11 @@ class ProcurementConnector(BaseConnector):
             from tasteops.security import validate_safe_url
 
             try:
-                validate_safe_url(url)
+                validate_safe_url(
+                    url,
+                    allow_private=self._allow_private,
+                    allowed_hosts=self._allowed_hosts,
+                )
             except ValueError as val_err:
                 raise InvalidConfigurationError(
                     self.name,
@@ -146,32 +180,85 @@ class ProcurementConnector(BaseConnector):
         )
 
         try:
-            if self._http_client:
-                if not self._endpoint_url:
-                    raise InvalidConfigurationError(self.name, "Missing endpoint_url")
-                resp = await self._http_client.post(
-                    self._endpoint_url,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "po_number": po_number,
-                        "vendor": vendor,
-                        "order_items": order_items,
-                    },
+            client = self._http_client
+            if client is None:
+                raise ConnectorExecutionFailedError(
+                    self.name,
+                    "Missing HTTP client: Procurement connector cannot execute external integration without a configured HTTP transport. Real provider calls must be mocked in tests.",
+                    details={"error_code": "MISSING_HTTP_CLIENT"},
                 )
-                if resp.status_code >= 400:
-                    raise ConnectorExecutionFailedError(
-                        self.name,
-                        f"Procurement API returned error {resp.status_code}: {resp.text}",
-                        details={"status_code": resp.status_code},
-                    )
-                provider_data = resp.json()
-            else:
-                provider_data = {
+
+            if not self._endpoint_url:
+                raise InvalidConfigurationError(self.name, "Missing endpoint_url")
+
+            from tasteops.security import validate_safe_redirect, validate_safe_url
+
+            # Validate endpoint before dispatch
+            validate_safe_url(
+                self._endpoint_url,
+                allow_private=self._allow_private,
+                allowed_hosts=self._allowed_hosts,
+            )
+
+            timeout = httpx.Timeout(15.0, connect=5.0)
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Idempotency-Key": request.idempotency_key,
+                "Content-Type": "application/json",
+            }
+            resp = await client.post(
+                self._endpoint_url,
+                headers=headers,
+                json={
                     "po_number": po_number,
                     "vendor": vendor,
                     "order_items": order_items,
-                    "status": "purchase_order_issued",
-                }
+                    "idempotency_key": request.idempotency_key,
+                    "session_id": request.session_id,
+                },
+                timeout=timeout,
+            )
+
+            # Connection-level redirect validation: prevent open redirect SSRF attacks
+            if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+                redirect_loc = resp.headers.get("Location")
+                if redirect_loc:
+                    try:
+                        validate_safe_redirect(
+                            redirect_loc,
+                            self._endpoint_url,
+                            allow_private=self._allow_private,
+                            allowed_hosts=self._allowed_hosts,
+                        )
+                    except ValueError as redir_err:
+                        raise ConnectorExecutionFailedError(
+                            self.name,
+                            f"SSRF violation: Redirect to prohibited destination blocked: {redir_err}",
+                            details={
+                                "redirect_url": redirect_loc,
+                                "ssrf_violation": True,
+                            },
+                        ) from redir_err
+
+            if resp.status_code >= 400:
+                raise ConnectorExecutionFailedError(
+                    self.name,
+                    f"Procurement API returned error {resp.status_code}: {resp.text}",
+                    details={"status_code": resp.status_code},
+                )
+
+            if resp.status_code not in (200, 201, 202):
+                raise ConnectorExecutionFailedError(
+                    self.name,
+                    f"Procurement remote service returned unconfirmed status {resp.status_code}. Order not confirmed.",
+                    details={"status_code": resp.status_code},
+                )
+
+            provider_data = (
+                resp.json()
+                if resp.content
+                else {"order_id": po_number, "status": "CONFIRMED"}
+            )
 
             output_uri = f"order://procurement/{po_number}"
 
@@ -184,6 +271,8 @@ class ProcurementConnector(BaseConnector):
                     **provider_data,
                     "output_uri": output_uri,
                     "po_number": po_number,
+                    "vendor": vendor,
+                    "order_items": order_items,
                 },
                 provenance={
                     "connector": self.name,

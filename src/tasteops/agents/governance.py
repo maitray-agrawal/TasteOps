@@ -13,6 +13,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
+from tasteops.connectors import (
+    ConfigurationStatus,
+    ConnectorRegistry,
+    create_default_registry,
+)
+from tasteops.workflows.idempotency import DurableIdempotencyStore
 from tasteops.workflows.schemas import (
     ApprovalRecord,
     AuditReport,
@@ -24,6 +30,7 @@ from tasteops.workflows.schemas import (
     ExecutionTask,
     GovernanceValidationInput,
     GovernanceValidationOutput,
+    TaskStatus,
 )
 
 logger = logging.getLogger("tasteops.agents.governance")
@@ -51,8 +58,14 @@ class GovernanceAgent:
         "hospitality_training",
     }
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        connector_registry: ConnectorRegistry | None = None,
+        durable_store: DurableIdempotencyStore | None = None,
+    ) -> None:
+        self.connector_registry = connector_registry or create_default_registry()
         self._idempotency_store: dict[str, ExecutionTask] = {}
+        self.durable_store = durable_store or DurableIdempotencyStore()
         self._lock: asyncio.Lock | None = None
 
     @property
@@ -538,6 +551,82 @@ class GovernanceAgent:
                 f"Execution blocked: Task '{task.task_id}' references invalid/unverified Qloo ID '{source_id}'."
             )
 
+    async def _execute_or_stage_task(
+        self,
+        task: ExecutionTask,
+        session_id: str,
+        plan_id: str,
+        plan_version: int,
+        target_entity_id: str,
+    ) -> ExecutionTask:
+        """Executes task via registered connector or stages/not_configures honestly."""
+        registry = self.connector_registry
+        conn = registry.get_connector(task.category) if registry else None
+
+        if conn is None:
+            task.status = TaskStatus.NOT_CONFIGURED
+            task.output_reference = None
+            task.result = {
+                "status": "not_configured",
+                "message": f"No connector registered for '{task.category}'",
+            }
+        elif conn.configuration_status != ConfigurationStatus.CONFIGURED:
+            task.status = TaskStatus.STAGED
+            task.output_reference = f"staged://{task.category}/{target_entity_id}"
+            task.result = {
+                "status": "staged",
+                "connector": conn.name,
+                "configuration_status": conn.configuration_status.value,
+                "message": (
+                    f"Provider credentials for '{conn.name}' are not configured. "
+                    "Operation is staged for curatorial review."
+                ),
+            }
+        else:
+            try:
+                res = await registry.dispatch_task(
+                    task,
+                    session_id=session_id,
+                    plan_id=plan_id,
+                    plan_version=plan_version,
+                )
+                task.status = TaskStatus.COMPLETED
+                task.output_reference = res.output_reference
+                task.result = res.payload
+                task.executed_at = res.executed_at
+            except Exception as exc:
+                logger.error(
+                    "[%s] Execution dispatch failed for task %s: %s",
+                    self.name,
+                    task.task_id,
+                    exc,
+                )
+                task.status = TaskStatus.FAILED
+                task.result = {
+                    "status": "failed",
+                    "connector": conn.name,
+                    "error": str(exc),
+                }
+
+        if task.provenance:
+            task.provenance["execution_status"] = task.status.value
+
+        self.validate_task_provenance(task)
+
+        # Durably persist outcome immediately to close the crash window
+        if task.idempotency_key:
+            if task.status in (
+                TaskStatus.COMPLETED,
+                TaskStatus.STAGED,
+                TaskStatus.NOT_CONFIGURED,
+            ):
+                self.durable_store.save_outcome(task.idempotency_key, task)
+                self._idempotency_store[task.idempotency_key] = task
+            else:
+                self.durable_store.release_reservation(task.idempotency_key)
+
+        return task
+
     # -------------------------------------------------------------------------
     # 3. APPROVAL & 4. EXECUTION Phases: Enforce Gate & Generate Tasks
     # -------------------------------------------------------------------------
@@ -611,7 +700,11 @@ class GovernanceAgent:
             # Pre-populate idempotency store from existing tasks in plan if resuming
             if plan.execution_summary and plan.execution_summary.tasks:
                 for past_task in plan.execution_summary.tasks:
-                    if past_task.idempotency_key and past_task.status == "EXECUTED":
+                    if past_task.idempotency_key and past_task.status in (
+                        TaskStatus.COMPLETED,
+                        TaskStatus.STAGED,
+                        TaskStatus.NOT_CONFIGURED,
+                    ):
                         self._idempotency_store[past_task.idempotency_key] = past_task
 
             logger.info(
@@ -641,112 +734,144 @@ class GovernanceAgent:
                 task_id = f"task_{lead_artist.id}_{plan.plan_id[:6]}"
                 idem_key = f"idem_{plan.plan_id}_spotify_{lead_artist.id}"
 
-                if (
-                    idem_key in self._idempotency_store
-                    and self._idempotency_store[idem_key].status == "EXECUTED"
+                cached_task = self.durable_store.get_outcome(
+                    idem_key
+                ) or self._idempotency_store.get(idem_key)
+                if cached_task and cached_task.status in (
+                    TaskStatus.COMPLETED,
+                    TaskStatus.STAGED,
+                    TaskStatus.NOT_CONFIGURED,
                 ):
                     logger.info(
                         "Task with idempotency key '%s' was already executed. Returning previous result.",
                         idem_key,
                     )
-                    tasks.append(self._idempotency_store[idem_key])
+                    tasks.append(cached_task)
                 else:
-                    task = ExecutionTask(
-                        task_id=task_id,
-                        idempotency_key=idem_key,
-                        action=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
-                        owner="Audio Curator",
-                        input={
-                            "engine": "spotify",
-                            "artist_id": lead_artist.id,
-                            "artist_name": lead_artist.name,
-                            "affinity": lead_artist.affinity,
-                            "daypart": "evening",
-                        },
-                        status="EXECUTED",
-                        timestamp=now,
-                        provenance={
-                            "source": "qloo_insights_artist",
-                            "source_id": lead_artist.id,
-                            "source_type": "artist",
-                            "query": "/v2/insights",
-                            "timestamp": now.isoformat(),
-                            "task_id": task_id,
-                            "plan_id": plan.plan_id,
-                            "session_id": sess_id,
-                            "approved_by": approver_tag,
-                            "approved_at": approval_time.isoformat(),
-                            "execution_status": "EXECUTED",
-                            "entity_id": lead_artist.id,
-                        },
-                        category="spotify_audio_seed",
-                        description=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
-                        target_partner_or_artist=lead_artist.name,
-                        target_entity_id=lead_artist.id,
-                        executed_at=now,
-                        output_reference=f"spotify://seed_artist/{lead_artist.id}",
-                        result={"status": "dispatched", "artist_id": lead_artist.id},
+                    acquired, outcome = await self.durable_store.async_reserve_or_wait(
+                        idem_key
                     )
-                    self.validate_task_provenance(task)
-                    self._idempotency_store[idem_key] = task
-                    tasks.append(task)
+                    if not acquired and outcome:
+                        self._idempotency_store[idem_key] = outcome
+                        tasks.append(outcome)
+                    else:
+                        task = ExecutionTask(
+                            task_id=task_id,
+                            idempotency_key=idem_key,
+                            action=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
+                            owner="Audio Curator",
+                            input={
+                                "engine": "spotify",
+                                "artist_id": lead_artist.id,
+                                "artist_name": lead_artist.name,
+                                "affinity": lead_artist.affinity,
+                                "daypart": "evening",
+                            },
+                            status=TaskStatus.PENDING,
+                            timestamp=now,
+                            provenance={
+                                "source": "qloo_insights_artist",
+                                "source_id": lead_artist.id,
+                                "source_type": "artist",
+                                "query": "/v2/insights",
+                                "timestamp": now.isoformat(),
+                                "task_id": task_id,
+                                "plan_id": plan.plan_id,
+                                "session_id": sess_id,
+                                "approved_by": approver_tag,
+                                "approved_at": approval_time.isoformat(),
+                                "execution_status": "PENDING",
+                                "entity_id": lead_artist.id,
+                            },
+                            category="spotify_audio_seed",
+                            description=f"Export seed artist '{lead_artist.name}' to Spotify audio engine pipeline",
+                            target_partner_or_artist=lead_artist.name,
+                            target_entity_id=lead_artist.id,
+                            executed_at=now,
+                            output_reference=None,
+                            result={"status": "pending", "artist_id": lead_artist.id},
+                        )
+                        task = await self._execute_or_stage_task(
+                            task,
+                            session_id=sess_id,
+                            plan_id=plan.plan_id,
+                            plan_version=plan.version,
+                            target_entity_id=lead_artist.id,
+                        )
+                        tasks.append(task)
 
             # 2. Partnership Outreach Brief Dispatch Tasks
             for p in plan.partnerships.partnerships[:2]:
                 task_id = f"task_{p.partner_entity_id}_{plan.plan_id[:6]}"
                 idem_key = f"idem_{plan.plan_id}_partner_{p.partner_entity_id}"
 
-                if (
-                    idem_key in self._idempotency_store
-                    and self._idempotency_store[idem_key].status == "EXECUTED"
+                cached_task = self.durable_store.get_outcome(
+                    idem_key
+                ) or self._idempotency_store.get(idem_key)
+                if cached_task and cached_task.status in (
+                    TaskStatus.COMPLETED,
+                    TaskStatus.STAGED,
+                    TaskStatus.NOT_CONFIGURED,
                 ):
                     logger.info(
                         "Task with idempotency key '%s' was already executed. Returning previous result.",
                         idem_key,
                     )
-                    tasks.append(self._idempotency_store[idem_key])
+                    tasks.append(cached_task)
                 else:
-                    task = ExecutionTask(
-                        task_id=task_id,
-                        idempotency_key=idem_key,
-                        action=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
-                        owner="Partnership Director",
-                        input={
-                            "partner_name": p.partner_name,
-                            "partner_entity_id": p.partner_entity_id,
-                            "activation_type": p.activation_type,
-                            "affinity_score": p.affinity_score,
-                        },
-                        status="EXECUTED",
-                        timestamp=now,
-                        provenance={
-                            "source": "qloo_insights_brand",
-                            "source_id": p.partner_entity_id,
-                            "source_type": "brand",
-                            "query": "/v2/insights",
-                            "timestamp": now.isoformat(),
-                            "task_id": task_id,
-                            "plan_id": plan.plan_id,
-                            "session_id": sess_id,
-                            "approved_by": approver_tag,
-                            "approved_at": approval_time.isoformat(),
-                            "execution_status": "EXECUTED",
-                            "entity_id": p.partner_entity_id,
-                        },
-                        category="partner_outreach_brief",
-                        description=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
-                        target_partner_or_artist=p.partner_name,
-                        target_entity_id=p.partner_entity_id,
-                        executed_at=now,
-                        output_reference=f"brief://partner/{p.partner_entity_id}",
-                        result={
-                            "status": "drafted",
-                            "partner_entity_id": p.partner_entity_id,
-                        },
+                    acquired, outcome = await self.durable_store.async_reserve_or_wait(
+                        idem_key
                     )
-                    self.validate_task_provenance(task)
-                    self._idempotency_store[idem_key] = task
-                    tasks.append(task)
+                    if not acquired and outcome:
+                        self._idempotency_store[idem_key] = outcome
+                        tasks.append(outcome)
+                    else:
+                        task = ExecutionTask(
+                            task_id=task_id,
+                            idempotency_key=idem_key,
+                            action=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
+                            owner="Partnership Director",
+                            input={
+                                "partner_name": p.partner_name,
+                                "partner_entity_id": p.partner_entity_id,
+                                "activation_type": p.activation_type,
+                                "affinity_score": p.affinity_score,
+                            },
+                            status=TaskStatus.PENDING,
+                            timestamp=now,
+                            provenance={
+                                "source": "qloo_insights_brand",
+                                "source_id": p.partner_entity_id,
+                                "source_type": "brand",
+                                "query": "/v2/insights",
+                                "timestamp": now.isoformat(),
+                                "task_id": task_id,
+                                "plan_id": plan.plan_id,
+                                "session_id": sess_id,
+                                "approved_by": approver_tag,
+                                "approved_at": approval_time.isoformat(),
+                                "execution_status": "PENDING",
+                                "entity_id": p.partner_entity_id,
+                            },
+                            category="partner_outreach_brief",
+                            description=f"Dispatch collaboration brief for '{p.partner_name}' ({p.activation_type})",
+                            target_partner_or_artist=p.partner_name,
+                            target_entity_id=p.partner_entity_id,
+                            executed_at=now,
+                            output_reference=None,
+                            result={
+                                "status": "pending",
+                                "partner_entity_id": p.partner_entity_id,
+                            },
+                        )
+                        task = await self._execute_or_stage_task(
+                            task,
+                            session_id=sess_id,
+                            plan_id=plan.plan_id,
+                            plan_version=plan.version,
+                            target_entity_id=p.partner_entity_id,
+                        )
+                        tasks.append(task)
 
             # 3. Spatial Specification Task
             if plan.experience_design.spatial_zones:
@@ -754,75 +879,101 @@ class GovernanceAgent:
                 task_id = f"task_{lead_zone.zone_name.lower().replace(' ', '_')}_{plan.plan_id[:6]}"
                 idem_key = f"idem_{plan.plan_id}_spatial_{lead_zone.zone_name.lower().replace(' ', '_')}"
 
-                if (
-                    idem_key in self._idempotency_store
-                    and self._idempotency_store[idem_key].status == "EXECUTED"
+                cached_task = self.durable_store.get_outcome(
+                    idem_key
+                ) or self._idempotency_store.get(idem_key)
+                if cached_task and cached_task.status in (
+                    TaskStatus.COMPLETED,
+                    TaskStatus.STAGED,
+                    TaskStatus.NOT_CONFIGURED,
                 ):
                     logger.info(
                         "Task with idempotency key '%s' was already executed. Returning previous result.",
                         idem_key,
                     )
-                    tasks.append(self._idempotency_store[idem_key])
+                    tasks.append(cached_task)
                 else:
-                    source_id = (
-                        plan.cultural_matrix.places[0].id
-                        if plan.cultural_matrix.places
-                        else f"zone_{lead_zone.zone_name.lower().replace(' ', '_')}"
+                    acquired, outcome = await self.durable_store.async_reserve_or_wait(
+                        idem_key
                     )
-                    source_type = (
-                        "place" if plan.cultural_matrix.places else "spatial_zone"
-                    )
-                    task = ExecutionTask(
-                        task_id=task_id,
-                        idempotency_key=idem_key,
-                        action=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
-                        owner="Spatial Designer",
-                        input={
-                            "zone_name": lead_zone.zone_name,
-                            "lighting": "2400K warm indirect dimming",
-                            "acoustics": "60dB max ambient",
-                        },
-                        status="EXECUTED",
-                        timestamp=now,
-                        provenance={
-                            "source": "qloo_insights_place",
-                            "source_id": source_id,
-                            "source_type": source_type,
-                            "query": "/v2/insights",
-                            "timestamp": now.isoformat(),
-                            "task_id": task_id,
-                            "plan_id": plan.plan_id,
-                            "session_id": sess_id,
-                            "approved_by": approver_tag,
-                            "approved_at": approval_time.isoformat(),
-                            "execution_status": "EXECUTED",
-                            "zone": lead_zone.zone_name,
-                        },
-                        category="spatial_design_spec",
-                        description=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
-                        target_partner_or_artist=lead_zone.zone_name,
-                        target_entity_id=source_id,
-                        executed_at=now,
-                        output_reference=f"spec://zone/{lead_zone.zone_name.lower().replace(' ', '_')}",
-                        result={
-                            "status": "generated",
-                            "zone": lead_zone.zone_name,
-                        },
-                    )
-                    self.validate_task_provenance(task)
-                    self._idempotency_store[idem_key] = task
-                    tasks.append(task)
+                    if not acquired and outcome:
+                        self._idempotency_store[idem_key] = outcome
+                        tasks.append(outcome)
+                    else:
+                        source_id = (
+                            plan.cultural_matrix.places[0].id
+                            if plan.cultural_matrix.places
+                            else f"zone_{lead_zone.zone_name.lower().replace(' ', '_')}"
+                        )
+                        source_type = (
+                            "place" if plan.cultural_matrix.places else "spatial_zone"
+                        )
+                        task = ExecutionTask(
+                            task_id=task_id,
+                            idempotency_key=idem_key,
+                            action=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
+                            owner="Spatial Designer",
+                            input={
+                                "zone_name": lead_zone.zone_name,
+                                "lighting": "2400K warm indirect dimming",
+                                "acoustics": "60dB max ambient",
+                            },
+                            status=TaskStatus.PENDING,
+                            timestamp=now,
+                            provenance={
+                                "source": "qloo_insights_place",
+                                "source_id": source_id,
+                                "source_type": source_type,
+                                "query": "/v2/insights",
+                                "timestamp": now.isoformat(),
+                                "task_id": task_id,
+                                "plan_id": plan.plan_id,
+                                "session_id": sess_id,
+                                "approved_by": approver_tag,
+                                "approved_at": approval_time.isoformat(),
+                                "execution_status": "PENDING",
+                                "zone": lead_zone.zone_name,
+                            },
+                            category="spatial_design_spec",
+                            description=f"Generate physical design spec for zone '{lead_zone.zone_name}'",
+                            target_partner_or_artist=lead_zone.zone_name,
+                            target_entity_id=source_id,
+                            executed_at=now,
+                            output_reference=None,
+                            result={
+                                "status": "pending",
+                                "zone": lead_zone.zone_name,
+                            },
+                        )
+                        task = await self._execute_or_stage_task(
+                            task,
+                            session_id=sess_id,
+                            plan_id=plan.plan_id,
+                            plan_version=plan.version,
+                            target_entity_id=source_id,
+                        )
+                        tasks.append(task)
 
             # ---------------------------------------------------------------------
             # 5. AUDIT Phase: Generate Post-Execution Audit Report
             # ---------------------------------------------------------------------
             audit_report = self.audit(plan, tasks)
 
-            executed_count = sum(1 for t in tasks if t.status == "EXECUTED")
+            completed_count = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
+            staged_count = sum(1 for t in tasks if t.status == TaskStatus.STAGED)
+            not_configured_count = sum(
+                1 for t in tasks if t.status == TaskStatus.NOT_CONFIGURED
+            )
+            failed_count = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
+            executed_count = completed_count + staged_count + not_configured_count
+
             return ExecutionSummary(
                 total_tasks=len(tasks),
                 executed_tasks=executed_count,
-                failed_tasks=len(tasks) - executed_count,
+                completed_tasks=completed_count,
+                staged_tasks=staged_count,
+                not_configured_tasks=not_configured_count,
+                failed_tasks=failed_count,
                 tasks=tasks,
                 completed_at=datetime.now(UTC),
                 audit_report=audit_report,

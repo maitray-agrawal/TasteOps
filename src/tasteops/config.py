@@ -1,6 +1,6 @@
 import os
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -103,13 +103,22 @@ class ServerSettings(BaseSettings):
         description="Port for server binding (supplied by Render via $PORT).",
     )
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
-        alias="CORS_ORIGINS",
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8000,https://tasteops.vercel.app",
+        validation_alias=AliasChoices("CORS_ORIGINS", "TASTEOPS_CORS_ORIGINS"),
         description="Comma-separated list of allowed CORS origins.",
+    )
+    cors_origin_regex: str | None = Field(
+        default=r"^https:\/\/tasteops(-[a-zA-Z0-9_-]+)*\.vercel\.app$",
+        validation_alias=AliasChoices(
+            "CORS_ORIGIN_REGEX", "TASTEOPS_CORS_ORIGIN_REGEX"
+        ),
+        description="Optional regex pattern for allowed CORS origins (e.g. for Vercel preview deployments).",
     )
     storage_dir: str = Field(
         default="storage/workflows",
-        alias="TASTEOPS_STORAGE_DIR",
+        validation_alias=AliasChoices(
+            "TASTEOPS_STORAGE_DIR", "STORAGE_DIR", "TASTEOPS_STORAGE_PATH"
+        ),
         description="Filesystem path for persistent session snapshots and audit logs.",
     )
     log_level: str = Field(
@@ -120,7 +129,11 @@ class ServerSettings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Parses comma-separated cors_origins string into a list of trimmed origins."""
+        """Parses comma-separated cors_origins string into a list of trimmed origins with trailing slashes removed."""
         if not self.cors_origins:
             return []
-        return [orig.strip() for orig in self.cors_origins.split(",") if orig.strip()]
+        return [
+            orig.strip().rstrip("/")
+            for orig in self.cors_origins.split(",")
+            if orig.strip()
+        ]

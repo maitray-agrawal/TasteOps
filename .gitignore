@@ -43,3 +43,6 @@ storage/
 
 # Frontend dependencies and builds
 node_modules/
+
+.vercel
+.env*

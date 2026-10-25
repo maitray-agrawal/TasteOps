@@ -36,6 +36,7 @@ from tasteops.workflows.schemas import (
     GovernanceValidationInput,
     GovernanceValidationOutput,
     PartnershipOutput,
+    TaskStatus,
 )
 from tasteops.workflows.states import (
     InvalidStateTransitionError,
@@ -430,4 +431,4 @@ async def test_duplicate_execution_is_idempotent_no_duplicate_tasks():
     for t1, t2 in zip(summary_1.tasks, summary_2.tasks, strict=True):
         assert t1.idempotency_key == t2.idempotency_key
         assert t1.task_id == t2.task_id
-        assert t1.status == "EXECUTED"
+        assert t1.status == TaskStatus.STAGED

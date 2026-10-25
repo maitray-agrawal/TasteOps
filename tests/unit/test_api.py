@@ -118,6 +118,80 @@ def test_cors_headers_allowed_origin(client):
     )
 
 
+def test_cors_headers_allowed_vercel_origin(client):
+    """CORS middleware returns allow-origin for configured Vercel production origin."""
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://tasteops.vercel.app",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers.get("access-control-allow-origin")
+        == "https://tasteops.vercel.app"
+    )
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_unapproved_origin_rejected(client):
+    """CORS middleware does NOT grant access-control-allow-origin to unapproved origins."""
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://malicious-external-origin.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    # FastApi CORSMiddleware does not set access-control-allow-origin for unauthorized origins
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_preflight_post_options(client):
+    """CORS preflight for POST on /api/v1/sessions succeeds with proper methods."""
+    response = client.options(
+        "/api/v1/sessions",
+        headers={
+            "Origin": "https://tasteops.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    assert response.status_code == 200
+    assert (
+        response.headers.get("access-control-allow-origin")
+        == "https://tasteops.vercel.app"
+    )
+    assert "POST" in response.headers.get("access-control-allow-methods", "")
+
+
+def test_cors_trailing_slash_normalization():
+    """Origins configured with trailing slashes match browser requests without trailing slashes."""
+    settings = ServerSettings(
+        ENVIRONMENT="test",
+        CORS_ORIGINS="https://tasteops.vercel.app/,http://localhost:3000/",
+    )
+    assert settings.cors_origins_list == [
+        "https://tasteops.vercel.app",
+        "http://localhost:3000",
+    ]
+    app = create_app(server_settings=settings)
+    with TestClient(app) as test_client:
+        response = test_client.options(
+            "/health",
+            headers={
+                "Origin": "https://tasteops.vercel.app",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 200
+        assert (
+            response.headers.get("access-control-allow-origin")
+            == "https://tasteops.vercel.app"
+        )
+
+
 def test_request_id_propagation(client):
     """Client-supplied X-Request-ID is preserved and echoed in response headers."""
     custom_id = "req_custom_trace_987"

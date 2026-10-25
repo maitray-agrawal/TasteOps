@@ -73,21 +73,98 @@ function inferActor({ to_state, metadata = {} }) {
 
 export class TasteOpsAPIClient {
   constructor(options = {}) {
-    // Priority: Explicit option -> window.__TASTEOPS_ENV__ -> meta tag -> default
-    const metaBase = typeof document !== 'undefined'
-      ? document.querySelector('meta[name="api-base-url"]')?.getAttribute('content')
-      : null;
-    const envBase = (typeof window !== 'undefined' && window.__TASTEOPS_ENV__?.API_BASE_URL) || metaBase;
-
-    this.baseUrl = (options.baseUrl || envBase || '/api/v1').replace(/\/+$/, '');
+    this._initConfiguration(options);
   }
 
   /**
-   * Internal HTTP request dispatcher with centralized error handling.
+   * Initializes and validates runtime API configuration.
+   * Ensures production Render API base URL is properly decomposed and validated.
+   */
+  _initConfiguration(options = {}) {
+    const metaBase = typeof document !== 'undefined'
+      ? document.querySelector('meta[name="api-base-url"]')?.getAttribute('content')
+      : null;
+    const configBase = typeof window !== 'undefined'
+      ? (window.__TASTEOPS_CONFIG__?.API_BASE_URL || window.__TASTEOPS_CONFIG__?.apiBaseUrl)
+      : null;
+    const envBase = typeof window !== 'undefined'
+      ? (window.__TASTEOPS_ENV__?.API_BASE_URL || window.__TASTEOPS_ENV__?.apiBaseUrl)
+      : null;
+
+    let rawBase = (options.baseUrl || configBase || envBase || metaBase || '').trim();
+
+    // Check deployment environment
+    const isBrowser = typeof window !== 'undefined' && typeof window.location !== 'undefined';
+    const hostname = isBrowser ? window.location.hostname : 'localhost';
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+    // Disallow silent fallback to localhost in production environments
+    if (!rawBase) {
+      if (isLocalhost) {
+        rawBase = '/api/v1';
+      } else {
+        const errorMsg =
+          'TasteOps Configuration Error: Missing API_BASE_URL in production environment. ' +
+          'Configure window.__TASTEOPS_CONFIG__.API_BASE_URL (e.g. "https://tasteops-backend.onrender.com") ' +
+          'in /static/config.js before deploying to static CDN.';
+        console.error(errorMsg);
+        this.configError = errorMsg;
+        rawBase = 'https://tasteops-backend.onrender.com';
+      }
+    } else if (!isLocalhost && (rawBase.includes('localhost') || rawBase.includes('127.0.0.1'))) {
+      const errorMsg =
+        `TasteOps Configuration Error: Invalid API_BASE_URL "${rawBase}" configured on production origin (${hostname}). ` +
+        'Do not point frontend to localhost in production. Use the production Render backend URL.';
+      console.error(errorMsg);
+      this.configError = errorMsg;
+    }
+
+    // Normalize trailing slashes safely
+    const cleanUrl = rawBase.replace(/\/+$/, '');
+
+    // Safely decompose into rootOrigin (for /health and /ready) and apiBase (for /api/v1/...)
+    if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+      try {
+        const parsed = new URL(cleanUrl);
+        this.rootOrigin = parsed.origin;
+        const pathname = parsed.pathname.replace(/\/+$/, '');
+
+        if (pathname === '/api/v1' || pathname.endsWith('/api/v1')) {
+          this.apiBase = `${this.rootOrigin}${pathname}`;
+        } else if (pathname === '/api' || pathname.endsWith('/api')) {
+          this.apiBase = `${this.rootOrigin}${pathname}/v1`;
+        } else if (pathname === '' || pathname === '/') {
+          this.apiBase = `${this.rootOrigin}/api/v1`;
+        } else {
+          this.apiBase = `${this.rootOrigin}${pathname}/api/v1`;
+        }
+      } catch (err) {
+        this.rootOrigin = cleanUrl;
+        this.apiBase = `${cleanUrl}/api/v1`;
+      }
+    } else {
+      // Relative path (monolithic FastAPI local fallback)
+      this.rootOrigin = '';
+      if (cleanUrl === '/api/v1' || cleanUrl.endsWith('/api/v1')) {
+        this.apiBase = cleanUrl;
+      } else if (cleanUrl === '/api') {
+        this.apiBase = '/api/v1';
+      } else {
+        this.apiBase = cleanUrl ? `${cleanUrl}/api/v1` : '/api/v1';
+      }
+    }
+
+    // Set baseUrl for backwards-compatible reference
+    this.baseUrl = this.apiBase;
+  }
+
+  /**
+   * Internal HTTP request dispatcher with centralized error handling, timeout, and cold-start recovery.
    */
   async _fetch(endpoint, options = {}) {
     const isRootProbe = endpoint === ENDPOINTS.HEALTH || endpoint === ENDPOINTS.READY;
-    const url = isRootProbe ? endpoint : `${this.baseUrl}${endpoint}`;
+    const targetBase = isRootProbe ? this.rootOrigin : this.apiBase;
+    const url = targetBase ? `${targetBase}${endpoint}` : endpoint;
 
     const headers = {
       'Accept': 'application/json',
@@ -98,11 +175,18 @@ export class TasteOpsAPIClient {
       headers['Content-Type'] = 'application/json';
     }
 
+    const timeoutMs = options.timeoutMs || (isRootProbe ? 8000 : 35000);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
     try {
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller ? controller.signal : options.signal,
       });
+
+      if (timeoutId) clearTimeout(timeoutId);
 
       const correlationId = response.headers.get('X-Request-ID') || response.headers.get('X-Correlation-ID');
 
@@ -141,13 +225,21 @@ export class TasteOpsAPIClient {
 
       return await response.json();
     } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+
       if (err instanceof APIError) {
         throw err;
       }
-      throw new APIError(err.message || 'Network communication failure', {
+
+      const isAbort = err.name === 'AbortError' || err.code === 20;
+      const coldStartMessage =
+        'Backend service may be starting from idle (Render free-tier cold start typically takes 30–60 seconds). ' +
+        'Please wait a few moments and retry.';
+
+      throw new APIError(isAbort ? `Request timed out after ${timeoutMs / 1000}s. ${coldStartMessage}` : err.message || 'Network communication failure', {
         statusCode: 0,
-        code: 'NETWORK_DISCONNECTED',
-        detail: 'Unable to communicate with the TasteOps API server.',
+        code: isAbort ? 'BACKEND_COLD_START_TIMEOUT' : 'NETWORK_DISCONNECTED',
+        detail: coldStartMessage,
         isNetworkError: true,
       });
     }

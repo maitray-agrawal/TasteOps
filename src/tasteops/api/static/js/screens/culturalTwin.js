@@ -6,63 +6,62 @@
 
 import { apiClient } from '../apiClient.js';
 
-export async function renderCulturalTwin(rootElement, params, router) {
+export function renderCulturalTwin(rootElement, params, router) {
   const activeSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
-  let liveSession = null;
-  if (activeSessionId) {
-    try {
-      liveSession = await apiClient.getSession(activeSessionId);
-    } catch (_) {
-      // Graceful fallback to Austin reference baseline
+
+  const renderContent = (liveSession, isColdStarting = false) => {
+    const matrix = liveSession?.cultural_matrix;
+    const artistsList = matrix?.artists || [];
+    const booksList = matrix?.books || [];
+    const brandsList = matrix?.brands || [];
+
+    const musicCount = artistsList.length || 18;
+    const booksCount = booksList.length || 12;
+    const brandsCount = brandsList.length || 9;
+    const lifestyleCount = matrix?.places?.length || 11;
+    const interestsCount = matrix?.movies?.length || 8;
+    const totalCount = musicCount + booksCount + brandsCount + lifestyleCount + interestsCount;
+
+    const provenanceRows = [];
+    if (artistsList.length > 0) {
+      artistsList.slice(0, 2).forEach(a => provenanceRows.push({ id: a.id, name: a.name, domain: 'music', affinity: `${((a.score || 94) * 1).toFixed(1)}%`, source: a.source_query || 'qloo_insights' }));
     }
-  }
+    if (booksList.length > 0) {
+      booksList.slice(0, 2).forEach(b => provenanceRows.push({ id: b.id, name: b.name, domain: 'books', affinity: `${((b.score || 88) * 1).toFixed(1)}%`, source: b.source_query || 'qloo_insights' }));
+    }
+    if (brandsList.length > 0) {
+      brandsList.slice(0, 2).forEach(br => provenanceRows.push({ id: br.id, name: br.name, domain: 'brand', affinity: `${((br.score || 91) * 1).toFixed(1)}%`, source: br.source_query || 'qloo_insights' }));
+    }
 
-  const matrix = liveSession?.cultural_matrix;
-  const artistsList = matrix?.artists || [];
-  const booksList = matrix?.books || [];
-  const brandsList = matrix?.brands || [];
+    // Fallback Austin baseline rows if live session has not fetched matrix yet
+    if (provenanceRows.length === 0) {
+      provenanceRows.push(
+        { id: 'ent_mus_khruangbin_01', name: 'Khruangbin', domain: 'music', affinity: '94.2%', source: 'qloo_insights (demo)' },
+        { id: 'ent_mus_boniver_02', name: 'Bon Iver', domain: 'music', affinity: '92.8%', source: 'qloo_insights (demo)' },
+        { id: 'ent_book_gestalten_01', name: 'Gestalten Arch', domain: 'books', affinity: '88.6%', source: 'qloo_insights (demo)' },
+        { id: 'ent_book_kinfolk_04', name: 'Kinfolk Nature', domain: 'books', affinity: '87.4%', source: 'qloo_insights (demo)' },
+        { id: 'ent_brand_aesop_01', name: 'Aesop', domain: 'brand', affinity: '91.0%', source: 'qloo_insights (demo)' },
+        { id: 'ent_brand_te_02', name: 'Teenage Eng.', domain: 'brand', affinity: '89.4%', source: 'qloo_insights (demo)' },
+        { id: 'ent_mov_a24_05', name: 'A24 Screenplays', domain: 'media', affinity: '95.1%', source: 'qloo_insights (demo)' },
+      );
+    }
 
-  const musicCount = artistsList.length || 18;
-  const booksCount = booksList.length || 12;
-  const brandsCount = brandsList.length || 9;
-  const lifestyleCount = matrix?.places?.length || 11;
-  const interestsCount = matrix?.movies?.length || 8;
-  const totalCount = musicCount + booksCount + brandsCount + lifestyleCount + interestsCount;
-
-  const provenanceRows = [];
-  if (artistsList.length > 0) {
-    artistsList.slice(0, 2).forEach(a => provenanceRows.push({ id: a.id, name: a.name, domain: 'music', affinity: `${((a.score || 94) * 1).toFixed(1)}%`, source: a.source_query || 'qloo_insights' }));
-  }
-  if (booksList.length > 0) {
-    booksList.slice(0, 2).forEach(b => provenanceRows.push({ id: b.id, name: b.name, domain: 'books', affinity: `${((b.score || 88) * 1).toFixed(1)}%`, source: b.source_query || 'qloo_insights' }));
-  }
-  if (brandsList.length > 0) {
-    brandsList.slice(0, 2).forEach(br => provenanceRows.push({ id: br.id, name: br.name, domain: 'brand', affinity: `${((br.score || 91) * 1).toFixed(1)}%`, source: br.source_query || 'qloo_insights' }));
-  }
-
-  // Fallback Austin baseline rows if live session has not fetched matrix yet
-  if (provenanceRows.length === 0) {
-    provenanceRows.push(
-      { id: 'ent_mus_khruangbin_01', name: 'Khruangbin', domain: 'music', affinity: '94.2%', source: 'qloo_insights (demo)' },
-      { id: 'ent_mus_boniver_02', name: 'Bon Iver', domain: 'music', affinity: '92.8%', source: 'qloo_insights (demo)' },
-      { id: 'ent_book_gestalten_01', name: 'Gestalten Arch', domain: 'books', affinity: '88.6%', source: 'qloo_insights (demo)' },
-      { id: 'ent_book_kinfolk_04', name: 'Kinfolk Nature', domain: 'books', affinity: '87.4%', source: 'qloo_insights (demo)' },
-      { id: 'ent_brand_aesop_01', name: 'Aesop', domain: 'brand', affinity: '91.0%', source: 'qloo_insights (demo)' },
-      { id: 'ent_brand_te_02', name: 'Teenage Eng.', domain: 'brand', affinity: '89.4%', source: 'qloo_insights (demo)' },
-      { id: 'ent_mov_a24_05', name: 'A24 Screenplays', domain: 'media', affinity: '95.1%', source: 'qloo_insights (demo)' },
-    );
-  }
-
-  rootElement.innerHTML = `
-    <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
-      <!-- Header -->
-      <div style="margin-bottom: 2.25rem;">
-        <div class="hero-eyebrow">CULTURAL INTELLIGENCE</div>
-        <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Cultural Twin</h1>
-        <p class="hero-desc" style="max-width: 780px;">
-          ${liveSession ? `Live cultural matrix derived from Qloo's 250M+ entity taste graph for session: ${activeSessionId}.` : "Verified cultural insights derived from Qloo's 250M+ entity cross-domain taste graph (Austin Reference Scenario)."}
-        </p>
-      </div>
+    rootElement.innerHTML = `
+      <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+        ${isColdStarting ? `
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #92400e;">
+            <span>⚡ <strong>Render Backend Waking Up:</strong> The backend is starting from idle. Displaying offline reference baseline.</span>
+            <button id="btn-retry-twin-hydration" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #fff;">Retry Fetch</button>
+          </div>
+        ` : ''}
+        <!-- Header -->
+        <div style="margin-bottom: 2.25rem;">
+          <div class="hero-eyebrow">CULTURAL INTELLIGENCE</div>
+          <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Cultural Twin</h1>
+          <p class="hero-desc" style="max-width: 780px;">
+            ${liveSession ? `Live cultural matrix derived from Qloo's 250M+ entity taste graph for session: ${activeSessionId}.` : "Verified cultural insights derived from Qloo's 250M+ entity cross-domain taste graph (Austin Reference Scenario)."}
+          </p>
+        </div>
 
       <!-- Grid: Radial Fingerprint + Domain Breakdown -->
       <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 2rem; align-items: start; margin-bottom: 2.5rem;">
@@ -257,17 +256,37 @@ export async function renderCulturalTwin(rootElement, params, router) {
     </div>
   `;
 
-  // Wire provenance drawer toggle
-  document.getElementById('btn-twin-provenance')?.addEventListener('click', () => {
-    const drawer = document.getElementById('twin-provenance-drawer');
-    const btn = document.getElementById('btn-twin-provenance');
-    if (!drawer) return;
-    const isHidden = drawer.style.display === 'none';
-    drawer.style.display = isHidden ? 'block' : 'none';
-    if (btn) {
-      btn.innerHTML = isHidden
-        ? '<span>✕ Close Provenance Ledger</span>'
-        : '<span>🔍 View Full Provenance Ledger (58 Grounded Entities)</span>';
-    }
-  });
+    // Wire provenance drawer toggle
+    document.getElementById('btn-twin-provenance')?.addEventListener('click', () => {
+      const drawer = document.getElementById('twin-provenance-drawer');
+      const btn = document.getElementById('btn-twin-provenance');
+      if (!drawer) return;
+      const isHidden = drawer.style.display === 'none';
+      drawer.style.display = isHidden ? 'block' : 'none';
+      if (btn) {
+        btn.innerHTML = isHidden
+          ? '<span>✕ Close Provenance Ledger</span>'
+          : '<span>🔍 View Full Provenance Ledger (58 Grounded Entities)</span>';
+      }
+    });
+  };
+
+  // 1. Immediate synchronous render (0ms blocking delay)
+  renderContent(null, false);
+
+  // 2. Asynchronous non-blocking session hydration
+  const hydrate = () => {
+    if (!activeSessionId) return;
+    apiClient.getSession(activeSessionId).then((liveSession) => {
+      if (window.tasteopsRouter?.currentRoute !== '/cultural-twin') return;
+      renderContent(liveSession, false);
+    }).catch((err) => {
+      if (window.tasteopsRouter?.currentRoute !== '/cultural-twin') return;
+      const isColdStart = err.code === 'BACKEND_COLD_START_TIMEOUT' || err.isNetworkError;
+      renderContent(null, isColdStart);
+      document.getElementById('btn-retry-twin-hydration')?.addEventListener('click', hydrate);
+    });
+  };
+
+  hydrate();
 }

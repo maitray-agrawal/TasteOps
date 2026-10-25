@@ -337,6 +337,7 @@ async def get_audit_events(
 async def download_procurement_csv(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = False,
 ) -> Response:
     """Exports validated 8-column purchase order CSV with verified Qloo entity provenance."""
     try:
@@ -349,7 +350,7 @@ async def download_procurement_csv(
 
     from tasteops.workflows.artifacts import generate_procurement_csv
 
-    csv_content = generate_procurement_csv(ctx)
+    csv_content = generate_procurement_csv(ctx, demo_mode=demo)
     filename = f"PO_{session_id[:8]}.csv"
     return Response(
         content=csv_content.encode("utf-8"),
@@ -366,6 +367,7 @@ async def download_procurement_csv(
 async def get_spotify_playlist_artifact(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = False,
 ) -> dict[str, Any]:
     """Retrieves structured, staged Spotify playlist artifact with track metadata and provenance."""
     try:
@@ -378,7 +380,7 @@ async def get_spotify_playlist_artifact(
 
     from tasteops.workflows.artifacts import generate_spotify_playlist_artifact
 
-    return generate_spotify_playlist_artifact(ctx)
+    return generate_spotify_playlist_artifact(ctx, demo_mode=demo)
 
 
 @router.get(
@@ -389,6 +391,7 @@ async def get_spotify_playlist_artifact(
 async def get_brand_dossiers_artifact(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = True,
 ) -> list[dict[str, Any]]:
     """Retrieves structured partnership dossiers with draft communications and cultural alignment scores."""
     try:
@@ -401,4 +404,4 @@ async def get_brand_dossiers_artifact(
 
     from tasteops.workflows.artifacts import generate_brand_dossiers_artifact
 
-    return generate_brand_dossiers_artifact(ctx)
+    return generate_brand_dossiers_artifact(ctx, demo_mode=demo)

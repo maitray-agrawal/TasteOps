@@ -18,6 +18,7 @@ export function renderDashboard(rootElement, router) {
   let activeTab = 'music';
   let isExecuting = false;
   let isActivated = false;
+  let executionResult = null;
   let activeWfStep = 8; // Step 8: Approval (Awaiting Human Approval by default)
   let currentSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
 
@@ -440,9 +441,11 @@ export function renderDashboard(rootElement, router) {
       ${isActivated ? `
         <section class="results-activated-banner fade-in">
           <div style="font-size: 0.8rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--sage-light); margin-bottom: 0.5rem;">
-            DEPLOYMENT CONFIRMED
+            ${executionResult?.execution_summary?.completed_tasks && executionResult?.execution_summary?.completed_tasks === executionResult?.execution_summary?.executed_tasks ? 'DEPLOYMENT CONFIRMED' : 'OPERATIONS STAGED (AWAITING PROVIDER CREDENTIALS)'}
           </div>
-          <h2 class="activated-title">SPACE ACTIVATED</h2>
+          <h2 class="activated-title">
+            ${executionResult?.execution_summary?.completed_tasks && executionResult?.execution_summary?.completed_tasks === executionResult?.execution_summary?.executed_tasks ? 'SPACE ACTIVATED' : 'SPACE ACTIVATION STAGED'}
+          </h2>
           <div class="activated-checks">
             <span>🟢 Spotify Playlist: <strong>STAGED</strong> (Sandbox URI)</span>
             <span>📦 Library Purchase Order: <strong>READY FOR DOWNLOAD</strong> (8-Column CSV)</span>
@@ -569,7 +572,7 @@ export function renderDashboard(rootElement, router) {
     try {
       if (currentSessionId) {
         await apiClient.approveSession(currentSessionId, { approver: 'Maitray Agrawal' });
-        await apiClient.executeSession(currentSessionId);
+        executionResult = await apiClient.executeSession(currentSessionId);
       }
     } catch (_) {
       // Deterministic client demonstration fallback
@@ -578,7 +581,7 @@ export function renderDashboard(rootElement, router) {
     activeWfStep = 13;
     isActivated = true;
     renderDashboard(rootElement, router);
-    showToast('Space activated successfully. Spotify spec staged & procurement CSV generated.', 'success');
+    showToast('Workflow execution completed. Operational artifacts ready for audit.', 'success');
   });
 
   // ---------------------------------------------------------------------------

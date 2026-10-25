@@ -34,6 +34,7 @@ from tasteops.workflows.schemas import (
     GovernanceValidationInput,
     GovernanceValidationOutput,
     PartnershipOutput,
+    TaskStatus,
 )
 from tasteops.workflows.states import WorkflowState
 
@@ -240,7 +241,7 @@ async def test_retry_after_timeout_preserves_idempotency():
         task_id="task_ent_artist_mono_plan_t",
         idempotency_key=f"idem_{plan.plan_id}_spotify_ent_artist_mono",
         action="Export seed artist",
-        status="EXECUTED",
+        status=TaskStatus.COMPLETED,
         provenance={
             "source": "qloo_insights_artist",
             "source_id": "ent_artist_mono",
@@ -252,7 +253,7 @@ async def test_retry_after_timeout_preserves_idempotency():
             "session_id": "sess_timeout",
             "approved_by": "curator_sam",
             "approved_at": "2026-10-25T00:00:00Z",
-            "execution_status": "EXECUTED",
+            "execution_status": "COMPLETED",
         },
     )
     gov._idempotency_store[task_1.idempotency_key] = task_1

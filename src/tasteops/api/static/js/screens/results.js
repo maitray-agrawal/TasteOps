@@ -7,33 +7,59 @@
 import { apiClient } from '../apiClient.js';
 import { showToast } from '../components/ui.js';
 
-export async function renderResults(rootElement, params, router) {
+export function renderResults(rootElement, params, router) {
   const sessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null) || 'sess_demo_austin';
-  let liveSession = null;
-  if (sessionId !== 'sess_demo_austin') {
-    try {
-      liveSession = await apiClient.getSession(sessionId);
-    } catch (_) {
-      // Fallback
+
+  const renderContent = (liveSession, isColdStarting = false) => {
+    const isLive = Boolean(liveSession);
+    const csvUrl = apiClient.getProcurementCsvUrl(sessionId);
+
+    const executionSummary = liveSession?.execution_summary || {};
+    const tasks = liveSession?.plan?.execution_tasks || [];
+    const completedTasks = executionSummary.completed_tasks || tasks.filter(t => t.status === 'COMPLETED').length;
+    const stagedTasks = (executionSummary.staged_tasks || 0) + (executionSummary.not_configured_tasks || 0) || tasks.filter(t => t.status === 'STAGED' || t.status === 'NOT_CONFIGURED').length;
+    const failedTasks = executionSummary.failed_tasks || tasks.filter(t => t.status === 'FAILED').length;
+    const totalTasks = tasks.length || (completedTasks + stagedTasks + failedTasks);
+
+    let stateHeadline = 'SPACE ACTIVATION STAGED';
+    let eyebrowText = isLive ? `Workflow Staged (${sessionId.slice(0, 12)}...)` : 'Execution Staged (Austin Reference Demo)';
+    let dotColor = 'var(--terracotta)';
+
+    if (isLive) {
+      if (failedTasks > 0) {
+        stateHeadline = 'PARTIAL EXECUTION FAILURE';
+        eyebrowText = `Attention Required (${failedTasks} of ${totalTasks} Operations Failed)`;
+        dotColor = '#dc2626';
+      } else if (totalTasks > 0 && completedTasks === totalTasks) {
+        stateHeadline = 'SPACE ACTIVATED';
+        eyebrowText = `All Operations Completed (${completedTasks}/${totalTasks} Verified Providers)`;
+        dotColor = 'var(--state-completed)';
+      } else if (stagedTasks > 0) {
+        stateHeadline = 'WORKFLOW COMPLETED • OPERATIONS STAGED';
+        eyebrowText = `Operations Staged (${stagedTasks} Awaiting External Credentials)`;
+        dotColor = 'var(--terracotta)';
+      }
     }
-  }
 
-  const isLive = Boolean(liveSession);
-  const csvUrl = apiClient.getProcurementCsvUrl(sessionId);
-
-  rootElement.innerHTML = `
-    <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+    rootElement.innerHTML = `
+      <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+        ${isColdStarting ? `
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #92400e;">
+            <span>⚡ <strong>Render Backend Waking Up:</strong> The backend is starting from idle. Displaying offline results baseline.</span>
+            <button id="btn-retry-results-hydration" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #fff;">Retry Fetch</button>
+          </div>
+        ` : ''}
       <!-- Header / Restrained Success State -->
       <div style="margin-bottom: 2.5rem; text-align: left;">
         <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.85rem; background: var(--warm-stone-light); border-radius: 999px; margin-bottom: 1rem;">
-          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${isLive ? 'var(--state-completed)' : 'var(--terracotta)'};"></span>
+          <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span>
           <span style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--forest-green);">
-            ${isLive ? `Live Activation Validated (${sessionId.slice(0, 12)}...)` : 'Execution Staged (Austin Reference Demo)'}
+            ${eyebrowText}
           </span>
         </div>
         
         <h1 class="hero-title" style="font-size: 2.8rem; margin-bottom: 0.75rem; color: var(--forest-green);">
-          ${isLive && liveSession.current_state === 'COMPLETED' ? 'SPACE ACTIVATED' : 'SPACE ACTIVATION STAGED'}
+          ${stateHeadline}
         </h1>
         <p class="hero-desc" style="max-width: 760px; font-size: 1.05rem;">
           ${isLive ? `Physical space curation has passed governance audits for session ${sessionId}. Operational artifacts are available below.` : 'Illustrative execution artifacts compiled for the Austin tech & creative demographic reference scenario.'}
@@ -143,8 +169,28 @@ export async function renderResults(rootElement, params, router) {
     </div>
   `;
 
-  // Attach CSV download toast feedback
-  document.getElementById('btn-download-po-csv')?.addEventListener('click', () => {
-    showToast('Downloading validated 8-column purchase order CSV with Qloo entity IDs...', 'success');
-  });
+    // Attach CSV download toast feedback
+    document.getElementById('btn-download-po-csv')?.addEventListener('click', () => {
+      showToast('Downloading validated 8-column purchase order CSV with Qloo entity IDs...', 'success');
+    });
+  };
+
+  // 1. Immediate synchronous render (0ms blocking delay)
+  renderContent(null, false);
+
+  // 2. Asynchronous non-blocking session hydration
+  const hydrate = () => {
+    if (!sessionId || sessionId === 'sess_demo_austin') return;
+    apiClient.getSession(sessionId).then((liveSession) => {
+      if (window.tasteopsRouter?.currentRoute !== '/results') return;
+      renderContent(liveSession, false);
+    }).catch((err) => {
+      if (window.tasteopsRouter?.currentRoute !== '/results') return;
+      const isColdStart = err.code === 'BACKEND_COLD_START_TIMEOUT' || err.isNetworkError;
+      renderContent(null, isColdStart);
+      document.getElementById('btn-retry-results-hydration')?.addEventListener('click', hydrate);
+    });
+  };
+
+  hydrate();
 }
