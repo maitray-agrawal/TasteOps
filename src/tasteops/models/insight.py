@@ -61,7 +61,7 @@ class QlooInsight(BaseModel):
                     data["affinity"] = round(numeric_score, 4)
                 else:
                     data["affinity"] = 1.0
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 data["affinity"] = 0.0
         elif raw_affinity is not None:
             try:
@@ -74,7 +74,7 @@ class QlooInsight(BaseModel):
                     data["score"] = (
                         raw_score if raw_score is not None else numeric_affinity
                     )
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 data["affinity"] = 0.0
         else:
             data["affinity"] = 0.0

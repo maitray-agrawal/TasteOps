@@ -1,4 +1,4 @@
-"""TasteOps Configuration for Qloo Cultural Intelligence."""
+import os
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,7 +18,7 @@ class QlooSettings(BaseSettings):
     )
 
     api_key: SecretStr = Field(
-        ...,
+        default_factory=lambda: SecretStr(os.getenv("QLOO_API_KEY", "")),
         alias="QLOO_API_KEY",
         description="Qloo Hackathon API key. Must not be empty.",
     )
@@ -73,3 +73,59 @@ class QlooSettings(BaseSettings):
             f"max_retries={self.max_retries}, "
             f"api_key='***REDACTED***')"
         )
+
+
+class ServerSettings(BaseSettings):
+    """Server and environment configuration for the TasteOps backend service.
+
+    Manages host, port, CORS, environment mode, and persistence paths.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    environment: str = Field(
+        default="development",
+        alias="ENVIRONMENT",
+        description="Deployment environment (development, staging, production).",
+    )
+    host: str = Field(
+        default="0.0.0.0",
+        alias="HOST",
+        description="Host interface for server binding.",
+    )
+    port: int = Field(
+        default=8000,
+        alias="PORT",
+        description="Port for server binding (supplied by Render via $PORT).",
+    )
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
+        alias="CORS_ORIGINS",
+        description="Comma-separated list of allowed CORS origins.",
+    )
+    database_url: str | None = Field(
+        default=None,
+        alias="DATABASE_URL",
+        description="Database connection URL (PostgreSQL/SQLite roadmap).",
+    )
+    storage_dir: str = Field(
+        default="storage/workflows",
+        alias="TASTEOPS_STORAGE_DIR",
+        description="Filesystem path for persistent session snapshots and audit logs.",
+    )
+    log_level: str = Field(
+        default="INFO",
+        alias="LOG_LEVEL",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR).",
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parses comma-separated cors_origins string into a list of trimmed origins."""
+        if not self.cors_origins:
+            return []
+        return [orig.strip() for orig in self.cors_origins.split(",") if orig.strip()]

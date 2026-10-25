@@ -4,6 +4,8 @@ Prevents arbitrary or unvalidated input from LLMs / external callers
 from being passed directly into the HTTP client.
 """
 
+from __future__ import annotations
+
 import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator

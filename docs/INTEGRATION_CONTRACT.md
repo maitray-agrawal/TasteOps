@@ -832,72 +832,65 @@ A sanitized, non-mock-dependent fixture is available at `tests/fixtures/demo_mum
 | **Plan Mutation Post-Approval** | `APPROVED` → `FAILED` | Immediate invalidation of approval. Raises `UnapprovedExecutionError`. |
 | **Missing / Invalid Provenance** | `APPROVED` → `FAILED` | Halts before task dispatch. Raises `TaskProvenanceError`. |
 
-### 11.9. FastAPI Integration Example
+### 11.9. FastAPI Integration & Application Facade
 
-```python
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from tasteops.workflows.orchestrator import TasteOpsOrchestrator
+`TasteOpsOrchestrator` serves as the sole application-facing service facade for FastAPI and client integration. It exposes a minimal, high-level async interface delegating state machine transitions to `WorkflowEngine`:
 
-app = FastAPI(title="TasteOps Orchestration API")
-orchestrator = TasteOpsOrchestrator()
+- `create_session(user_input, space_id=None, hints=None) -> WorkflowContext`
+- `run_until_approval(session_id, hints=None, take_per_category=10) -> WorkflowContext`
+- `approve_session(session_id, approver="human_curator", plan_version=1) -> WorkflowContext`
+- `reject_session(session_id, reason="Curator rejected plan", reviewer="human_curator") -> WorkflowContext`
+- `execute_approved_plan(session_id) -> WorkflowContext`
+- `get_session_state(session_id) -> WorkflowContext`
+- `get_audit_events(session_id) -> list[AuditEvent]`
 
-class CreateSessionRequest(BaseModel):
-    space_id: str
-    user_input: str
+---
 
-class ApprovalRequest(BaseModel):
-    approver: str
-    plan_version: int = 1
+## 12. Application-Facing Architecture & API Contract Integration
 
-class RejectionRequest(BaseModel):
-    reason: str
-    reviewer: str
+### 12.1. Strict 6-Tier Pipeline (Single Orchestrator Invariant)
 
-@app.post("/sessions")
-async def create_session(req: CreateSessionRequest):
-    ctx = await orchestrator.create_session(space_id=req.space_id, user_input=req.user_input)
-    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
+TasteOps strictly enforces a single, unidirectional pipeline. Downstream layers must **never** create a secondary orchestration engine or bypass the deterministic state machine:
 
-@app.post("/sessions/{session_id}/run")
-async def run_until_approval(session_id: str):
-    ctx = await orchestrator.run_until_approval(session_id=session_id)
-    return {
-        "session_id": ctx.session_id,
-        "state": ctx.current_state.value,
-        "execution_plan": ctx.execution_plan,
-        "validation_passed": ctx.validation_result.validation_passed if ctx.validation_result else False,
-    }
+```mermaid
+graph TD
+    UI["1. Frontend UI / Client Application"]
+    API["2. FastAPI Application Layer (REST & WebSocket)"]
+    SRV["3. TasteOps Service Layer (TasteOpsOrchestrator Facade)"]
+    ENG["4. WorkflowEngine & Deterministic State Machine (13 States)"]
+    MCP["5. Model Context Protocol Layer (FastMCP Server + Adapter)"]
+    QLOO["6. Qloo Cultural AI™ Infrastructure (REST Gateway)"]
 
-@app.post("/sessions/{session_id}/approve")
-async def approve_session(session_id: str, req: ApprovalRequest):
-    ctx = await orchestrator.approve_session(
-        session_id=session_id, approver=req.approver, plan_version=req.plan_version
-    )
-    return {"session_id": ctx.session_id, "state": ctx.current_state.value, "approval": ctx.approval}
-
-@app.post("/sessions/{session_id}/reject")
-async def reject_session(session_id: str, req: RejectionRequest):
-    ctx = await orchestrator.reject_session(session_id=session_id, reason=req.reason, reviewer=req.reviewer)
-    return {"session_id": ctx.session_id, "state": ctx.current_state.value}
-
-@app.post("/sessions/{session_id}/execute")
-async def execute_approved_plan(session_id: str):
-    ctx = await orchestrator.execute_approved_plan(session_id=session_id)
-    return {
-        "session_id": ctx.session_id,
-        "state": ctx.current_state.value,
-        "tasks_executed": len(ctx.execution_tasks),
-        "tasks": ctx.execution_tasks,
-    }
-
-@app.get("/sessions/{session_id}")
-async def get_session(session_id: str):
-    ctx = await orchestrator.get_session_state(session_id=session_id)
-    return ctx
-
-@app.get("/sessions/{session_id}/audit")
-async def get_audit(session_id: str):
-    events = await orchestrator.get_audit_events(session_id=session_id)
-    return {"session_id": session_id, "events": events}
+    UI -->|HTTP POST/GET, WebSocket JSON| API
+    API -->|Async Python Calls| SRV
+    SRV -->|Coordinates State & Session| ENG
+    ENG -->|Orchestrates 4 Specialized Agents| MCP
+    MCP -->|Typed Tools with Provenance| QLOO
 ```
+
+### 12.2. The 16 Core Typed Application Contracts
+
+The application boundary standardizes on 16 core contracts, detailed fully in [`docs/API_CONTRACT.md`](API_CONTRACT.md):
+
+1. **`Space`**: Physical venue entity with coordinates, WKT geometry, operating dayparts, and capacity.
+2. **`SpaceBrief`**: Client-submitted activation brief ([`PhysicalSpaceBrief`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L83-L118)) containing acoustic and aesthetic constraints.
+3. **`WorkflowSession`**: End-to-end activation session state ([`WorkflowContext`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/context.py#L34-L89)) managing progress across all 13 states.
+4. **`WorkflowState`**: 13 explicit deterministic state machine states ([`WorkflowState`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/states.py#L10-L25)).
+5. **`CulturalTwin`**: Foundational physical space cultural identity model ([`CulturalTwin`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L120-L185)).
+6. **`CulturalMatrix`**: Holistic 6-domain verified affinity recommendations matrix ([`CulturalMatrix`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L187-L280)).
+7. **`CulturalEvidence`**: Verifiable Qloo query audit evidence linking recommendations to ground-truth signals ([`CulturalMatrixEvidence`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L107-L118)).
+8. **`AgentRun`**: Execution audit telemetry recording agent latency, status, retry counts, and input hashes.
+9. **`ExperienceBlueprint`**: Multi-sensory experience design output ([`ExperienceDesignOutput`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L170-L195)) containing sonic, reading, brand, and atmospheric guidelines.
+10. **`PartnershipRecommendation`**: 6-dimensional scored brand partnership candidate ([`BrandPartnershipCandidate`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L250-L310)) with exploratory outreach draft.
+11. **`GovernanceResult`**: 7-point compliance audit and anti-hallucination report ([`GovernanceValidationOutput`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L549-L566)).
+12. **`ValidationResult`**: Individual compliance check finding ([`ComplianceCheck`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L528-L537)).
+13. **`ExecutionPlan`**: Pre-approval dependency-mapped action blueprint ([`ExecutionPlan`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L586-L612)).
+14. **`ExecutionTask`**: Concrete action item dispatched post-approval ([`ExecutionTask`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L660-L711)) with idempotency key and 11-field provenance trace.
+15. **`Approval`**: Cryptographic human sign-off record ([`ApprovalRecord`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L642-L658)) binding curator identity to the SHA-256 plan hash.
+16. **`AuditEvent`**: Immutable append-only audit event record ([`AuditEvent`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/persistence.py#L27-L38)).
+
+### 12.3. Authoritative Specification
+
+For exhaustive field definitions, Pydantic type signatures, REST endpoints, WebSocket streaming frames, and exception translation tables, refer directly to:
+👉 **[`docs/API_CONTRACT.md`](API_CONTRACT.md)**
+

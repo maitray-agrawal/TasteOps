@@ -12,7 +12,7 @@ from tasteops.agents import (
 )
 from tasteops.cache import AsyncTTLCache, CacheBackend
 from tasteops.client import QlooClient
-from tasteops.config import QlooSettings
+from tasteops.config import QlooSettings, ServerSettings
 from tasteops.exceptions import (
     QlooAuthenticationError,
     QlooException,
@@ -106,6 +106,7 @@ __all__ = [
     "ResolvedEntity",
     "ResolvedTag",
     "SearchParams",
+    "ServerSettings",
     "TagCandidate",
     "TagParams",
     "TagResolutionResult",
