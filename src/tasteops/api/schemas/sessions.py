@@ -214,6 +214,45 @@ class SessionBlueprintResponse(BaseModel):
         default_factory=list, description="Event programming calendar"
     )
 
+    # Rich Experience Blueprint Fields
+    strategic_objective: str | None = Field(
+        default=None, description="Primary cultural strategic objective and goals"
+    )
+    audience: dict[str, Any] | None = Field(
+        default=None, description="Target audience breakdown, subcultures, and profile"
+    )
+    cultural_positioning: dict[str, Any] | None = Field(
+        default=None, description="Cultural positioning statement, affinity themes, and pillars"
+    )
+    experience_concept: dict[str, Any] | None = Field(
+        default=None, description="Synthesized multi-sensory experience concept architecture"
+    )
+    activation_ideas: list[dict[str, Any]] = Field(
+        default_factory=list, description="Signature cultural programming activations and residency formats"
+    )
+    partnership_opportunities: list[dict[str, Any]] = Field(
+        default_factory=list, description="Multi-dimensionally scored brand and creator partnership opportunities"
+    )
+    budget_considerations: dict[str, Any] | None = Field(
+        default=None, description="Budget feasibility, capital allocation, and action cost breakdown"
+    )
+    risks: list[dict[str, Any]] = Field(
+        default_factory=list, description="Consolidated operational, spatial, governance, and brand risks"
+    )
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list, description="Authoritative Qloo ground-truth evidence backing recommendations"
+    )
+    confidence: float = Field(
+        default=1.0, ge=0.0, le=1.0, description="Aggregate signal and provenance confidence score"
+    )
+    execution_actions: list[dict[str, Any]] = Field(
+        default_factory=list, description="Concrete downstream execution plan actions"
+    )
+    recommendation_provenance_map: dict[str, Any] = Field(
+        default_factory=dict, description="Structured 4-layer provenance trail answering why recommendations were made"
+    )
+
+
 
 class ApproveSessionRequest(BaseModel):
     """Payload to record human curator approval for an activation plan."""

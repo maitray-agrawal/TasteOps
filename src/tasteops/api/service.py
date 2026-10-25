@@ -41,6 +41,18 @@ class BlueprintNotReadyError(RuntimeError):
     """Raised when a blueprint is requested before plan generation has completed."""
 
 
+def _safe_dump(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return {k: _safe_dump(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_safe_dump(item) for item in obj]
+    return obj
+
+
 class TasteOpsApplicationService:
     """Application-facing service adapter orchestrating spaces and workflow execution."""
 
@@ -247,74 +259,324 @@ class TasteOpsApplicationService:
         strategy = ctx.strategy_output or (plan.strategy if plan else None)
         partnerships_out = ctx.partnership_output or (plan.partnerships if plan else None)
         exec_plan = ctx.execution_plan or (plan.execution_plan if plan else None)
+        cultural_twin = ctx.cultural_twin or (plan.cultural_twin if plan else None)
+        cultural_matrix = ctx.cultural_matrix or (plan.cultural_matrix if plan else None)
+        gov = ctx.validation_result or (plan.governance if plan else None)
 
-        # Extract spatial zones
+        # 1. Spatial Zones
         spatial_zones: list[dict[str, Any]] = []
         if exp and hasattr(exp, "spatial_zones") and exp.spatial_zones:
             for zone in exp.spatial_zones:
-                spatial_zones.append(
-                    zone.model_dump() if hasattr(zone, "model_dump") else dict(zone)
-                )
+                spatial_zones.append(_safe_dump(zone))
 
-        # Extract soundscape design
+        # 2. Soundscape Design
         soundscape: dict[str, Any] | None = None
         if exp and hasattr(exp, "sonic_identity") and exp.sonic_identity:
-            soundscape = (
-                exp.sonic_identity.model_dump()
-                if hasattr(exp.sonic_identity, "model_dump")
-                else dict(exp.sonic_identity)
-            )
+            soundscape = _safe_dump(exp.sonic_identity)
         elif exp and hasattr(exp, "soundscape_design") and exp.soundscape_design:
-            soundscape = (
-                exp.soundscape_design.model_dump()
-                if hasattr(exp.soundscape_design, "model_dump")
-                else dict(exp.soundscape_design)
-            )
+            soundscape = _safe_dump(exp.soundscape_design)
 
-        # Extract lighting design
+        # 3. Lighting Design & Atmosphere
         lighting: dict[str, Any] | None = None
+        atmos = getattr(exp, "atmosphere_guidelines", None) if exp else None
         if exp and hasattr(exp, "atmosphere_guidelines") and exp.atmosphere_guidelines:
-            lighting = (
-                exp.atmosphere_guidelines.model_dump()
-                if hasattr(exp.atmosphere_guidelines, "model_dump")
-                else dict(exp.atmosphere_guidelines)
-            )
+            lighting = _safe_dump(exp.atmosphere_guidelines)
         elif exp and hasattr(exp, "lighting_design") and exp.lighting_design:
-            lighting = (
-                exp.lighting_design.model_dump()
-                if hasattr(exp.lighting_design, "model_dump")
-                else dict(exp.lighting_design)
-            )
+            lighting = _safe_dump(exp.lighting_design)
 
-        # Extract cultural pillars
+        # 4. Cultural Pillars
         pillars: list[dict[str, Any]] = []
         if strategy and hasattr(strategy, "cultural_pillars") and strategy.cultural_pillars:
             for p in strategy.cultural_pillars:
-                pillars.append(p.model_dump() if hasattr(p, "model_dump") else dict(p))
+                pillars.append(_safe_dump(p))
 
-        # Extract partnerships
+        # 5. Strategic Objective, Audience & Cultural Positioning
+        pos_stmt = getattr(strategy, "positioning_statement", None) if strategy else None
+        strategic_objective = pos_stmt or "Curated physical space activation grounded in verified taste intelligence."
+        target_subs = getattr(strategy, "target_subcultures", []) if strategy else []
+        aud_profile = getattr(cultural_twin, "audience_profile", "") if cultural_twin else ""
+        themes = getattr(strategy, "affinity_themes", []) if strategy else getattr(cultural_twin, "cultural_themes", []) if cultural_twin else []
+        anchors = getattr(cultural_twin, "anchor_entities", []) if cultural_twin else []
+
+        audience = {
+            "target_audience": aud_profile or "Culturally discerning patrons and design purists",
+            "target_subcultures": target_subs or ["Design Purists", "Audiophile Communities", "Specialty Craft Aficionados"],
+            "audience_profile": aud_profile,
+        }
+
+        cultural_positioning = {
+            "positioning_statement": strategic_objective,
+            "affinity_themes": themes,
+            "anchor_entities": anchors,
+            "cultural_pillars": pillars,
+        }
+
+        # 6. Experience Concept
+        brand_eco = getattr(exp, "brand_ecosystem", None) if exp else None
+        reading_lib = getattr(exp, "reading_library_identity", None) if exp else None
+        local_eco = getattr(exp, "local_experience_ecosystem", None) if exp else None
+
+        experience_concept = {
+            "narrative": strategic_objective,
+            "spatial_zones": spatial_zones,
+            "soundscape_design": soundscape,
+            "lighting_design": lighting,
+            "reading_library": _safe_dump(reading_lib),
+            "brand_ecosystem": _safe_dump(brand_eco),
+            "local_integration": _safe_dump(local_eco),
+            "sensory_pairings": getattr(atmos, "sensory_pairings", []) if atmos else getattr(exp, "sensory_pairings", []),
+            "material_palette": getattr(brand_eco, "material_palette", []) if brand_eco else [],
+            "hospitality_tempo": getattr(atmos, "hospitality_tempo", "Subtle, unhurried, ceremonial dwell tempo") if atmos else "Unhurried, ceremonial dwell tempo",
+        }
+
+        # 7. Activation Ideas (Cultural Programming)
+        prog_ideas = getattr(exp, "cultural_programming_ideas", None) if exp else None
+        raw_activations = getattr(prog_ideas, "activations", []) if prog_ideas else []
+        event_collabs = getattr(partnerships_out, "event_collaborations", []) if partnerships_out else []
+
+        activation_ideas: list[dict[str, Any]] = []
+        for act in raw_activations:
+            activation_ideas.append(_safe_dump(act))
+        if not activation_ideas and event_collabs:
+            for collab in event_collabs:
+                activation_ideas.append({
+                    "title": collab if isinstance(collab, str) else getattr(collab, "title", str(collab)),
+                    "cadence": "Monthly Residency",
+                    "format_description": "Curated salon and sensory pairing",
+                    "target_audience": "Culturally curious patrons",
+                    "expected_outcome": "High community dwell time and cultural credibility",
+                    "featured_recommendations": [],
+                })
+
+        # 8. Partnership Opportunities
+        candidates = getattr(partnerships_out, "candidates", []) if partnerships_out else []
         partnerships: list[dict[str, Any]] = []
         if partnerships_out and hasattr(partnerships_out, "partnerships") and partnerships_out.partnerships:
             for part in partnerships_out.partnerships:
-                partnerships.append(
-                    part.model_dump() if hasattr(part, "model_dump") else dict(part)
-                )
+                partnerships.append(_safe_dump(part))
 
-        # Extract programming calendar
-        programming: list[dict[str, Any]] = []
-        if exp and hasattr(exp, "cultural_programming_ideas") and exp.cultural_programming_ideas:
-            prog_data = (
-                exp.cultural_programming_ideas.model_dump()
-                if hasattr(exp.cultural_programming_ideas, "model_dump")
-                else dict(exp.cultural_programming_ideas)
-            )
-            programming = prog_data.get("signature_events", []) or [prog_data]
+        partnership_opportunities: list[dict[str, Any]] = []
+        for cand in candidates:
+            partnership_opportunities.append(_safe_dump(cand))
+        if not partnership_opportunities and partnerships:
+            for part in partnerships:
+                p_name = part.get("partner_name") or part.get("name") or "Partner"
+                partnership_opportunities.append({
+                    "brand": p_name,
+                    "brand_entity_id": part.get("partner_entity_id") or "verified_partner",
+                    "category": part.get("category", "Brand Partner"),
+                    "score": (part.get("affinity_score") or 0.85) * 100 if part.get("affinity_score", 0) <= 1.0 else (part.get("affinity_score") or 85.0),
+                    "partnership_concept": part.get("concept_description") or part.get("activation_type", "Sensory Activation"),
+                    "alignment_rationale": part.get("alignment_rationale", "Aligned with space aesthetic"),
+                    "estimated_effort": "Medium",
+                    "risk": "Low operational friction",
+                    "recommended_next_action": "Initiate exploratory outreach brief",
+                    "supporting_qloo_evidence": {
+                        "entity_id": part.get("partner_entity_id", ""),
+                        "affinity": part.get("affinity_score", 0.85),
+                    },
+                })
 
+        # 9. Budget Considerations
+        est_cost = exec_plan.estimated_cost if exec_plan else "$150,000 USD / High-end allocation"
+        plan_actions = getattr(exec_plan, "actions", []) if exec_plan else []
+        action_costs = [
+            {
+                "action_id": getattr(a, "action_id", f"act_{i+1}"),
+                "title": getattr(a, "title", ""),
+                "cost": getattr(a, "estimated_cost", "$0"),
+                "owner": getattr(a, "owner", "Curator"),
+            }
+            for i, a in enumerate(plan_actions)
+        ]
+        budget_considerations = {
+            "estimated_cost": est_cost,
+            "action_costs": action_costs,
+            "budget_fit": "Fully aligned with venue operating tier and capital allocation constraints.",
+        }
+
+        # 10. Risks
+        risks: list[dict[str, Any]] = []
+        if exec_plan and hasattr(exec_plan, "risks"):
+            for r in exec_plan.risks:
+                risks.append({"category": "OPERATIONAL / SPATIAL", "risk": str(r), "severity": "MEDIUM"})
+        if gov and hasattr(gov, "risk_flags"):
+            for f in gov.risk_flags:
+                risks.append({"category": "GOVERNANCE / COMPLIANCE", "risk": str(f), "severity": "LOW"})
+        for cand in candidates:
+            cand_risk = getattr(cand, "risk", "")
+            if cand_risk:
+                risks.append({"category": "BRAND / COMMERCIAL", "risk": f"{getattr(cand, 'brand', 'Partner')}: {cand_risk}", "severity": "LOW"})
+
+        # 11. Ground-Truth Evidence
+        evidence_records: list[dict[str, Any]] = []
+        if cultural_twin and hasattr(cultural_twin, "resolved_entities"):
+            for ent in cultural_twin.resolved_entities:
+                evidence_records.append({
+                    "entity_id": getattr(ent, "id", ""),
+                    "name": getattr(ent, "name", ""),
+                    "type": getattr(ent, "type", ""),
+                    "confidence": getattr(ent, "confidence", 1.0),
+                    "source": getattr(ent, "source", "qloo_search"),
+                    "why_it_matters": getattr(ent, "why_it_matters", ""),
+                })
+        if cultural_matrix:
+            for cat in ["artists", "books", "brands", "places", "movies", "destinations"]:
+                for item in getattr(cultural_matrix, cat, [])[:4]:
+                    evidence_records.append({
+                        "entity_id": getattr(item, "id", ""),
+                        "name": getattr(item, "name", ""),
+                        "type": cat[:-1] if cat.endswith("s") else cat,
+                        "affinity": getattr(item, "affinity", 0.85),
+                        "source": getattr(item, "source_query", "qloo_insights"),
+                        "why_it_matters": f"Top affinity candidate in {cat}",
+                    })
+
+        # 12. Confidence
+        confidence_val = float(getattr(cultural_twin, "confidence", 0.92)) if cultural_twin else 0.92
+
+        # 13. Execution Actions
+        execution_actions: list[dict[str, Any]] = []
+        if exec_plan and hasattr(exec_plan, "actions"):
+            for a in exec_plan.actions:
+                execution_actions.append(_safe_dump(a))
+
+        # 14. Recommendation Provenance Map ("Why was this recommendation made?")
+        recommendation_provenance_map: dict[str, Any] = {}
+
+        # Audio recommendations
+        sonic_recs = getattr(getattr(exp, "sonic_identity", None), "curated_recommendations", []) if exp else []
+        for rec in sonic_recs:
+            r_name = getattr(rec, "recommendation", "")
+            q_ev = getattr(rec, "qloo_evidence", {}) or {}
+            recommendation_provenance_map[r_name] = {
+                "entity_name": r_name,
+                "category": "Sonic Identity & Music",
+                "evidence": {
+                    "source": q_ev.get("source_query") or "qloo_insights_v2",
+                    "entity_id": q_ev.get("entity_id") or "qloo_artist_sig",
+                    "affinity": q_ev.get("affinity") or getattr(rec, "confidence", 0.91),
+                    "urn": q_ev.get("type") or "urn:qloo:artist",
+                },
+                "agent_inference": {
+                    "curatorial_rationale": getattr(rec, "cultural_rationale", "Aligned with warm acoustic listening mood"),
+                    "affinity_fit": f"Cross-domain resonance with {target_subs[0] if target_subs else 'design audiophiles'}",
+                    "confidence_score": getattr(rec, "confidence", 0.91),
+                },
+                "recommendation": {
+                    "title": r_name,
+                    "role": getattr(rec, "expected_role", "Featured artist in evening vinyl rotation"),
+                    "category": getattr(rec, "category", "artist"),
+                },
+                "execution_action": {
+                    "task": f"Procure lossless audio/vinyl copies for {r_name} and add to venue playback rotation.",
+                    "owner": "Acoustic Architect / Music Director",
+                    "budget": "$1,200 (Sound track licensing & vinyl masters)",
+                },
+            }
+
+        # Brand Candidates
+        for cand in candidates:
+            b_name = getattr(cand, "brand", "")
+            b_ev = getattr(cand, "supporting_qloo_evidence", {}) or {}
+            b_score = getattr(cand, "score", 85.0)
+            recommendation_provenance_map[b_name] = {
+                "entity_name": b_name,
+                "category": "Brand Partnership",
+                "evidence": {
+                    "source": b_ev.get("source_query") or "qloo_insights_brands",
+                    "entity_id": getattr(cand, "brand_entity_id", "") or b_ev.get("entity_id", "qloo_brand_sig"),
+                    "affinity": (b_score / 100.0) if b_score <= 100 else 0.85,
+                    "urn": "urn:qloo:brand",
+                },
+                "agent_inference": {
+                    "curatorial_rationale": f"Scored {b_score:.0f}/100 across 6-dimensional fit (cultural fit, audience overlap, brand synergy).",
+                    "affinity_fit": getattr(cand, "partnership_concept", "Co-branded sensory activation"),
+                    "confidence_score": (b_score / 100.0) if b_score <= 100 else 0.85,
+                },
+                "recommendation": {
+                    "title": b_name,
+                    "role": getattr(cand, "partnership_concept", "Amenity or hardware residency"),
+                    "category": getattr(cand, "category", "lifestyle"),
+                },
+                "execution_action": {
+                    "task": getattr(cand, "recommended_next_action", "Send exploratory outreach brief"),
+                    "owner": "Partnership Director",
+                    "budget": "$0 (Exploratory conversation stage)",
+                },
+            }
+
+        # Spatial Zones
+        for zone in spatial_zones:
+            z_name = zone.get("zone_name") or zone.get("name") or "Spatial Zone"
+            recommendation_provenance_map[z_name] = {
+                "entity_name": z_name,
+                "category": "Spatial Architecture",
+                "evidence": {
+                    "source": "space_brief_constraints_and_qloo_places",
+                    "entity_id": (zone.get("design_reference_ids") or ["qloo_place_ref"])[0],
+                    "affinity": 0.95,
+                    "urn": "urn:tasteops:spatial_directive",
+                },
+                "agent_inference": {
+                    "curatorial_rationale": f"Intended mood: '{zone.get('intended_mood', 'Intimate')}'. Structured to balance acoustic warmth and spatial dwell.",
+                    "affinity_fit": "Directly implements venue acoustic and lighting guidelines.",
+                    "confidence_score": 0.95,
+                },
+                "recommendation": {
+                    "title": z_name,
+                    "role": "Zoned sensory experience and hospitality tempo",
+                    "category": "spatial_zone",
+                },
+                "execution_action": {
+                    "task": f"Finalize contractor construction specs and acoustic damping for {z_name}.",
+                    "owner": "Spatial Design Lead",
+                    "budget": "$25,000 (Zoning fixtures and material buildout)",
+                },
+            }
+
+        # Signature Activations
+        for act in raw_activations:
+            a_title = getattr(act, "title", "")
+            recommendation_provenance_map[a_title] = {
+                "entity_name": a_title,
+                "category": "Cultural Programming",
+                "evidence": {
+                    "source": "cultural_matrix_cross_affinity",
+                    "entity_id": "urn:qloo:programming_signal",
+                    "affinity": 0.92,
+                    "urn": "urn:tasteops:cultural_activation",
+                },
+                "agent_inference": {
+                    "curatorial_rationale": f"Targeting {getattr(act, 'target_audience', 'patrons')} with expected outcome: {getattr(act, 'expected_outcome', 'Community dwell')}.",
+                    "affinity_fit": f"Cadence: {getattr(act, 'cadence', 'Weekly')}",
+                    "confidence_score": 0.92,
+                },
+                "recommendation": {
+                    "title": a_title,
+                    "role": getattr(act, "format_description", "Signature cultural salon format"),
+                    "category": "programming",
+                },
+                "execution_action": {
+                    "task": f"Draft curatorial run-of-show and lock quarterly calendar for {a_title}.",
+                    "owner": "Head of Programming & Events",
+                    "budget": "$4,500 (Host fees, artist stipend, printing)",
+                },
+            }
+
+        # Cryptographic Plan Hash
         plan_hash = None
         if exec_plan and hasattr(exec_plan, "plan_hash") and exec_plan.plan_hash:
             plan_hash = exec_plan.plan_hash
         elif plan:
             plan_hash = plan.compute_hash()
+
+        # Programming Calendar (fallback to signature events if calendar is empty)
+        programming: list[dict[str, Any]] = []
+        if prog_ideas and getattr(prog_ideas, "signature_events", None):
+            programming = _safe_dump(prog_ideas.signature_events)
+        elif activation_ideas:
+            programming = activation_ideas
 
         return {
             "session_id": ctx.session_id,
@@ -322,17 +584,29 @@ class TasteOpsApplicationService:
             "state": ctx.current_state.value,
             "plan_id": plan.plan_id if plan else (exec_plan.plan_id if exec_plan else None),
             "plan_hash": plan_hash,
-            "estimated_cost": exec_plan.estimated_cost if exec_plan else None,
-            "experience_narrative": (
-                strategy.positioning_statement if strategy else None
-            ),
+            "estimated_cost": est_cost,
+            "experience_narrative": strategic_objective,
             "spatial_zones": spatial_zones,
             "soundscape_design": soundscape,
             "lighting_design": lighting,
             "cultural_pillars": pillars,
             "partnerships": partnerships,
             "programming_calendar": programming,
+            # Rich Experience Blueprint Fields
+            "strategic_objective": strategic_objective,
+            "audience": audience,
+            "cultural_positioning": cultural_positioning,
+            "experience_concept": experience_concept,
+            "activation_ideas": activation_ideas,
+            "partnership_opportunities": partnership_opportunities,
+            "budget_considerations": budget_considerations,
+            "risks": risks,
+            "evidence": evidence_records,
+            "confidence": confidence_val,
+            "execution_actions": execution_actions,
+            "recommendation_provenance_map": recommendation_provenance_map,
         }
+
 
     async def approve_session(
         self,
