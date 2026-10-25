@@ -23,6 +23,7 @@ qloo_cache
 tests
 docs
 *.md
+!README.md
 *.log
 *.tmp
 *.bak
