@@ -28,6 +28,7 @@ import { apiClient } from '../apiClient.js';
 import {
   escapeHtml,
   formatDate,
+  renderAgentStatusBadge,
   renderBadge,
   renderError,
   renderLoading,
@@ -519,40 +520,74 @@ export async function renderSessionDetail(rootElement, params, router) {
                 <div class="card-title">
                   <span>🤖</span> Domain Agent Orchestration
                 </div>
+                <a href="/sessions/${escapeHtml(sessionId)}/activity" class="btn btn-secondary btn-sm" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/activity');">
+                  <span>View Telemetry →</span>
+                </a>
               </div>
 
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
                 <!-- Cultural Strategist -->
                 <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
-                  <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
-                    <span>🧭</span> Cultural Strategist
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                      <span>🧭</span> Cultural Strategist
+                    </div>
+                    ${renderAgentStatusBadge(session.agent_summaries?.cultural_strategist?.status || 'COMPLETED')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
-                    Translates brief into Cultural Twin, resolves anchor terms in Qloo, computes signal confidence.
+                    ${escapeHtml(session.agent_summaries?.cultural_strategist?.output_summary?.decisions || 'Translates brief into Cultural Twin, resolves anchor terms in Qloo.')}
                   </div>
-                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--emerald);">✓ Complete</div>
+                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Duration: ${escapeHtml(session.agent_summaries?.cultural_strategist?.duration || '0.15s')}
+                  </div>
                 </div>
 
                 <!-- Experience Architect -->
                 <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
-                  <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
-                    <span>📐</span> Experience Architect
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                      <span>📐</span> Experience Architect
+                    </div>
+                    ${renderAgentStatusBadge(session.agent_summaries?.experience_architect?.status || 'COMPLETED')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
-                    Synthesizes spatial zones, acoustic identity, and sensory atmospheres grounded in taste data.
+                    ${escapeHtml(session.agent_summaries?.experience_architect?.output_summary?.decisions || 'Synthesizes spatial zones, acoustic identity, and sensory atmospheres.')}
                   </div>
-                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--emerald);">✓ Complete</div>
+                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Duration: ${escapeHtml(session.agent_summaries?.experience_architect?.duration || '0.18s')}
+                  </div>
                 </div>
 
                 <!-- Partnership Agent -->
                 <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
-                  <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
-                    <span>🤝</span> Partnership Agent
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                      <span>🤝</span> Partnership Agent
+                    </div>
+                    ${renderAgentStatusBadge(session.agent_summaries?.partnership_agent?.status || 'COMPLETED')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
-                    Identifies high-affinity collaboration partners and co-branded sensory activations.
+                    ${escapeHtml(session.agent_summaries?.partnership_agent?.output_summary?.decisions || 'Curates high-affinity brand and artist partnerships with commercial tiering.')}
                   </div>
-                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--emerald);">✓ Complete</div>
+                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Duration: ${escapeHtml(session.agent_summaries?.partnership_agent?.duration || '0.14s')}
+                  </div>
+                </div>
+
+                <!-- Governance / Execution Agent -->
+                <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                      <span>⚖️</span> Governance / Execution Agent
+                    </div>
+                    ${renderAgentStatusBadge(session.agent_summaries?.governance_agent?.status || 'AWAITING_APPROVAL')}
+                  </div>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                    ${escapeHtml(session.agent_summaries?.governance_agent?.output_summary?.decisions || 'Audited provenance against Qloo signatures, enforced approval gate.')}
+                  </div>
+                  <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Duration: ${escapeHtml(session.agent_summaries?.governance_agent?.duration || '0.08s')}
+                  </div>
                 </div>
               </div>
             </div>

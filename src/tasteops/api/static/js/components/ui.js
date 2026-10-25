@@ -167,9 +167,48 @@ export function renderStatePipeline(currentState) {
   `;
 }
 
+export function renderAgentStatusBadge(status) {
+  const s = String(status || '').toUpperCase();
+  let badgeStyle = '';
+  let icon = '✦';
+
+  switch (s) {
+    case 'RUNNING':
+      badgeStyle = 'background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.35);';
+      icon = '⚡';
+      break;
+    case 'COMPLETED':
+      badgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);';
+      icon = '✓';
+      break;
+    case 'FAILED':
+      badgeStyle = 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35);';
+      icon = '✕';
+      break;
+    case 'RETRYING':
+      badgeStyle = 'background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35);';
+      icon = '🔄';
+      break;
+    case 'BLOCKED':
+      badgeStyle = 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.35);';
+      icon = '⏸';
+      break;
+    case 'AWAITING_APPROVAL':
+      badgeStyle = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4);';
+      icon = '⚖️';
+      break;
+    default:
+      badgeStyle = 'background: rgba(255, 255, 255, 0.08); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.15);';
+      icon = '✦';
+  }
+
+  return `<span class="badge" style="${badgeStyle} display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; letter-spacing: 0.04em;"><span>${icon}</span><span>${escapeHtml(s)}</span></span>`;
+}
+
 export function renderSubNav(sessionId, activeTab) {
   const tabs = [
     { key: 'overview', label: 'Overview & Twin', path: `/sessions/${sessionId}` },
+    { key: 'activity', label: 'Agent Activity', path: `/sessions/${sessionId}/activity` },
     { key: 'blueprint', label: 'Architectural Blueprint', path: `/sessions/${sessionId}/blueprint` },
     { key: 'approval', label: 'Approval Gate', path: `/sessions/${sessionId}/approval` },
     { key: 'execution', label: 'Execution Engine', path: `/sessions/${sessionId}/execution` },

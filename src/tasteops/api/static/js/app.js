@@ -5,6 +5,7 @@
 import { renderNavbar } from './components/nav.js';
 import { Router } from './router.js';
 import { renderDashboard } from './screens/dashboard.js';
+import { renderSessionActivity } from './screens/sessionActivity.js';
 import { renderSessionApproval } from './screens/sessionApproval.js';
 import { renderSessionBlueprint } from './screens/sessionBlueprint.js';
 import { renderSessionDetail } from './screens/sessionDetail.js';
@@ -20,12 +21,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const router = new Router({}, { rootElement });
   window.tasteopsRouter = router;
 
-  // Register all 8 required screens (and aliases)
+  // Register all required screens (and aliases)
   router.addRoute('/', renderDashboard);
   router.addRoute('/dashboard', renderDashboard);
   router.addRoute('/spaces/new', renderSpaceNew);
   router.addRoute('/spaces/:spaceId', renderSpaceDetail);
   router.addRoute('/sessions/:sessionId', renderSessionDetail);
+  router.addRoute('/sessions/:sessionId/activity', renderSessionActivity);
   router.addRoute('/sessions/:sessionId/blueprint', renderSessionBlueprint);
   router.addRoute('/sessions/:sessionId/approval', renderSessionApproval);
   router.addRoute('/sessions/:sessionId/execution', renderSessionExecution);

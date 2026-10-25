@@ -22,6 +22,7 @@ INDEX_HTML = STATIC_DIR / "index.html"
 @ui_router.get("/spaces/{space_id}", response_class=FileResponse, response_model=None)
 @ui_router.get("/sessions/{session_id}", response_class=FileResponse, response_model=None)
 @ui_router.get("/sessions/{session_id}/blueprint", response_class=FileResponse, response_model=None)
+@ui_router.get("/sessions/{session_id}/activity", response_class=FileResponse, response_model=None)
 @ui_router.get("/sessions/{session_id}/approval", response_class=FileResponse, response_model=None)
 @ui_router.get("/sessions/{session_id}/execution", response_class=FileResponse, response_model=None)
 @ui_router.get("/sessions/{session_id}/ledger", response_class=FileResponse, response_model=None)

@@ -44,6 +44,7 @@ def client():
         "/spaces/new",
         "/spaces/space_demo_123",
         "/sessions/sess_demo_123",
+        "/sessions/sess_demo_123/activity",
         "/sessions/sess_demo_123/blueprint",
         "/sessions/sess_demo_123/approval",
         "/sessions/sess_demo_123/execution",
@@ -51,7 +52,7 @@ def client():
     ],
 )
 def test_all_canonical_screens_served_by_fastapi(client, route_path):
-    """Verifies all 8 required workspace screen routes return HTTP 200 and the HTML SPA shell."""
+    """Verifies all required workspace screen routes return HTTP 200 and the HTML SPA shell."""
     resp = client.get(route_path)
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
@@ -77,6 +78,7 @@ def test_all_canonical_screens_served_by_fastapi(client, route_path):
         ("/static/js/screens/spaceNew.js", "javascript"),
         ("/static/js/screens/spaceDetail.js", "javascript"),
         ("/static/js/screens/sessionDetail.js", "javascript"),
+        ("/static/js/screens/sessionActivity.js", "javascript"),
         ("/static/js/screens/sessionBlueprint.js", "javascript"),
         ("/static/js/screens/sessionApproval.js", "javascript"),
         ("/static/js/screens/sessionExecution.js", "javascript"),
