@@ -12,11 +12,13 @@ import sys
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
 from tasteops.api.routes import router
@@ -186,6 +188,36 @@ def create_app(
 
     # Register routes
     app.include_router(router)
+
+    # ==========================================================================
+    # Static Assets & Frontend Single Page Application (SPA) Routes
+    # ==========================================================================
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    index_html = static_dir / "index.html"
+
+    async def serve_spa_shell(request: Request) -> Response:
+        """Serves the Single Page Application HTML shell for frontend workspace routes."""
+        if index_html.exists():
+            return FileResponse(str(index_html), media_type="text/html")
+        return HTMLResponse("<h1>TasteOps UI not found</h1>", status_code=404)
+
+    for ui_path in (
+        "/",
+        "/dashboard",
+        "/spaces/new",
+        "/spaces/{space_id:path}",
+        "/sessions/{session_id:path}",
+    ):
+        app.add_api_route(
+            ui_path,
+            serve_spa_shell,
+            methods=["GET"],
+            response_class=FileResponse,
+            include_in_schema=False,
+        )
 
     return app
 
