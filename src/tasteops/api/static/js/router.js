@@ -41,10 +41,9 @@ export class Router {
   resolve() {
     let pathname = window.location.pathname;
 
-    // Normalize root path to /dashboard
-    if (pathname === '/' || pathname === '') {
-      this.replace('/dashboard');
-      return;
+    // Normalize empty path to root
+    if (pathname === '') {
+      pathname = '/';
     }
 
     // Strip trailing slash if present (except root)
