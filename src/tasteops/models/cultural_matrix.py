@@ -198,6 +198,17 @@ class CulturalTwin(BaseModel):
         description="Additional query constraints e.g. {'take': 10, 'price_level_max': 3}",
     )
 
+    @field_validator("constraints", mode="before")
+    @classmethod
+    def validate_constraints(cls, v: Any) -> dict[str, Any]:
+        if isinstance(v, list):
+            return {"raw_constraints": v}
+        if isinstance(v, dict):
+            return v
+        if v is None:
+            return {}
+        return {"raw_constraints": [str(v)]}
+
     def model_post_init(self, context: Any, /) -> None:
         """Harmonizes audience and mood fields across schemas."""
         if not self.audience_profile and self.target_audience:

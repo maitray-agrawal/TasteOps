@@ -58,8 +58,16 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
         brief_id = f"brief_{uuid.uuid4().hex[:12]}"
         now = datetime.now(UTC).isoformat()
 
+        meta = dict(request.metadata or {})
+        if request.brand and "brand" not in meta:
+            meta["brand"] = request.brand
+        if request.goals and "goals" not in meta:
+            meta["goals"] = request.goals
+        if request.cultural_preferences and "cultural_preferences" not in meta:
+            meta["cultural_preferences"] = request.cultural_preferences
+
         location_json = json.dumps(request.location) if request.location is not None else None
-        metadata_json = json.dumps(request.metadata)
+        metadata_json = json.dumps(meta)
         constraints_json = json.dumps(request.constraints or [])
         anchors_json = json.dumps(request.anchor_entities or [])
 
@@ -112,12 +120,15 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
 
         brief_dict: dict[str, Any] = {
             "business_type": request.business_type,
+            "brand": request.brand or meta.get("brand"),
             "location": request.location,
             "target_audience": request.target_audience,
             "positioning": request.positioning,
             "desired_mood": request.desired_mood,
+            "goals": request.goals or meta.get("goals"),
             "budget": request.budget,
             "constraints": request.constraints or [],
+            "cultural_preferences": request.cultural_preferences or meta.get("cultural_preferences"),
             "anchor_entities": request.anchor_entities or [],
         }
 
@@ -127,7 +138,7 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
             business_type=request.business_type,
             location=request.location,
             brief=brief_dict,
-            metadata=request.metadata,
+            metadata=meta,
             created_at=datetime.fromisoformat(now),
             updated_at=datetime.fromisoformat(now),
         )
@@ -161,12 +172,15 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
 
             brief_dict: dict[str, Any] = {
                 "business_type": row["business_type"],
+                "brand": metadata.get("brand"),
                 "location": location,
                 "target_audience": row["target_audience"],
                 "positioning": row["positioning"],
                 "desired_mood": row["desired_mood"],
+                "goals": metadata.get("goals"),
                 "budget": row["budget"],
                 "constraints": constraints,
+                "cultural_preferences": metadata.get("cultural_preferences"),
                 "anchor_entities": anchors,
             }
 
@@ -210,12 +224,15 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
 
                 brief_dict: dict[str, Any] = {
                     "business_type": row["business_type"],
+                    "brand": meta.get("brand"),
                     "location": loc,
                     "target_audience": row["target_audience"],
                     "positioning": row["positioning"],
                     "desired_mood": row["desired_mood"],
+                    "goals": meta.get("goals"),
                     "budget": row["budget"],
                     "constraints": constraints,
+                    "cultural_preferences": meta.get("cultural_preferences"),
                     "anchor_entities": anchors,
                 }
 

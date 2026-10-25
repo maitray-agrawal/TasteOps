@@ -91,12 +91,15 @@ class TasteOpsApplicationService:
 
         brief_dict: dict[str, Any] = {
             "business_type": request.business_type,
+            "brand": request.brand,
             "location": request.location,
             "target_audience": request.target_audience,
             "positioning": request.positioning,
             "desired_mood": request.desired_mood,
+            "goals": request.goals,
             "budget": request.budget,
             "constraints": request.constraints,
+            "cultural_preferences": request.cultural_preferences,
             "anchor_entities": request.anchor_entities,
         }
 
@@ -147,12 +150,25 @@ class TasteOpsApplicationService:
         user_input = request.user_input
         if not user_input:
             parts = [f"Venue concept: {space.name}", f"Type: {space.business_type}"]
+            if brief.get("brand"):
+                parts.append(f"Brand: {brief['brand']}")
             if brief.get("desired_mood"):
                 parts.append(f"Vibe: {brief['desired_mood']}")
             if brief.get("target_audience"):
                 parts.append(f"Audience: {brief['target_audience']}")
             if brief.get("positioning"):
                 parts.append(f"Positioning: {brief['positioning']}")
+            if brief.get("goals"):
+                goals = ", ".join(brief["goals"]) if isinstance(brief["goals"], list) else str(brief["goals"])
+                parts.append(f"Goals: {goals}")
+            if brief.get("cultural_preferences"):
+                prefs = ", ".join(brief["cultural_preferences"]) if isinstance(brief["cultural_preferences"], list) else str(brief["cultural_preferences"])
+                parts.append(f"Cultural Preferences: {prefs}")
+            if brief.get("budget"):
+                parts.append(f"Budget: {brief['budget']}")
+            if brief.get("constraints"):
+                consts = ", ".join(brief["constraints"]) if isinstance(brief["constraints"], list) else str(brief["constraints"])
+                parts.append(f"Constraints: {consts}")
             if brief.get("anchor_entities"):
                 anchors = ", ".join(brief["anchor_entities"])
                 parts.append(f"Anchors: {anchors}")

@@ -84,6 +84,17 @@ export async function renderSpaceDetail(rootElement, params, router) {
                 </div>
               </div>
 
+              ${brief.brand ? `
+                <div style="margin-bottom: 1.25rem;">
+                  <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                    Brand / Parent Identity
+                  </div>
+                  <div style="font-size: 1rem; color: var(--text-primary); font-weight: 600;">
+                    ${escapeHtml(brief.brand)}
+                  </div>
+                </div>
+              ` : ''}
+
               <div style="margin-bottom: 1.25rem;">
                 <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
                   Desired Atmosphere & Mood
@@ -112,6 +123,28 @@ export async function renderSpaceDetail(rootElement, params, router) {
                   </div>
                 </div>
               </div>
+
+              ${brief.goals ? `
+                <div style="margin-bottom: 1.25rem;">
+                  <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                    Strategic Goals
+                  </div>
+                  <div style="color: var(--text-secondary); font-size: 0.9rem;">
+                    ${escapeHtml(Array.isArray(brief.goals) ? brief.goals.join('; ') : brief.goals)}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${brief.cultural_preferences ? `
+                <div style="margin-bottom: 1.25rem;">
+                  <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                    Cultural & Aesthetic Preferences
+                  </div>
+                  <div style="color: var(--text-secondary); font-size: 0.9rem;">
+                    ${escapeHtml(Array.isArray(brief.cultural_preferences) ? brief.cultural_preferences.join(', ') : brief.cultural_preferences)}
+                  </div>
+                </div>
+              ` : ''}
 
               <div style="margin-bottom: 1.25rem;">
                 <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem;">

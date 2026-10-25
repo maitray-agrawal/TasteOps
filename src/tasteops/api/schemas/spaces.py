@@ -63,6 +63,21 @@ class SpaceCreateRequest(BaseModel):
         description="Known reference brands, venues, or aesthetics grounding the concept",
         examples=[["Blue Bottle Coffee", "Japanese minimalism"]],
     )
+    brand: str | None = Field(
+        default=None,
+        description="Brand identity or parent corporate brand",
+        examples=["Maison Kitsuné", "Aman Resorts"],
+    )
+    goals: list[str] | str | None = Field(
+        default=None,
+        description="Core operational, cultural, or activation goals",
+        examples=[["Bridge Franco-Japanese indie music with analog craft", "Foster listening community"]],
+    )
+    cultural_preferences: list[str] | str | None = Field(
+        default=None,
+        description="Aesthetic preferences, motifs, or cultural interests",
+        examples=[["Japanese jazz kissa culture", "Mid-century modernist timber"]],
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional custom properties or client metadata",

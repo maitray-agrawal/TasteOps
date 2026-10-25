@@ -50,24 +50,84 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     cultural_twin_dict: dict[str, Any] | None = None
     if ctx.cultural_twin:
         ct = ctx.cultural_twin
+
+        resolved_entities_list = []
+        for e in getattr(ct, "resolved_entities", []):
+            resolved_entities_list.append({
+                "id": getattr(e, "id", ""),
+                "name": getattr(e, "name", ""),
+                "type": getattr(e, "type", ""),
+                "confidence": getattr(e, "confidence", 1.0),
+                "why_it_matters": getattr(e, "why_it_matters", ""),
+                "source": getattr(e, "source", "qloo_search"),
+                "evidence": getattr(e, "evidence", {}) if isinstance(getattr(e, "evidence", {}), dict) else {},
+            })
+
+        resolved_tags_list = []
+        for t in getattr(ct, "resolved_tag_details", []):
+            resolved_tags_list.append({
+                "id": getattr(t, "id", ""),
+                "name": getattr(t, "name", ""),
+                "category": getattr(t, "category", None),
+                "confidence": getattr(t, "confidence", 1.0),
+                "why_it_matters": getattr(t, "why_it_matters", ""),
+            })
+
+        matrix_evidence = []
+        if ctx.cultural_matrix and hasattr(ctx.cultural_matrix, "evidence"):
+            for ev in ctx.cultural_matrix.evidence:
+                matrix_evidence.append({
+                    "category": getattr(ev, "category", ""),
+                    "message": getattr(ev, "message", ""),
+                    "timestamp": getattr(ev, "timestamp", datetime.now(UTC)).isoformat() if hasattr(getattr(ev, "timestamp", None), "isoformat") else str(getattr(ev, "timestamp", "")),
+                    "signals_used": getattr(ev, "signals_used", []),
+                })
+
+        provenance_trace = []
+        for ent in resolved_entities_list:
+            provenance_trace.append({
+                "type": "entity_resolution",
+                "target_id": ent["id"],
+                "target_name": ent["name"],
+                "source": ent["source"],
+                "confidence": ent["confidence"],
+                "evidence": ent["evidence"],
+            })
+        for mev in matrix_evidence:
+            provenance_trace.append({
+                "type": "cultural_matrix_query",
+                "category": mev["category"],
+                "source": "qloo_cultural_matrix",
+                "message": mev["message"],
+                "signals_used": mev["signals_used"],
+                "timestamp": mev["timestamp"],
+            })
+
+        raw_constraints = getattr(ct, "constraints", {})
+        if isinstance(raw_constraints, dict) and "raw_constraints" in raw_constraints:
+            constraints_val = raw_constraints["raw_constraints"]
+        else:
+            constraints_val = raw_constraints
+
         cultural_twin_dict = {
             "audience_profile": getattr(ct, "audience_profile", ""),
             "cultural_themes": getattr(ct, "cultural_themes", []),
             "mood_profile": getattr(ct, "mood_profile", ""),
+            "mood": getattr(ct, "mood", getattr(ct, "mood_profile", "")),
             "anchor_entities": getattr(ct, "anchor_entities", []),
-            "resolved_entities": [
-                {
-                    "id": getattr(e, "id", ""),
-                    "name": getattr(e, "name", ""),
-                    "type": getattr(e, "type", ""),
-                    "confidence": getattr(e, "confidence", 1.0),
-                    "why_it_matters": getattr(e, "why_it_matters", ""),
-                }
-                for e in getattr(ct, "resolved_entities", [])
-            ],
+            "resolved_entities": resolved_entities_list,
             "resolved_tags": getattr(ct, "resolved_tags", []),
+            "resolved_tag_details": resolved_tags_list,
+            "constraints": constraints_val,
             "cultural_constraints": getattr(ct, "cultural_constraints", []),
+            "exclusions": getattr(ct, "exclusions", []),
             "confidence": getattr(ct, "confidence", 1.0),
+            "evidence": matrix_evidence,
+            "provenance": provenance_trace,
+            "signal_explanations": getattr(ct, "signal_explanations", {}),
+            "business_type": getattr(ct, "business_type", None),
+            "positioning": getattr(ct, "positioning", None),
+            "budget": getattr(ct, "budget", None),
         }
 
     # 3. Cultural Matrix Summary (Metrics without raw provider dumps)
