@@ -444,6 +444,7 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
                 "category": getattr(a, "category", "general"),
                 "description": a.description,
                 "owner": a.owner,
+                "estimated_cost": getattr(a, "estimated_cost", "$0"),
             }
             for a in getattr(exec_plan, "actions", [])
         ]

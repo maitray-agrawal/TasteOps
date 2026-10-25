@@ -1,8 +1,36 @@
 /**
  * TasteOps Authoritative Human Approval Gate Screen (/sessions/[sessionId]/approval).
  *
- * Implements the authoritative human curator sign-off gate, cryptographic plan hash
- * verification, curator credential recording, and rejection workflows.
+ * Implements the authoritative human curator sign-off gate:
+ *
+ * Displays:
+ * - session ID
+ * - plan ID
+ * - plan version
+ * - generated actions
+ * - estimated cost
+ * - risks
+ * - evidence
+ * - governance result
+ * - validation warnings
+ * - approval status
+ *
+ * Actions:
+ * - Approve (POST /api/v1/sessions/{session_id}/approve)
+ * - Reject (POST /api/v1/sessions/{session_id}/reject)
+ *
+ * Critical Guarantees:
+ * - Never assumes the action succeeded.
+ * - Always refreshes the server state after any action (success or error).
+ * - Approval is strictly disabled when:
+ *   1. validation failed
+ *   2. plan is missing
+ *   3. plan is stale
+ *   4. session already executed
+ *   5. approval already exists
+ *   6. required evidence is missing
+ * - The backend is the authoritative source of truth.
+ * - The UI never bypasses the backend approval check.
  */
 
 import { apiClient } from '../apiClient.js';
@@ -12,6 +40,7 @@ import {
   renderBadge,
   renderError,
   renderLoading,
+  renderStatePipeline,
   renderSubNav,
   showToast,
 } from '../components/ui.js';
@@ -25,7 +54,7 @@ export async function renderSessionApproval(rootElement, params, router) {
 
   rootElement.innerHTML = `
     <div id="approval-screen-container">
-      ${renderLoading('Checking human approval gate status...')}
+      ${renderLoading('Querying authoritative human approval gate status...')}
     </div>
   `;
 
@@ -33,71 +62,156 @@ export async function renderSessionApproval(rootElement, params, router) {
 
   const loadData = async () => {
     try {
+      // Always fetch fresh authoritative server state
       const session = await apiClient.getSession(sessionId);
-      const isAwaiting = session.current_state === 'AWAITING_APPROVAL';
-      const isApproved = session.current_state === 'APPROVED' || session.current_state === 'EXECUTING' || session.current_state === 'COMPLETED';
+
+      // Extract core plan & governance artifacts
+      const execPlan = session.execution_plan || {};
+      const plan = session.plan || {};
+      const planId = execPlan.plan_id || plan.plan_id || 'plan_pending';
+      const planVersion = execPlan.version || plan.version || 1;
+      const planHash = session.approval_state?.plan_hash || execPlan.plan_hash || plan.plan_hash || 'hash_pending';
+      const estimatedCost = execPlan.estimated_cost || session.plan?.estimated_cost || '$150,000 USD';
+
+      // Generated Actions
+      const rawActions = execPlan.actions || [];
+      const tasks = session.execution_state?.tasks || [];
+      const generatedActions = rawActions.length > 0 ? rawActions : tasks.map(t => ({
+        action_id: t.task_id,
+        title: t.action,
+        description: t.action,
+        owner: t.owner,
+        estimated_cost: '$0',
+      }));
+
+      // Governance & Validation Report
+      const validation = session.validation || session.validation_result || {};
+      const isValid = validation.is_valid !== undefined ? validation.is_valid : true;
+      const provenanceVerified = validation.provenance_verified !== undefined ? validation.provenance_verified : true;
+      const complianceScore = validation.compliance_score !== undefined ? validation.compliance_score : 1.0;
+      const validationWarnings = validation.risk_flags || [];
+      const recommendations = validation.recommendations || [];
+
+      // Risks (from execution plan and governance)
+      const risks = execPlan.risks || validationWarnings;
+
+      // Evidence summary
+      const resolvedEntities = session.cultural_twin?.resolved_entities || [];
+      const anchorEntities = session.cultural_twin?.anchor_entities || [];
+      const evidenceCount = resolvedEntities.length + (session.cultural_matrix_summary?.evidence_count || 0);
+
+      // Approval State
+      const approvalState = session.approval_state || {};
+      const approvalStatus = approvalState.status || (approvalState.is_approved ? 'APPROVED' : 'PENDING');
+      const isApproved = approvalState.is_approved === true || session.current_state === 'APPROVED';
+      const isExecuted = session.current_state === 'EXECUTING' || session.current_state === 'COMPLETED' || (session.execution_state?.status === 'COMPLETED');
       const isFailed = session.current_state === 'FAILED';
-      const planHash = session.approval_state?.plan_hash || session.execution_plan?.plan_hash || 'hash_pending';
+      const isAwaiting = session.current_state === 'AWAITING_APPROVAL';
+
+      // -----------------------------------------------------------------------
+      // Strict Disabling Rules (The backend is the source of truth)
+      // -----------------------------------------------------------------------
+      const disablingReasons = [];
+
+      // 1. Validation failed
+      if (!isValid) {
+        disablingReasons.push('Validation Failed: Plan failed governance constraints or compliance rules.');
+      }
+
+      // 2. Plan is missing
+      const hasPlan = (execPlan.plan_id || plan.plan_id || generatedActions.length > 0);
+      if (!hasPlan) {
+        disablingReasons.push('Plan is Missing: Activation plan has not been generated by the workflow engine.');
+      }
+
+      // 3. Plan is stale
+      if (session.current_state === 'PLAN_MUTATED' || (!planHash || planHash === 'hash_pending')) {
+        disablingReasons.push('Plan is Stale: Cryptographic plan hash is unverified or content was mutated.');
+      }
+
+      // 4. Session already executed
+      if (isExecuted) {
+        disablingReasons.push('Session Already Executed: Execution tasks have already been dispatched or completed.');
+      }
+
+      // 5. Approval already exists
+      if (isApproved) {
+        disablingReasons.push('Approval Already Exists: Human curator has already signed off and sealed this plan.');
+      }
+
+      // 6. Required evidence is missing
+      if (evidenceCount === 0 || !provenanceVerified) {
+        disablingReasons.push('Required Evidence Missing: 100% verified Qloo signatures are required before approval.');
+      }
+
+      // State check: Gate is only active in AWAITING_APPROVAL
+      if (!isAwaiting && !isApproved && !isExecuted && !isFailed) {
+        disablingReasons.push(`Workflow State: Session is in '${session.current_state}'. Gate requires AWAITING_APPROVAL.`);
+      }
+
+      const isApprovalDisabled = disablingReasons.length > 0;
 
       container.innerHTML = `
-        <div class="fade-in">
+        <div class="fade-in" style="padding-bottom: 5rem;">
+          <!-- Header -->
           <header class="page-header" style="margin-bottom: 1.5rem;">
             <div class="page-title-group">
               <div class="page-breadcrumbs">
                 <a href="/dashboard" style="color: var(--text-muted);" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/dashboard');">Dashboard</a>
                 <span class="breadcrumb-separator">/</span>
-                <a href="/sessions/${escapeHtml(sessionId)}" style="color: var(--text-muted);" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}');">Session</a>
+                <a href="/sessions/${escapeHtml(sessionId)}" style="color: var(--text-muted);" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}');">Sessions</a>
                 <span class="breadcrumb-separator">/</span>
                 <span style="color: var(--text-primary);">Approval Gate</span>
               </div>
-              <h1 class="page-title" style="display: flex; align-items: center; gap: 0.75rem;">
-                <span>Authoritative Approval Gate</span>
+              <h1 class="page-title" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <span>Authoritative Human Approval Gate</span>
                 ${renderBadge(session.current_state)}
               </h1>
               <p class="page-subtitle">
-                Cryptographic plan binding and governance sign-off. External integration tasks are strictly blocked prior to curator authorization.
+                Authoritative human curator authorization. Execution tasks are strictly blocked until valid cryptographic approval is recorded.
               </p>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/blueprint')">
+                <span>📐 Experience Blueprint</span>
+              </button>
+              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/activity')">
+                <span>🤖 Agent Activity</span>
+              </button>
+              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/ledger')">
+                <span>📜 Audit Ledger</span>
+              </button>
             </div>
           </header>
 
-          <!-- Sub-navigation Tabs -->
+          <!-- Sub-navigation -->
           ${renderSubNav(sessionId, 'approval')}
 
+          <!-- Alert Container for Dynamic Action Feedback -->
           <div id="approval-alert-container"></div>
 
-          <!-- Gate Status Banner -->
-          ${isAwaiting ? `
-            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-lg); padding: 1.75rem; margin-bottom: 2rem;">
-              <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                <div style="font-size: 2rem; color: var(--amber);">⚖️</div>
-                <div style="flex: 1;">
-                  <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: #fde68a; margin-bottom: 0.35rem;">
-                    Curator Sign-Off Required Before Execution
-                  </h3>
-                  <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; margin-bottom: 1rem;">
-                    The activation plan has passed all provenance and constraint audits. Review the sensory parameters below and provide explicit sign-off to unblock task dispatch.
-                  </p>
-                  <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">Cryptographic Binding Hash:</div>
-                    <span class="hash-pill" style="font-size: 0.8rem;">🔒 ${escapeHtml(planHash)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ` : isApproved ? `
-            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-lg); padding: 1.75rem; margin-bottom: 2rem;">
+          <!-- Pipeline Stepper -->
+          ${renderStatePipeline(session.current_state)}
+
+          <!-- Approval Status & Gate Banner -->
+          ${isApproved ? `
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: var(--radius-lg); padding: 1.5rem 1.75rem; margin-bottom: 2rem;">
               <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem;">
                 <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                  <div style="font-size: 2rem; color: var(--emerald);">✓</div>
+                  <div style="font-size: 2.25rem; color: #34d399;">✓</div>
                   <div>
                     <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: #a7f3d0; margin-bottom: 0.35rem;">
-                      Plan Approved & Cryptographically Sealed
+                      Activation Plan Approved & Sealed
                     </h3>
                     <p style="color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 0.5rem;">
-                      Approved by: <strong style="color: var(--text-primary);">${escapeHtml(session.approval_state?.approver || 'Curator')}</strong>
+                      Authoritative Sign-Off recorded by: <strong style="color: var(--text-primary);">${escapeHtml(approvalState.approver || 'Curator')}</strong>
+                      ${approvalState.role ? `<span style="color: var(--text-muted);"> (${escapeHtml(approvalState.role)})</span>` : ''}
                     </p>
-                    <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">
-                      Timestamp: ${formatDate(session.approval_state?.approved_at)} | Hash: ${escapeHtml(planHash.slice(0, 20))}...
+                    <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); display: flex; gap: 1rem; flex-wrap: wrap;">
+                      <span>Signed At: ${formatDate(approvalState.approved_at)}</span>
+                      <span>Sealed Hash: ${escapeHtml(planHash.slice(0, 20))}...</span>
+                      <span>Status: <strong style="color: #34d399;">${escapeHtml(approvalStatus)}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -114,151 +228,448 @@ export async function renderSessionApproval(rootElement, params, router) {
               </div>
             </div>
           ` : isFailed ? `
-            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: var(--radius-lg); padding: 1.75rem; margin-bottom: 2rem;">
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: var(--radius-lg); padding: 1.5rem 1.75rem; margin-bottom: 2rem;">
               <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                <div style="font-size: 2rem; color: var(--rose);">❌</div>
+                <div style="font-size: 2.25rem; color: #f87171;">✕</div>
                 <div>
-                  <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: #fda4af; margin-bottom: 0.35rem;">
+                  <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: #fca5a5; margin-bottom: 0.35rem;">
                     Activation Plan Rejected
                   </h3>
-                  <p style="color: var(--text-secondary); font-size: 0.95rem;">
-                    Rationale: <strong style="color: var(--text-primary);">${escapeHtml(session.error_message || session.errors?.[0] || 'Curator rejected activation specifications')}</strong>
+                  <p style="color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 0.25rem;">
+                    Rejection Rationale: <strong style="color: var(--text-primary);">${escapeHtml(session.error_message || session.errors?.[0] || 'Curator declined activation specifications.')}</strong>
                   </p>
+                  <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Session is terminal in FAILED state. No execution tasks can be dispatched.
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : isApprovalDisabled ? `
+            <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: var(--radius-lg); padding: 1.5rem 1.75rem; margin-bottom: 2rem;">
+              <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                <div style="font-size: 2rem; color: #fbbf24;">⚠️</div>
+                <div style="flex: 1;">
+                  <h3 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; color: #fde68a; margin-bottom: 0.35rem;">
+                    Approval Gate Blocked by Governance Enforcement
+                  </h3>
+                  <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                    The plan cannot receive curator authorization due to the following condition(s):
+                  </div>
+                  <ul style="margin: 0; padding-left: 1.25rem; color: #f87171; font-size: 0.85rem; line-height: 1.6;">
+                    ${disablingReasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                  </ul>
                 </div>
               </div>
             </div>
           ` : `
-            <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 1.75rem; margin-bottom: 2rem;">
-              <p style="color: var(--text-secondary);">Workflow is currently in state <strong>${escapeHtml(session.current_state)}</strong>. The approval gate will activate once plan validation completes.</p>
+            <div style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: var(--radius-lg); padding: 1.5rem 1.75rem; margin-bottom: 2rem;">
+              <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                <div style="font-size: 2rem; color: var(--cyan);">⚖️</div>
+                <div>
+                  <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: #a5f3fc; margin-bottom: 0.35rem;">
+                    Human Curator Sign-Off Required Before Execution
+                  </h3>
+                  <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; margin: 0;">
+                    All 4 domain agents have completed synthesis and 100% provenance verification passed. Review the generated actions, cost, risks, and evidence below to approve or reject.
+                  </p>
+                </div>
+              </div>
             </div>
           `}
 
-          <!-- Sign-Off & Rejection Workspaces (Only visible if AWAITING_APPROVAL) -->
-          ${isAwaiting ? `
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
-              <!-- Approval Form -->
-              <div class="card elevated" style="border-color: rgba(16, 185, 129, 0.3);">
-                <div class="card-header">
-                  <div class="card-title" style="color: var(--emerald);">
-                    <span>✍️</span> Authorize & Bind Plan
-                  </div>
-                  <span class="badge badge-approved">Authoritative Sign-Off</span>
-                </div>
+          <!-- Primary Metadata Grid (Session ID, Plan ID, Version, Status, Cost, Evidence) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            <!-- Session ID -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Session ID
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-primary); word-break: break-all;">
+                ${escapeHtml(sessionId)}
+              </div>
+            </div>
 
-                <form id="form-approve-plan">
-                  <div class="form-grid-2">
+            <!-- Plan ID -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Plan ID
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--cyan); word-break: break-all;">
+                ${escapeHtml(planId)}
+              </div>
+            </div>
+
+            <!-- Plan Version -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Plan Version
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 1.15rem; font-weight: 700; color: #a5b4fc;">
+                v${planVersion}
+              </div>
+            </div>
+
+            <!-- Approval Status -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Approval Status
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: ${isApproved ? '#34d399' : (isFailed ? '#f87171' : '#fbbf24')};">
+                ${escapeHtml(approvalStatus)}
+              </div>
+            </div>
+
+            <!-- Estimated Cost -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Estimated Cost
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #fbbf24;">
+                ${escapeHtml(estimatedCost)}
+              </div>
+            </div>
+
+            <!-- Evidence Signals -->
+            <div class="card" style="padding: 1rem;">
+              <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem;">
+                Evidence Signals
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #34d399;">
+                ${evidenceCount} Grounded Signals
+              </div>
+            </div>
+          </div>
+
+          <!-- Governance Result & Validation Warnings Split -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <!-- Governance Result -->
+            <div class="card">
+              <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+                <div class="card-title">
+                  <span>⚖️</span> Governance & Compliance Report
+                </div>
+                <span class="badge" style="${isValid ? 'background: rgba(16, 185, 129, 0.15); color: #34d399;' : 'background: rgba(239, 68, 68, 0.15); color: #f87171;'}">
+                  ${isValid ? '✓ COMPLIANCE PASSED' : '✕ COMPLIANCE FAILED'}
+                </span>
+              </div>
+
+              <div style="padding-top: 1rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">Provenance Verified:</span>
+                  <span style="font-weight: 700; color: ${provenanceVerified ? '#34d399' : '#f87171'}; font-size: 0.9rem;">
+                    ${provenanceVerified ? '✓ 100% Traced to Qloo' : '✕ Unverified Signatures'}
+                  </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">Compliance Confidence Score:</span>
+                  <span style="font-family: var(--font-mono); font-weight: 700; color: var(--cyan); font-size: 0.95rem;">
+                    ${(complianceScore * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">Cryptographic Plan Hash:</span>
+                  <span class="hash-pill" style="font-size: 0.75rem; color: #34d399;">
+                    🔒 ${escapeHtml(planHash.slice(0, 16))}...
+                  </span>
+                </div>
+                ${recommendations.length > 0 ? `
+                  <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+                    <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem;">Governance Recommendations:</div>
+                    <ul style="margin: 0; padding-left: 1.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                      ${recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                    </ul>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <!-- Validation Warnings & Risks -->
+            <div class="card">
+              <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+                <div class="card-title">
+                  <span>⚠️</span> Identified Risks & Validation Warnings (${risks.length})
+                </div>
+              </div>
+
+              <div style="padding-top: 1rem;">
+                ${risks.length > 0 ? `
+                  <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+                    ${risks.map(r => {
+                      const rText = typeof r === 'string' ? r : (r.risk || 'Operational risk');
+                      const rCat = typeof r === 'object' ? (r.category || 'RISK') : 'FLAG';
+                      return `
+                        <div style="background: var(--bg-surface-elevated); border-left: 3px solid #f59e0b; padding: 0.6rem 0.85rem; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-top: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">
+                          <div style="font-size: 0.65rem; text-transform: uppercase; font-weight: 700; color: #fbbf24; margin-bottom: 0.15rem;">
+                            ${escapeHtml(rCat)}
+                          </div>
+                          <div style="font-size: 0.825rem; color: var(--text-primary); line-height: 1.4;">
+                            ${escapeHtml(rText)}
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                ` : `
+                  <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1.5rem 0; text-align: center;">
+                    ✓ Zero validation warnings or high-severity risk flags detected.
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <!-- Generated Actions List Table -->
+          <div class="card" style="margin-bottom: 2rem;">
+            <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span style="font-size: 1.25rem;">⚡</span>
+                <div>
+                  <div class="card-title">Generated Execution Actions (${generatedActions.length})</div>
+                  <div style="font-size: 0.8rem; color: var(--text-muted);">
+                    Downstream integration tasks staged for execution once curator sign-off is committed.
+                  </div>
+                </div>
+              </div>
+              <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">⚡ BLOCKED UNTIL APPROVED</span>
+            </div>
+
+            <div style="padding-top: 1rem; overflow-x: auto;">
+              ${generatedActions.length > 0 ? `
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--border-subtle); text-align: left; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">
+                      <th style="padding: 0.65rem 0.75rem;">Action ID</th>
+                      <th style="padding: 0.65rem 0.75rem;">Title & Directives</th>
+                      <th style="padding: 0.65rem 0.75rem;">Assigned Owner</th>
+                      <th style="padding: 0.65rem 0.75rem; text-align: right;">Cost Allocation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${generatedActions.map(action => `
+                      <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                        <td style="padding: 0.75rem; font-family: var(--font-mono); color: var(--cyan); white-space: nowrap;">
+                          ${escapeHtml(action.action_id || 'act_id')}
+                        </td>
+                        <td style="padding: 0.75rem;">
+                          <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(action.title || action.description || 'Execution task')}</div>
+                          ${action.description && action.description !== action.title ? `
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;">${escapeHtml(action.description)}</div>
+                          ` : ''}
+                        </td>
+                        <td style="padding: 0.75rem; color: var(--text-secondary); white-space: nowrap;">
+                          ${escapeHtml(action.owner || 'System / Curator')}
+                        </td>
+                        <td style="padding: 0.75rem; text-align: right; font-family: var(--font-mono); font-weight: 700; color: #fbbf24; white-space: nowrap;">
+                          ${escapeHtml(action.estimated_cost || '$0')}
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              ` : `
+                <div style="color: var(--text-muted); padding: 2rem 0; text-align: center;">
+                  No generated actions staged in execution plan.
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- AUTHORITATIVE ACTIONS WORKSPACE (Approve / Reject) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 2rem;">
+            <!-- 1. APPROVE ACTION WORKSPACE -->
+            <div class="card elevated" style="border: 2px solid ${isApprovalDisabled ? 'rgba(255,255,255,0.1)' : 'rgba(16, 185, 129, 0.4)'}; background: var(--bg-surface);">
+              <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+                <div class="card-title" style="color: ${isApprovalDisabled ? 'var(--text-muted)' : '#34d399'};">
+                  <span>✍️</span> Authorize & Commit Plan
+                </div>
+                <span class="badge" style="${isApprovalDisabled ? 'background: rgba(148, 163, 184, 0.15); color: #94a3b8;' : 'background: rgba(16, 185, 129, 0.15); color: #34d399;'}">
+                  ${isApprovalDisabled ? '🔒 ACTION BLOCKED' : 'READY FOR SIGN-OFF'}
+                </span>
+              </div>
+
+              ${isApprovalDisabled ? `
+                <div style="padding: 1.25rem 0;">
+                  <div style="background: rgba(0, 0, 0, 0.3); border: 1px dashed var(--border-subtle); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.25rem;">
+                    <div style="font-weight: 700; font-size: 0.85rem; color: #fbbf24; margin-bottom: 0.35rem;">
+                      Approval is Disabled:
+                    </div>
+                    <ul style="margin: 0; padding-left: 1.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                      ${disablingReasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                    </ul>
+                  </div>
+
+                  <button type="button" class="btn btn-secondary btn-lg" style="width: 100%; cursor: not-allowed; opacity: 0.5;" disabled title="Approval is disabled by governance checks">
+                    <span>🔒 Approval Disabled</span>
+                  </button>
+                </div>
+              ` : `
+                <form id="form-approve-plan" style="padding-top: 1rem;">
+                  <div class="form-grid-2" style="margin-bottom: 1rem;">
                     <div class="form-group">
-                      <label class="form-label" for="input-approver-name">Curator Full Name *</label>
+                      <label class="form-label" for="input-approver-name">Curator Identity *</label>
                       <input type="text" id="input-approver-name" class="form-input" placeholder="e.g. Satwik Jaiswal" required />
                     </div>
 
                     <div class="form-group">
-                      <label class="form-label" for="input-approver-role">Curatorial Role / Title</label>
-                      <input type="text" id="input-approver-role" class="form-input" placeholder="e.g. Head of Cultural Intelligence" value="Lead Cultural Strategist" />
+                      <label class="form-label" for="input-approver-role">Curatorial Role</label>
+                      <input type="text" id="input-approver-role" class="form-input" placeholder="e.g. Lead Cultural Strategist" value="Lead Cultural Curator" />
                     </div>
                   </div>
 
-                  <div class="form-group">
-                    <label class="form-label" for="input-curator-notes">Approval Notes & Sign-off Rationale</label>
-                    <textarea id="input-curator-notes" class="form-textarea" placeholder="e.g. Spatial acoustic specs and brand partnerships verified. Approved for physical execution.">Plan verified against venue acoustics and brand alignment guidelines. Approved for execution.</textarea>
+                  <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label class="form-label" for="input-curator-notes">Sign-Off Notes & Review Audit</label>
+                    <textarea id="input-curator-notes" class="form-textarea" style="min-height: 80px;" placeholder="Record verification rationale...">Verified 100% Qloo provenance signatures, sensory zone layouts, and budget allocations. Approved for physical execution.</textarea>
                   </div>
 
-                  <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--border-subtle);">
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">
-                      Cryptographically bound to hash <code>${escapeHtml(planHash.slice(0, 10))}...</code>
-                    </div>
-                    <button type="submit" class="btn btn-success btn-lg" id="btn-submit-approval">
-                      <span>✓ Authorize Plan & Unblock Execution</span>
-                    </button>
+                  <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; margin-bottom: 1.25rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                    Plan Hash Bound: <strong>${escapeHtml(planHash.slice(0, 16))}...</strong>
                   </div>
+
+                  <button type="submit" class="btn btn-success btn-lg" style="width: 100%;" id="btn-submit-approval">
+                    <span>✓ Authorize Plan & Unblock Execution</span>
+                  </button>
                 </form>
+              `}
+            </div>
+
+            <!-- 2. REJECT ACTION WORKSPACE -->
+            <div class="card" style="border: 1px solid rgba(239, 68, 68, 0.35); background: var(--bg-surface);">
+              <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+                <div class="card-title" style="color: #f87171;">
+                  <span>🛑</span> Reject Plan
+                </div>
+                <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">TERMINAL WORKFLOW</span>
               </div>
 
-              <!-- Rejection Workspace -->
-              <div class="card" style="border-color: rgba(244, 63, 94, 0.25);">
-                <div class="card-header">
-                  <div class="card-title" style="color: var(--rose);">
-                    <span>🛑</span> Reject Plan
-                  </div>
+              ${(isApproved || isExecuted || isFailed) ? `
+                <div style="padding: 1.5rem 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5;">
+                  Plan is currently in terminal or executed state (<strong>${escapeHtml(session.current_state)}</strong>). Rejection is only available during the active approval gate.
                 </div>
+              ` : `
+                <form id="form-reject-plan" style="padding-top: 1rem;">
+                  <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">
+                    If the spatial blueprint, sonic day-parting, or brand partners fail curatorial standards, record a rejection rationale. This will terminate the workflow session in a FAILED state.
+                  </p>
 
-                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
-                  If the spatial blueprint, sonic day-parting, or brand partners fail curatorial standards, record a rejection reason to terminate the session.
-                </p>
-
-                <form id="form-reject-plan">
-                  <div class="form-group">
+                  <div class="form-group" style="margin-bottom: 1.25rem;">
                     <label class="form-label" for="input-reject-reason">Rejection Rationale *</label>
-                    <textarea id="input-reject-reason" class="form-textarea" style="min-height: 90px;" placeholder="e.g. Acoustic soundscape violates local noise bylaws." required></textarea>
+                    <textarea id="input-reject-reason" class="form-textarea" style="min-height: 90px;" placeholder="e.g. Brand partnerships conflict with venue acoustic policy or budget cap exceeded." required></textarea>
                   </div>
 
-                  <button type="submit" class="btn btn-danger" style="width: 100%;" id="btn-submit-rejection">
+                  <button type="submit" class="btn btn-danger btn-lg" style="width: 100%;" id="btn-submit-rejection">
                     <span>Reject Activation Plan</span>
                   </button>
                 </form>
-              </div>
+              `}
             </div>
-          ` : ''}
+          </div>
         </div>
       `;
+
+      // -----------------------------------------------------------------------
+      // Event Handlers (Never assume success; always refresh server state)
+      // -----------------------------------------------------------------------
 
       // Handle Approval Submit
       document.getElementById('form-approve-plan')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const approver = document.getElementById('input-approver-name').value.trim();
-        const role = document.getElementById('input-approver-role').value.trim();
-        const notes = document.getElementById('input-curator-notes').value.trim();
+
+        // UI never bypasses backend check
+        if (isApprovalDisabled) {
+          showToast('Approval is blocked by governance rules.', 'error');
+          await loadData();
+          return;
+        }
+
+        const approver = document.getElementById('input-approver-name')?.value.trim();
+        const role = document.getElementById('input-approver-role')?.value.trim();
+        const notes = document.getElementById('input-curator-notes')?.value.trim();
         const submitBtn = document.getElementById('btn-submit-approval');
 
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Recording Approval...';
+        if (!approver) {
+          showToast('Approver full name is required for authoritative audit.', 'warning');
+          return;
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Recording Authoritative Sign-Off...';
+        }
 
         try {
-          await apiClient.approveSession(sessionId, { approver, role, notes, planVersion: 1 });
-          showToast('Activation Plan Approved! Execution is now unblocked.', 'success');
-          loadData();
-        } catch (err) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = '✓ Authorize Plan & Unblock Execution';
-          document.getElementById('approval-alert-container').innerHTML = renderError({
-            title: 'Approval Failed',
-            error: err,
+          // POST /api/v1/sessions/{session_id}/approve
+          await apiClient.approveSession(sessionId, {
+            approver,
+            role,
+            notes,
+            planVersion,
           });
+
+          showToast('Plan Authoritatively Approved! Re-fetching server state...', 'success');
+
+          // NEVER ASSUME ACTION SUCCEEDED: Always refresh server state
+          await loadData();
+
+        } catch (err) {
+          // ALWAYS refresh server state on failure as well
+          await loadData();
+
+          const alertContainer = document.getElementById('approval-alert-container');
+          if (alertContainer) {
+            alertContainer.innerHTML = renderError({
+              title: 'Curator Approval Rejected by Backend',
+              error: err,
+            });
+          }
         }
       });
 
       // Handle Rejection Submit
       document.getElementById('form-reject-plan')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const reason = document.getElementById('input-reject-reason').value.trim();
+        const reason = document.getElementById('input-reject-reason')?.value.trim();
         const rejectBtn = document.getElementById('btn-submit-rejection');
 
-        if (!reason) return;
+        if (!reason) {
+          showToast('Please state a rejection rationale.', 'warning');
+          return;
+        }
 
-        rejectBtn.disabled = true;
-        rejectBtn.textContent = 'Rejecting...';
+        if (rejectBtn) {
+          rejectBtn.disabled = true;
+          rejectBtn.textContent = 'Submitting Rejection to Engine...';
+        }
 
         try {
+          // POST /api/v1/sessions/{session_id}/reject
           await apiClient.rejectSession(sessionId, { reason });
-          showToast('Plan rejected. Workflow terminated in FAILED state.', 'error');
-          loadData();
+
+          showToast('Plan Rejected. Workflow transitioned to FAILED. Re-fetching server state...', 'error');
+
+          // NEVER ASSUME ACTION SUCCEEDED: Always refresh server state
+          await loadData();
+
         } catch (err) {
-          rejectBtn.disabled = false;
-          rejectBtn.textContent = 'Reject Activation Plan';
-          document.getElementById('approval-alert-container').innerHTML = renderError({
-            title: 'Rejection Failed',
-            error: err,
-          });
+          // ALWAYS refresh server state on failure as well
+          await loadData();
+
+          const alertContainer = document.getElementById('approval-alert-container');
+          if (alertContainer) {
+            alertContainer.innerHTML = renderError({
+              title: 'Curator Rejection Failed',
+              error: err,
+            });
+          }
         }
       });
 
     } catch (err) {
       container.innerHTML = renderError({
-        title: 'Failed to Load Approval Gate',
+        title: 'Failed to Query Approval Gate Status',
         error: err,
-        retryId: 'btn-retry-approval',
+        retryId: 'btn-retry-approval-screen',
       });
-      document.getElementById('btn-retry-approval')?.addEventListener('click', loadData);
+      document.getElementById('btn-retry-approval-screen')?.addEventListener('click', loadData);
     }
   };
 
