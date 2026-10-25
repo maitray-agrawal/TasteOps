@@ -21,7 +21,7 @@ services:
         sync: false
 
       - key: CORS_ORIGINS
-        value: "http://localhost:3000,http://localhost:5173,https://tasteops.vercel.app"
+        value: "http://localhost:3000,http://localhost:5173,https://<your-frontend-domain>.vercel.app"
 
       - key: QLOO_TIMEOUT_SECONDS
         value: "15.0"
@@ -43,6 +43,3 @@ services:
 
       - key: LOG_LEVEL
         value: "INFO"
-
-      - key: DATABASE_URL
-        sync: false

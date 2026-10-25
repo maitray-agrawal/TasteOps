@@ -107,11 +107,6 @@ class ServerSettings(BaseSettings):
         alias="CORS_ORIGINS",
         description="Comma-separated list of allowed CORS origins.",
     )
-    database_url: str | None = Field(
-        default=None,
-        alias="DATABASE_URL",
-        description="Database connection URL (PostgreSQL/SQLite roadmap).",
-    )
     storage_dir: str = Field(
         default="storage/workflows",
         alias="TASTEOPS_STORAGE_DIR",

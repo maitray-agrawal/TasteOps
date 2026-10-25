@@ -23,3 +23,7 @@ qloo_cache
 tests
 docs
 *.md
+*.log
+*.tmp
+*.bak
+node_modules

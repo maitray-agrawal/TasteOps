@@ -24,6 +24,8 @@ qloo_cache/
 
 # Testing and coverage
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
