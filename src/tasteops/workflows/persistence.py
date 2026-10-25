@@ -12,7 +12,7 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,27 @@ class AuditEvent(BaseModel):
 class BaseStateStore(ABC):
     """Abstract storage interface for persisting workflow context and audit events."""
 
+    def __init__(self) -> None:
+        self._listeners: list[Callable[[AuditEvent, WorkflowContext], None]] = []
+
+    def register_listener(
+        self, listener: Callable[[AuditEvent, WorkflowContext], None]
+    ) -> None:
+        """Registers a listener callback invoked synchronously on every state transition."""
+        if not hasattr(self, "_listeners"):
+            self._listeners = []
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def _notify_listeners(self, event: AuditEvent, ctx: WorkflowContext) -> None:
+        """Invokes registered callbacks safely, suppressing exceptions."""
+        if hasattr(self, "_listeners"):
+            for listener in list(self._listeners):
+                try:
+                    listener(event, ctx)
+                except Exception as exc:
+                    logger.warning("State store listener callback failed: %s", exc)
+
     @abstractmethod
     def save_transition(self, event: AuditEvent, ctx: WorkflowContext) -> None:
         """Persists a single state transition and its accompanying audit event."""
@@ -61,6 +82,7 @@ class InMemoryStateStore(BaseStateStore):
     """In-memory state store for tests and fast ephemeral execution."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._contexts: dict[str, Any] = {}
         self._events: dict[str, list[AuditEvent]] = {}
 
@@ -69,6 +91,7 @@ class InMemoryStateStore(BaseStateStore):
             self._events[ctx.session_id] = []
         self._events[ctx.session_id].append(event)
         self.save_context(ctx)
+        self._notify_listeners(event, ctx)
 
     def save_context(self, ctx: WorkflowContext) -> None:
         self._contexts[ctx.session_id] = ctx.model_copy(deep=True)

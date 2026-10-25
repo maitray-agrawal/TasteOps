@@ -18,6 +18,7 @@ from tasteops.api.schemas.spaces import (
     SpaceCreateRequest,
     SpaceResponse,
 )
+from tasteops.api.events import EventBroadcaster, SSEEvent, map_audit_event_to_sse
 from tasteops.config import QlooSettings
 from tasteops.models.cultural_matrix import PhysicalSpaceBrief
 from tasteops.workflows.context import WorkflowContext
@@ -50,7 +51,7 @@ class TasteOpsApplicationService:
         settings: QlooSettings | None = None,
         space_repo: Any | None = None,
     ) -> None:
-        self.store = store or InMemoryStateStore()
+        self.store = store or (orchestrator.store if orchestrator else None) or InMemoryStateStore()
         self.orchestrator = orchestrator or TasteOpsOrchestrator(store=self.store)
         self.settings = settings
         self.space_repo = space_repo
@@ -59,6 +60,23 @@ class TasteOpsApplicationService:
 
             self.space_repo = SQLiteSpaceRepository(self.store.db)
         self._spaces: dict[str, SpaceResponse] = {}
+
+        # Pub/Sub SSE Broadcaster for real-time streaming
+        self.broadcaster = EventBroadcaster()
+
+        def _on_transition(event: AuditEvent, ctx: WorkflowContext) -> None:
+            sse_event = map_audit_event_to_sse(event, ctx)
+            self.broadcaster.publish(sse_event)
+
+        if hasattr(self.store, "register_listener"):
+            self.store.register_listener(_on_transition)
+        if (
+            hasattr(self.orchestrator, "engine")
+            and hasattr(self.orchestrator.engine, "store")
+            and hasattr(self.orchestrator.engine.store, "register_listener")
+            and self.orchestrator.engine.store is not self.store
+        ):
+            self.orchestrator.engine.store.register_listener(_on_transition)
 
     # -------------------------------------------------------------------------
     # Space Management
@@ -178,6 +196,24 @@ class TasteOpsApplicationService:
         ctx = self.get_session(session_id)
         audit_events = self.orchestrator.get_audit_events(session_id)
         return audit_events, ctx.history
+
+    def publish_sse_event(self, event: SSEEvent) -> None:
+        """Publishes an SSEEvent directly to active live subscribers."""
+        self.broadcaster.publish(event)
+
+    def get_session_sse_events(
+        self, session_id: str, last_event_id: str | None = None
+    ) -> list[SSEEvent]:
+        """Recovers persisted audit events as safe canonical SSEEvent envelopes with reconnect support."""
+        ctx = self.get_session(session_id)
+        audit_events = self.orchestrator.get_audit_events(session_id)
+        sse_events = [map_audit_event_to_sse(ev, ctx) for ev in audit_events]
+
+        if last_event_id:
+            for idx, ev in enumerate(sse_events):
+                if ev.event_id == last_event_id:
+                    return sse_events[idx + 1 :]
+        return sse_events
 
     def get_session_blueprint(self, session_id: str) -> dict[str, Any]:
         """Extracts the structured experience and architectural blueprint for a session."""

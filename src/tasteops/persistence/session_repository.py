@@ -428,33 +428,40 @@ class SQLiteSessionRepository(BaseSessionRepository):
                 risks_json = json.dumps(exec_plan.risks)
                 approvals_req_json = json.dumps(exec_plan.approvals_required)
 
-                cursor.execute(
-                    """
-                    INSERT INTO execution_plans (
-                        plan_id, session_id, version, plan_hash, estimated_cost,
-                        actions_count, risks_json, approvals_required_json, created_at
+                plan_ids_to_upsert = {exec_plan.plan_id}
+                if ctx.plan and ctx.plan.plan_id:
+                    plan_ids_to_upsert.add(ctx.plan.plan_id)
+                if ctx.approval and ctx.approval.plan_id:
+                    plan_ids_to_upsert.add(ctx.approval.plan_id)
+
+                for p_id in plan_ids_to_upsert:
+                    cursor.execute(
+                        """
+                        INSERT INTO execution_plans (
+                            plan_id, session_id, version, plan_hash, estimated_cost,
+                            actions_count, risks_json, approvals_required_json, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(plan_id) DO UPDATE SET
+                            version = excluded.version,
+                            plan_hash = excluded.plan_hash,
+                            estimated_cost = excluded.estimated_cost,
+                            actions_count = excluded.actions_count,
+                            risks_json = excluded.risks_json,
+                            approvals_required_json = excluded.approvals_required_json;
+                        """,
+                        (
+                            p_id,
+                            ctx.session_id,
+                            exec_plan.version,
+                            plan_hash,
+                            exec_plan.estimated_cost,
+                            actions_count,
+                            risks_json,
+                            approvals_req_json,
+                            now,
+                        ),
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(plan_id) DO UPDATE SET
-                        version = excluded.version,
-                        plan_hash = excluded.plan_hash,
-                        estimated_cost = excluded.estimated_cost,
-                        actions_count = excluded.actions_count,
-                        risks_json = excluded.risks_json,
-                        approvals_required_json = excluded.approvals_required_json;
-                    """,
-                    (
-                        exec_plan.plan_id,
-                        ctx.session_id,
-                        exec_plan.version,
-                        plan_hash,
-                        exec_plan.estimated_cost,
-                        actions_count,
-                        risks_json,
-                        approvals_req_json,
-                        now,
-                    ),
-                )
 
             # 7. Upsert ExecutionTasks (idempotency enforcement)
             if ctx.execution_tasks:

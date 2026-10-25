@@ -6,12 +6,16 @@ recording curator approvals/rejections, and dispatching execution tasks.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from tasteops.api.dependencies import ServiceDep
+from tasteops.api.events import format_sse
 from tasteops.api.schemas.sessions import (
     ApproveSessionRequest,
     ExecutionResponse,
@@ -23,6 +27,7 @@ from tasteops.api.schemas.sessions import (
 from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.states import WorkflowState
 
+logger = logging.getLogger("tasteops.api.routes.sessions")
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
 
@@ -274,6 +279,7 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     links = {
         "self": f"/api/v1/sessions/{ctx.session_id}",
         "events": f"/api/v1/sessions/{ctx.session_id}/events",
+        "stream": f"/api/v1/sessions/{ctx.session_id}/stream",
         "blueprint": f"/api/v1/sessions/{ctx.session_id}/blueprint",
         "approve": f"/api/v1/sessions/{ctx.session_id}/approve",
         "reject": f"/api/v1/sessions/{ctx.session_id}/reject",
@@ -366,6 +372,101 @@ async def get_session_blueprint(
 ) -> SessionBlueprintResponse:
     blueprint = service.get_session_blueprint(session_id)
     return SessionBlueprintResponse(**blueprint)
+
+
+@router.get(
+    "/{session_id}/stream",
+    response_class=StreamingResponse,
+    summary="Server-Sent Events Stream",
+    description="Streams real-time structured workflow events for a session with deterministic ordering, reconnect safety, and event recovery.",
+    responses={
+        200: {
+            "content": {"text/event-stream": {}},
+            "description": "Stream of safe structured SSE events.",
+        },
+        404: {"description": "Session not found"},
+    },
+)
+async def stream_session_events(
+    session_id: str,
+    request: Request,
+    service: ServiceDep,
+    last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
+    last_event_id_query: str | None = Query(None, alias="last_event_id"),
+    wait: bool = Query(True, description="Keep stream open for live events if session is active"),
+) -> StreamingResponse:
+    # 1. Authoritative verification that session exists (raises 404 if not found)
+    service.get_session(session_id)
+
+    # 2. Extract reconnect identifier
+    last_event_id = last_event_id_header or last_event_id_query
+
+    # 3. Subscribe to real-time broadcaster before snapshot to prevent race conditions
+    queue = service.broadcaster.subscribe(session_id)
+
+    async def event_generator():
+        seen_event_ids: set[str] = set()
+        try:
+            # 4. Recover persisted historical events
+            historical_events = service.get_session_sse_events(session_id)
+
+            # Reconnect-safe slicing: only send events subsequent to last_event_id
+            start_idx = 0
+            if last_event_id:
+                for idx, ev in enumerate(historical_events):
+                    if ev.event_id == last_event_id:
+                        start_idx = idx + 1
+                        break
+
+            for ev in historical_events[start_idx:]:
+                seen_event_ids.add(ev.event_id)
+                yield format_sse(ev)
+
+            # If session is already terminal or wait=False, close stream cleanly
+            current_ctx = service.get_session(session_id)
+            if (
+                current_ctx.current_state in (WorkflowState.COMPLETED, WorkflowState.FAILED)
+                or not wait
+            ):
+                return
+
+            # 5. Live event streaming loop with keep-alive pings and client disconnect detection
+            while True:
+                if await request.is_disconnected():
+                    logger.info("SSE client disconnected for session %s", session_id)
+                    break
+                try:
+                    ev = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    if ev.event_id in seen_event_ids:
+                        continue
+                    seen_event_ids.add(ev.event_id)
+                    yield format_sse(ev)
+
+                    if ev.event_type in ("execution.completed", "workflow.failed"):
+                        break
+                except asyncio.TimeoutError:
+                    if await request.is_disconnected():
+                        break
+                    yield ": ping\n\n"
+                    # Check if session transitioned to terminal state
+                    check_ctx = service.get_session(session_id)
+                    if check_ctx.current_state in (
+                        WorkflowState.COMPLETED,
+                        WorkflowState.FAILED,
+                    ):
+                        break
+        finally:
+            service.broadcaster.unsubscribe(session_id, queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post(

@@ -21,6 +21,7 @@ class SQLiteStateStore(BaseStateStore):
     """ACID-compliant SQLite relational state store for TasteOps workflows."""
 
     def __init__(self, db_or_path: Database | str | Path = ":memory:") -> None:
+        super().__init__()
         if isinstance(db_or_path, Database):
             self.db = db_or_path
         else:
@@ -33,6 +34,7 @@ class SQLiteStateStore(BaseStateStore):
             ctx.audit_events.append(event)
         self.repo.save_session(ctx)
         self.repo.save_audit_event(event)
+        self._notify_listeners(event, ctx)
 
     def save_context(self, ctx: WorkflowContext) -> None:
         """Persists full session state snapshot across normalized tables."""
