@@ -397,3 +397,53 @@ def test_audit_events_are_stored_logs_not_fabricated_merkle_digests(ui_test_clie
         # Backend does not provide fake verification_hash or Merkle root
         assert "verification_hash" not in ev
         assert "merkle_root" not in ev
+
+
+def test_mutated_plan_invalidates_approval_returns_400(ui_test_client):
+    """Verifies that executing a session whose plan was mutated after approval returns HTTP 400."""
+    # 1. Create and drive to approval
+    resp = ui_test_client.post(
+        "/api/v1/sessions",
+        json={"raw_intent": "Auditing mutated plan security check."},
+    )
+    session_id = resp.json()["session_id"]
+    ui_test_client.post(f"/api/v1/sessions/{session_id}/pipeline", json={})
+    ui_test_client.post(
+        f"/api/v1/sessions/{session_id}/approve",
+        json={"approver": "Auditor"},
+    )
+
+    # 2. Mutate the plan in orchestrator memory
+    app = ui_test_client.app
+    ctx = app.state.orchestrator.get_session_state(session_id)
+    assert ctx.plan is not None
+    ctx.plan.strategy.positioning_statement = (
+        "Malicious post-approval strategy tampering"
+    )
+
+    # 3. Attempt execution -> should return HTTP 400 Bad Request (not unhandled 500)
+    exec_resp = ui_test_client.post(f"/api/v1/sessions/{session_id}/execute", json={})
+    assert exec_resp.status_code == 400
+    err_body = exec_resp.json()
+    assert err_body["error"] == "http_400"
+    assert (
+        "mutated" in err_body["message"].lower()
+        or "invalidated" in err_body["message"].lower()
+    )
+
+
+def test_approve_session_without_plan_returns_400(ui_test_client):
+    """Verifies that approving a session in CREATED state returns HTTP 400 (not unhandled 500)."""
+    resp = ui_test_client.post(
+        "/api/v1/sessions",
+        json={"raw_intent": "Premature approval attempt."},
+    )
+    session_id = resp.json()["session_id"]
+
+    approve_resp = ui_test_client.post(
+        f"/api/v1/sessions/{session_id}/approve",
+        json={"approver": "Auditor"},
+    )
+    assert approve_resp.status_code == 400
+    err_body = approve_resp.json()
+    assert err_body["error"] == "http_400"
