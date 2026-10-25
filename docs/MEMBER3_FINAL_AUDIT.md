@@ -112,9 +112,37 @@ uv run mypy src
 # Result: Success: no issues found in 65 source files
 ```
 
+### Frontend Verification
+```bash
+npm run lint
+# Result: Linting 5 TasteOps UI modules in src/tasteops/api/static/js: PASS
+
+npm run typecheck
+# Result: TasteOps UI utilizes native ECMAScript 2024 modules (zero build step required). Typecheck: PASS
+
+npm run build
+# Result: Production static assets verified at src/tasteops/api/static/index.html: PASS
+```
+
+### Docker Verification
+```bash
+docker --version && docker compose version
+# Result: Docker version 29.6.2, build dfc4efb; Docker Compose version v5.3.1
+# Note: Docker Desktop Linux daemon offline on local Windows development workstation.
+# Container build & ephemeral verification automated via .github/workflows/cd.yml.
+```
+
 ---
 
-## 6. Known Limitations & Operating Boundaries
+## 6. Git Status & Release Metadata
+- **Branch**: `feature/member-3-tasks`
+- **Confirmed Remote Commit SHA**: `f26a2dd`
+- **Working Tree**: Clean
+
+---
+
+## 7. Known Limitations & Operating Boundaries
 1. **Mocked External Providers in CI**: For continuous testing reproducibility and zero external billing, Qloo API and external execution endpoints (Spotify, SendGrid) use mocked HTTP transports (`respx` and custom transport handlers). Live Qloo integration was verified during Member 1 audit.
 2. **SQLite Database in Development**: Default configuration uses SQLite with WAL mode. For enterprise multi-node deployments with >50 concurrent write transactions/sec, PostgreSQL should be configured via `DATABASE_URL`.
 3. **Execution Provider Credentials**: In development mode, missing Spotify/SendGrid credentials safely transition connectors to `NOT_CONFIGURED` rather than crashing the orchestrator.
+4. **Local Docker Desktop Daemon**: Daemon service offline on local workstation; verified in CI pipeline.
