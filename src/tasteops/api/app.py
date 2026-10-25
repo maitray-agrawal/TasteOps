@@ -13,17 +13,19 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from tasteops.api.errors import register_exception_handlers
 from tasteops.api.middleware import (
     RequestCorrelationMiddleware,
     SecurityHeadersMiddleware,
 )
-from tasteops.api.routes import health_router, sessions_router, spaces_router
+from tasteops.api.routes import health_router, sessions_router, spaces_router, ui_router
 from tasteops.api.settings import APISettings
 
 logger = logging.getLogger("tasteops.api")
@@ -83,6 +85,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # Versioned API routes mounted under api_prefix (default: /api/v1)
     app.include_router(spaces_router, prefix=app_settings.api_prefix)
     app.include_router(sessions_router, prefix=app_settings.api_prefix)
+
+    # 4. Mount Static Assets & AI Operations Workspace UI
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    app.include_router(ui_router)
 
     return app
 
