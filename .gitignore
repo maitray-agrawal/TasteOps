@@ -26,3 +26,18 @@ qloo_cache/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Workflow storage snapshots and session artifacts
+storage/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+
+# Frontend dependencies and builds
+node_modules/
