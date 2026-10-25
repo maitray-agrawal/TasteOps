@@ -25,6 +25,10 @@ from tasteops.api.schemas.sessions import (
     SessionDetailResponse,
     SessionEventsResponse,
 )
+from tasteops.connectors.base import (
+    ConnectorExecutionRequest,
+    ConnectorExecutionResult,
+)
 from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.states import WorkflowState
 
@@ -1012,3 +1016,48 @@ async def execute_session(
         tasks=tasks,
         audit_report=audit_report,
     )
+
+
+@router.post(
+    "/{session_id}/tasks/{task_id}/execute",
+    response_model=ConnectorExecutionResult,
+    status_code=status.HTTP_200_OK,
+    summary="Execute Specific Task Connector",
+    description="Dispatches a specific execution task connector with strict idempotency and server-side credential isolation.",
+    responses={
+        403: {"description": "Unapproved session"},
+        404: {"description": "Session not found"},
+        409: {"description": "Duplicate execution attempt for the same idempotency key"},
+        422: {"description": "Connector missing or unconfigured"},
+    },
+)
+async def execute_task_connector(
+    session_id: str,
+    task_id: str,
+    request: ConnectorExecutionRequest,
+    service: ServiceDep,
+) -> ConnectorExecutionResult:
+    # Ensure URL session_id and task_id match request body
+    if request.session_id != session_id:
+        request.session_id = session_id
+    if request.task_id != task_id:
+        request.task_id = task_id
+    return await service.execute_task(request)
+
+
+@router.get(
+    "/{session_id}/connectors",
+    status_code=status.HTTP_200_OK,
+    summary="List Session Connectors",
+    description="Returns configuration status and capabilities of all registered external execution connectors without exposing server-side credentials.",
+    responses={
+        404: {"description": "Session not found"},
+    },
+)
+async def list_session_connectors(
+    session_id: str,
+    service: ServiceDep,
+) -> list[dict[str, Any]]:
+    # Verify session exists
+    service.get_session(session_id)
+    return service.connector_registry.list_connectors()

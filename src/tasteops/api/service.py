@@ -21,6 +21,7 @@ from tasteops.api.schemas.spaces import (
 from tasteops.api.events import EventBroadcaster, SSEEvent, map_audit_event_to_sse
 from tasteops.config import QlooSettings
 from tasteops.models.cultural_matrix import PhysicalSpaceBrief
+from tasteops.connectors import ConnectorRegistry, create_default_registry
 from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
 from tasteops.workflows.persistence import AuditEvent, BaseStateStore, InMemoryStateStore
@@ -62,11 +63,13 @@ class TasteOpsApplicationService:
         store: BaseStateStore | None = None,
         settings: QlooSettings | None = None,
         space_repo: Any | None = None,
+        connector_registry: ConnectorRegistry | None = None,
     ) -> None:
         self.store = store or (orchestrator.store if orchestrator else None) or InMemoryStateStore()
         self.orchestrator = orchestrator or TasteOpsOrchestrator(store=self.store)
         self.settings = settings
         self.space_repo = space_repo
+        self.connector_registry = connector_registry or create_default_registry()
         if self.space_repo is None and hasattr(self.store, "db"):
             from tasteops.persistence.space_repository import SQLiteSpaceRepository
 
@@ -719,7 +722,85 @@ class TasteOpsApplicationService:
                 WorkflowState.EXECUTING,
             )
 
-        return await self.orchestrator.execute_approved_plan(session_id)
+        executed_ctx = await self.orchestrator.execute_approved_plan(session_id)
+
+        # Synchronize executed tasks into connector registry store for idempotency tracking
+        if executed_ctx.execution_tasks:
+            from tasteops.connectors.base import ConnectorExecutionResult
+
+            for t in executed_ctx.execution_tasks:
+                idem_key = getattr(t, "idempotency_key", None)
+                if idem_key and not self.connector_registry.is_executed(idem_key):
+                    self.connector_registry._executed_store[idem_key] = ConnectorExecutionResult(
+                        task_id=t.task_id,
+                        connector_name=getattr(t, "connector", "TasteOpsConnector"),
+                        status="COMPLETED" if t.status in ("EXECUTED", "COMPLETED") else t.status,
+                        output_reference=getattr(t, "output_reference", None) or f"executed://{t.task_id}",
+                        executed_at=getattr(t, "executed_at", None) or datetime.now(UTC),
+                        payload=getattr(t, "result", {}) or {},
+                        provenance=getattr(t, "provenance", {}),
+                    )
+
+        return executed_ctx
+
+    async def execute_task(
+        self, request: ConnectorExecutionRequest
+    ) -> ConnectorExecutionResult:
+        """Dispatches an individual execution task via the connector abstraction.
+
+        Guarantees:
+        - Validates session existence and approval state
+        - Validates plan ID and version alignment
+        - Rejects duplicate execution attempts for the same idempotency key
+        - Explicitly fails if connector is missing or unconfigured
+        - Never fakes external execution
+        """
+        from tasteops.agents.governance import UnapprovedExecutionError
+
+        # 1. Verify session exists and is approved
+        ctx = self.get_session(request.session_id)
+        if ctx.current_state not in {
+            WorkflowState.APPROVED,
+            WorkflowState.EXECUTING,
+            WorkflowState.COMPLETED,
+        }:
+            raise UnapprovedExecutionError(
+                f"Execution task blocked: Session '{request.session_id}' is in state '{ctx.current_state.value}' "
+                f"and has not been approved."
+            )
+
+        if not ctx.approval or not ctx.approval.is_valid:
+            raise UnapprovedExecutionError(
+                f"Execution task blocked: Session '{request.session_id}' lacks a valid approval record."
+            )
+
+        # 2. Verify plan ID and version
+        allowed_plan_ids = {ctx.plan.plan_id} if ctx.plan else set()
+        if ctx.plan and ctx.plan.execution_plan and hasattr(ctx.plan.execution_plan, "plan_id"):
+            allowed_plan_ids.add(ctx.plan.execution_plan.plan_id)
+        if ctx.execution_plan and hasattr(ctx.execution_plan, "plan_id"):
+            allowed_plan_ids.add(ctx.execution_plan.plan_id)
+
+        if ctx.plan and (request.plan_id not in allowed_plan_ids or ctx.plan.version != request.plan_version):
+            raise UnapprovedExecutionError(
+                f"Execution task plan authorization mismatch: requested plan_id='{request.plan_id}', "
+                f"version={request.plan_version}; active plan_id='{ctx.plan.plan_id}', version={ctx.plan.version}."
+            )
+
+        # 3. Dispatch through connector registry (enforces 5 fields, idempotency key uniqueness, missing connector failure)
+        result = await self.connector_registry.dispatch(request)
+
+        # 4. Synchronize executed task state in workflow context if task present
+        if ctx.execution_tasks:
+            for t in ctx.execution_tasks:
+                if t.task_id == request.task_id or t.idempotency_key == request.idempotency_key:
+                    t.status = "EXECUTED"
+                    t.executed_at = result.executed_at
+                    t.output_reference = result.output_reference
+                    t.result = result.payload
+            self.store.save_context(ctx)
+
+        return result
 
     # -------------------------------------------------------------------------
     # Readiness & Diagnostics

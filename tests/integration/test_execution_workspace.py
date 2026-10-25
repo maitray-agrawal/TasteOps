@@ -403,3 +403,148 @@ def test_execution_workspace_ui_and_static_asset(client):
     ]
     for kw in required_keywords:
         assert kw in content, f"Missing expected keyword in sessionExecution.js: {kw}"
+
+
+# =============================================================================
+# 6. Execution Connector Abstraction API Integration
+# =============================================================================
+def test_list_session_connectors_api(client, mock_qloo_api, monkeypatch):
+    """Verify GET /api/v1/sessions/{session_id}/connectors returns registered connectors and statuses."""
+    tc, _, service = client
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "spotify_client_id_live_test_123")
+    monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "spotify_client_secret_live_test_456")
+
+    _, session_id = _create_approved_session(tc)
+
+    resp = tc.get(f"/api/v1/sessions/{session_id}/connectors")
+    assert resp.status_code == 200
+    connectors = resp.json()
+    assert isinstance(connectors, list)
+    names = {c["name"]: c for c in connectors}
+
+    assert "Spotify Web API" in names
+    assert names["Spotify Web API"]["configuration_status"] == "CONFIGURED"
+    assert names["Spotify Web API"]["capability"] == "spotify_audio_seed"
+
+    assert "Transactional Email Engine" in names
+    assert names["Transactional Email Engine"]["capability"] == "partner_outreach_brief"
+
+    assert "Procurement Order System" in names
+    assert names["Procurement Order System"]["capability"] == "procurement_order"
+
+    # Credentials must NOT be exposed in output
+    for c in connectors:
+        assert "client_secret" not in c
+        assert "api_key" not in c
+        assert "secret" not in c
+
+
+def test_execute_task_connector_lifecycle(client, mock_qloo_api, monkeypatch):
+    """Verify POST /api/v1/sessions/{session_id}/tasks/{task_id}/execute dispatches with idempotency."""
+    tc, _, service = client
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "valid_client_id_1234")
+    monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "valid_client_secret_5678")
+
+    # Refresh connectors in registry with credentials
+    from tasteops.connectors import create_default_registry
+    service.connector_registry = create_default_registry()
+
+    _, session_id = _create_approved_session(tc)
+    detail_resp = tc.get(f"/api/v1/sessions/{session_id}")
+    plan_id = detail_resp.json()["execution_plan"]["plan_id"]
+    plan_version = 1
+
+    # 1. Execute task with valid credentials
+    req_body = {
+        "session_id": session_id,
+        "plan_id": plan_id,
+        "plan_version": plan_version,
+        "task_id": "task_sp_unique_01",
+        "idempotency_key": "idem_unique_sp_999",
+        "task_type": "spotify_audio_seed",
+        "payload": {
+            "artist_name": "Four Tet",
+            "artist_id": "art_four_tet",
+            "daypart": "evening",
+        },
+    }
+
+    exec_resp = tc.post(
+        f"/api/v1/sessions/{session_id}/tasks/task_sp_unique_01/execute",
+        json=req_body,
+    )
+    assert exec_resp.status_code == 200
+    res_data = exec_resp.json()
+    assert res_data["task_id"] == "task_sp_unique_01"
+    assert res_data["connector_name"] == "Spotify Web API"
+    assert res_data["status"] == "COMPLETED"
+    assert "spotify://seed_artist" in res_data["output_reference"]
+    assert res_data["provenance"]["idempotency_key"] == "idem_unique_sp_999"
+
+    # 2. Duplicate execution attempt for the same idempotency key must be rejected (409 Conflict)
+    dup_resp = tc.post(
+        f"/api/v1/sessions/{session_id}/tasks/task_sp_unique_01/execute",
+        json=req_body,
+    )
+    assert dup_resp.status_code == 409
+    dup_data = dup_resp.json().get("error", dup_resp.json())
+    assert dup_data.get("code") == "DUPLICATE_IDEMPOTENCY_KEY" or "duplicate" in str(dup_data).lower()
+
+
+def test_execute_task_connector_missing_connector_fails_explicitly(client, mock_qloo_api):
+    """Verify that an execution task with an unknown capability fails explicitly with 422."""
+    tc, _, _ = client
+    _, session_id = _create_approved_session(tc)
+    detail_resp = tc.get(f"/api/v1/sessions/{session_id}")
+    plan_id = detail_resp.json()["execution_plan"]["plan_id"]
+
+    req_body = {
+        "session_id": session_id,
+        "plan_id": plan_id,
+        "plan_version": 1,
+        "task_id": "task_unknown_01",
+        "idempotency_key": "idem_unknown_01",
+        "task_type": "completely_unsupported_quantum_teleportation",
+        "payload": {},
+    }
+
+    resp = tc.post(
+        f"/api/v1/sessions/{session_id}/tasks/task_unknown_01/execute",
+        json=req_body,
+    )
+    assert resp.status_code == 422
+    data = resp.json().get("error", resp.json())
+    assert data.get("code") == "MISSING_CONNECTOR" or "missing" in str(data).lower()
+
+
+def test_execute_task_connector_never_fakes_unconfigured_execution(client, mock_qloo_api, monkeypatch):
+    """Verify that execute on an unconfigured connector fails explicitly with 422 (never fakes execution)."""
+    tc, _, service = client
+    # Clear Spotify credentials
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
+
+    from tasteops.connectors import create_default_registry
+    service.connector_registry = create_default_registry()
+
+    _, session_id = _create_approved_session(tc)
+    detail_resp = tc.get(f"/api/v1/sessions/{session_id}")
+    plan_id = detail_resp.json()["execution_plan"]["plan_id"]
+
+    req_body = {
+        "session_id": session_id,
+        "plan_id": plan_id,
+        "plan_version": 1,
+        "task_id": "task_sp_unconf_01",
+        "idempotency_key": "idem_sp_unconf_01",
+        "task_type": "spotify_audio_seed",
+        "payload": {"artist_name": "Bonobo"},
+    }
+
+    resp = tc.post(
+        f"/api/v1/sessions/{session_id}/tasks/task_sp_unconf_01/execute",
+        json=req_body,
+    )
+    assert resp.status_code == 422
+    data = resp.json().get("error", resp.json())
+    assert data.get("code") == "NOT_CONFIGURED" or "not_configured" in str(data).lower()

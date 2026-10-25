@@ -32,6 +32,13 @@ from tasteops.exceptions import (
     QlooTimeoutError,
     QlooValidationError,
 )
+from tasteops.connectors import (
+    ConnectorError,
+    ConnectorNotConfiguredError,
+    DuplicateExecutionError,
+    InvalidConfigurationError,
+    MissingConnectorError,
+)
 from tasteops.workflows.states import InvalidStateTransitionError
 
 logger = logging.getLogger("tasteops.api.errors")
@@ -312,6 +319,96 @@ def register_exception_handlers(app: FastAPI) -> None:
             detail=str(exc.detail),
             code=code,
             headers=exc.headers,
+        )
+
+    # 409 Duplicate Execution Idempotency Violation
+    @app.exception_handler(DuplicateExecutionError)
+    async def duplicate_execution_handler(
+        request: Request, exc: DuplicateExecutionError
+    ) -> JSONResponse:
+        logger.warning(
+            "[%s] Duplicate execution attempt rejected: %s",
+            _get_correlation_id(request),
+            exc,
+        )
+        return _build_error_response(
+            request=request,
+            status_code=status.HTTP_409_CONFLICT,
+            title="Duplicate Execution Rejected",
+            detail=exc.message,
+            code="DUPLICATE_IDEMPOTENCY_KEY",
+        )
+
+    # 422 Missing Connector Error
+    @app.exception_handler(MissingConnectorError)
+    async def missing_connector_handler(
+        request: Request, exc: MissingConnectorError
+    ) -> JSONResponse:
+        logger.error(
+            "[%s] Missing execution connector: %s",
+            _get_correlation_id(request),
+            exc,
+        )
+        return _build_error_response(
+            request=request,
+            status_code=HTTP_422_UNPROCESSABLE,
+            title="Missing Execution Connector",
+            detail=exc.message,
+            code="MISSING_CONNECTOR",
+        )
+
+    # 422 Connector Not Configured Error
+    @app.exception_handler(ConnectorNotConfiguredError)
+    async def connector_not_configured_handler(
+        request: Request, exc: ConnectorNotConfiguredError
+    ) -> JSONResponse:
+        logger.warning(
+            "[%s] Execution connector not configured: %s",
+            _get_correlation_id(request),
+            exc,
+        )
+        return _build_error_response(
+            request=request,
+            status_code=HTTP_422_UNPROCESSABLE,
+            title="Connector Not Configured",
+            detail=exc.message,
+            code="NOT_CONFIGURED",
+        )
+
+    # 422 Invalid Connector Configuration
+    @app.exception_handler(InvalidConfigurationError)
+    async def invalid_connector_config_handler(
+        request: Request, exc: InvalidConfigurationError
+    ) -> JSONResponse:
+        logger.error(
+            "[%s] Connector configuration invalid: %s",
+            _get_correlation_id(request),
+            exc,
+        )
+        return _build_error_response(
+            request=request,
+            status_code=HTTP_422_UNPROCESSABLE,
+            title="Invalid Connector Configuration",
+            detail=exc.message,
+            code="INVALID_CONFIGURATION",
+        )
+
+    # 502 Generic Connector Error
+    @app.exception_handler(ConnectorError)
+    async def connector_generic_error_handler(
+        request: Request, exc: ConnectorError
+    ) -> JSONResponse:
+        logger.error(
+            "[%s] Connector error: %s",
+            _get_correlation_id(request),
+            exc,
+        )
+        return _build_error_response(
+            request=request,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            title="Connector Execution Error",
+            detail=exc.message,
+            code=exc.code,
         )
 
     # Unhandled 500 Catch-all (Guarantees no secret keys or internal traces leak)
