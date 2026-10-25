@@ -678,41 +678,46 @@ export async function renderSessionLedger(rootElement, params, router) {
  * Renders the cryptographic hash-chain verification status card.
  */
 function renderVerificationStatusCard(verification, eventCount) {
-  const isVerified = verification ? verification.is_verified : true;
-  const chainLength = verification?.chain_length ?? eventCount;
-  const algorithm = verification?.algorithm || 'SHA-256 (Merkle / Chained Digests)';
-  const headHash = verification?.head_hash || (eventCount > 0 ? 'sha256:d8f7b2c91a0e...verified' : 'sha256:genesis_empty');
-  const rootHash = verification?.root_hash || (eventCount > 0 ? 'sha256:4a0c8b3e21f9...verified' : 'sha256:genesis_empty');
-  const planHashMatched = verification?.plan_hash_matched ?? true;
-  const planHash = verification?.plan_hash;
+  const isVerified = Boolean(verification && verification.is_verified === true);
+  const statusLabel = isVerified ? '✓ VERIFIED AUTHENTIC' : 'STORED AUDIT LOG (HASH-CHAIN UNAVAILABLE)';
+  const badgeStyle = isVerified
+    ? 'background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);'
+    : 'background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3);';
+
+  const algorithm = verification?.algorithm || 'None (Authoritative StateStore Log)';
+  const headHash = verification?.head_hash || null;
+  const rootHash = verification?.root_hash || null;
+  const planHash = verification?.plan_hash || null;
+  const planHashMatched = verification?.plan_hash_matched;
 
   return `
-    <div class="card verification-card fade-in" style="padding: 1.25rem 1.5rem; background: rgba(14, 20, 36, 0.85); border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.35)' : 'rgba(244, 63, 94, 0.35)'}; border-radius: var(--radius-md); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px);">
+    <div class="card verification-card fade-in" style="padding: 1.25rem 1.5rem; background: rgba(14, 20, 36, 0.85); border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.25)'}; border-radius: var(--radius-md); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px);">
       <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <div style="width: 42px; height: 42px; border-radius: var(--radius-md); background: ${isVerified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)'}; border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}; display: flex; align-items: center; justify-content: center; font-size: 1.35rem;">
-            ${isVerified ? '🛡️' : '⚠️'}
+          <div style="width: 42px; height: 42px; border-radius: var(--radius-md); background: ${isVerified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.1)'}; border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}; display: flex; align-items: center; justify-content: center; font-size: 1.35rem;">
+            ${isVerified ? '🛡️' : '📋'}
           </div>
           <div>
-            <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
               <span style="font-weight: 700; font-size: 1.05rem; color: var(--text-primary);">
-                Cryptographic Hash-Chain Verification
+                Audit Trail Integrity Status
               </span>
-              <span class="badge" style="background: ${isVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)'}; color: ${isVerified ? '#34d399' : '#f87171'}; border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.4)' : 'rgba(244, 63, 94, 0.4)'}; font-weight: 700; font-size: 0.775rem;">
-                ${isVerified ? '✓ VERIFIED AUTHENTIC' : '✗ TAMPER DETECTED'}
+              <span class="badge" style="${badgeStyle} font-weight: 700; font-size: 0.775rem;">
+                ${statusLabel}
               </span>
             </div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">
-              Algorithm: <span style="font-family: var(--font-mono); color: var(--cyan);">${escapeHtml(algorithm)}</span> • 
-              Verified Chain Length: <span style="font-weight: 600; color: var(--text-primary);">${chainLength} blocks</span>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; line-height: 1.4;">
+              ${isVerified
+                ? `Algorithm: <span style="font-family: var(--font-mono); color: var(--cyan);">${escapeHtml(algorithm)}</span> • Verified Chain Length: <span style="font-weight: 600; color: var(--text-primary);">${eventCount} events</span>`
+                : 'The TasteOps API records and serves authoritative state-transition audit events from persistent storage. Cryptographic hash-chain and Merkle ledger verification are not currently supported by the backend.'}
             </div>
           </div>
         </div>
 
         <div style="text-align: right; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted);">
-          <div>IMMUTABLE LEDGER SEAL</div>
-          <div style="color: ${isVerified ? '#34d399' : '#f87171'}; font-weight: 600;">
-            ${isVerified ? 'INTEGRITY SEAL INTACT' : 'INTEGRITY COMPROMISED'}
+          <div>STORAGE PERSISTENCE</div>
+          <div style="color: ${isVerified ? '#34d399' : 'var(--cyan)'}; font-weight: 600;">
+            ${eventCount} PERSISTED EVENTS
           </div>
         </div>
       </div>
@@ -720,29 +725,27 @@ function renderVerificationStatusCard(verification, eventCount) {
       <!-- Hash Metadata Grid -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 0.775rem;">
         <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Chain Head Digest (Latest)</div>
-          <div style="color: var(--cyan); word-break: break-all;" title="${escapeHtml(headHash)}">
-            ${escapeHtml(headHash.length > 32 ? headHash.slice(0, 28) + '...' : headHash)}
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Hash-Chain Digest</div>
+          <div style="color: ${headHash ? 'var(--cyan)' : 'var(--text-muted)'}; word-break: break-all;">
+            ${headHash ? escapeHtml(headHash) : '<span style="font-style: italic;">Unavailable (No backend hash-chain)</span>'}
           </div>
         </div>
 
         <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Genesis Root Digest</div>
-          <div style="color: var(--text-secondary); word-break: break-all;" title="${escapeHtml(rootHash)}">
-            ${escapeHtml(rootHash.length > 32 ? rootHash.slice(0, 28) + '...' : rootHash)}
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Merkle Root Digest</div>
+          <div style="color: ${rootHash ? 'var(--text-secondary)' : 'var(--text-muted)'}; word-break: break-all;">
+            ${rootHash ? escapeHtml(rootHash) : '<span style="font-style: italic;">Unavailable (No Merkle tree)</span>'}
           </div>
         </div>
 
-        ${planHash ? `
-          <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-            <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">
-              Plan Hash Binding ${planHashMatched ? '<span style="color: #34d399;">(MATCHED)</span>' : '<span style="color: #f87171;">(MUTATED)</span>'}
-            </div>
-            <div style="color: ${planHashMatched ? '#34d399' : '#f87171'}; word-break: break-all;" title="${escapeHtml(planHash)}">
-              ${escapeHtml(planHash.length > 32 ? planHash.slice(0, 28) + '...' : planHash)}
-            </div>
+        <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">
+            Plan Hash Binding ${planHash ? (planHashMatched ? '<span style="color: #34d399;">(MATCHED)</span>' : '<span style="color: #f87171;">(MUTATED)</span>') : ''}
           </div>
-        ` : ''}
+          <div style="color: ${planHash ? (planHashMatched ? '#34d399' : '#f87171') : 'var(--text-muted)'}; word-break: break-all;">
+            ${planHash ? escapeHtml(planHash.length > 32 ? planHash.slice(0, 28) + '...' : planHash) : '<span style="font-style: italic;">Pending curator approval</span>'}
+          </div>
+        </div>
       </div>
     </div>
   `;

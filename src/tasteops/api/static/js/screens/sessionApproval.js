@@ -70,8 +70,8 @@ export async function renderSessionApproval(rootElement, params, router) {
       const plan = session.plan || {};
       const planId = execPlan.plan_id || plan.plan_id || 'plan_pending';
       const planVersion = execPlan.version || plan.version || 1;
-      const planHash = session.approval_state?.plan_hash || execPlan.plan_hash || plan.plan_hash || 'hash_pending';
-      const estimatedCost = execPlan.estimated_cost || session.plan?.estimated_cost || '$150,000 USD';
+      const planHash = session.approval_state?.plan_hash || execPlan.plan_hash || plan.plan_hash || null;
+      const estimatedCost = execPlan.estimated_cost || session.plan?.estimated_cost || null;
 
       // Generated Actions
       const rawActions = execPlan.actions || [];
@@ -81,14 +81,14 @@ export async function renderSessionApproval(rootElement, params, router) {
         title: t.action,
         description: t.action,
         owner: t.owner,
-        estimated_cost: '$0',
+        estimated_cost: t.estimated_cost ?? null,
       }));
 
       // Governance & Validation Report
       const validation = session.validation || session.validation_result || {};
-      const isValid = validation.is_valid !== undefined ? validation.is_valid : true;
-      const provenanceVerified = validation.provenance_verified !== undefined ? validation.provenance_verified : true;
-      const complianceScore = validation.compliance_score !== undefined ? validation.compliance_score : 1.0;
+      const isValid = validation.is_valid === true;
+      const provenanceVerified = validation.provenance_verified === true;
+      const complianceScore = typeof validation.compliance_score === 'number' ? validation.compliance_score : null;
       const validationWarnings = validation.risk_flags || [];
       const recommendations = validation.recommendations || [];
 
@@ -102,8 +102,9 @@ export async function renderSessionApproval(rootElement, params, router) {
 
       // Approval State
       const approvalState = session.approval_state || {};
-      const approvalStatus = approvalState.status || (approvalState.is_approved ? 'APPROVED' : 'PENDING');
-      const isApproved = approvalState.is_approved === true || session.current_state === 'APPROVED';
+      const isApprovedState = ['APPROVED', 'EXECUTING', 'COMPLETED'].includes(session.current_state);
+      const isApproved = isApprovedState && approvalState.is_approved === true;
+      const approvalStatus = isApproved ? 'APPROVED' : (session.current_state === 'FAILED' ? 'REJECTED' : (approvalState.status || 'PENDING'));
       const isExecuted = session.current_state === 'EXECUTING' || session.current_state === 'COMPLETED' || (session.execution_state?.status === 'COMPLETED');
       const isFailed = session.current_state === 'FAILED';
       const isAwaiting = session.current_state === 'AWAITING_APPROVAL';
@@ -125,7 +126,7 @@ export async function renderSessionApproval(rootElement, params, router) {
       }
 
       // 3. Plan is stale
-      if (session.current_state === 'PLAN_MUTATED' || (!planHash || planHash === 'hash_pending')) {
+      if (session.current_state === 'PLAN_MUTATED' || !planHash) {
         disablingReasons.push('Plan is Stale: Cryptographic plan hash is unverified or content was mutated.');
       }
 
@@ -210,7 +211,7 @@ export async function renderSessionApproval(rootElement, params, router) {
                     </p>
                     <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); display: flex; gap: 1rem; flex-wrap: wrap;">
                       <span>Signed At: ${formatDate(approvalState.approved_at)}</span>
-                      <span>Sealed Hash: ${escapeHtml(planHash.slice(0, 20))}...</span>
+                      <span>Sealed Hash: ${escapeHtml(planHash ? planHash.slice(0, 20) + '...' : 'Unsigned')}</span>
                       <span>Status: <strong style="color: #34d399;">${escapeHtml(approvalStatus)}</strong></span>
                     </div>
                   </div>
@@ -325,7 +326,7 @@ export async function renderSessionApproval(rootElement, params, router) {
                 Estimated Cost
               </div>
               <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #fbbf24;">
-                ${escapeHtml(estimatedCost)}
+                ${escapeHtml(estimatedCost || 'Not estimated')}
               </div>
             </div>
 
@@ -348,28 +349,28 @@ export async function renderSessionApproval(rootElement, params, router) {
                 <div class="card-title">
                   <span>⚖️</span> Governance & Compliance Report
                 </div>
-                <span class="badge" style="${isValid ? 'background: rgba(16, 185, 129, 0.15); color: #34d399;' : 'background: rgba(239, 68, 68, 0.15); color: #f87171;'}">
-                  ${isValid ? '✓ COMPLIANCE PASSED' : '✕ COMPLIANCE FAILED'}
+                <span class="badge" style="${validation.is_valid === true ? 'background: rgba(16, 185, 129, 0.15); color: #34d399;' : (validation.is_valid === false ? 'background: rgba(239, 68, 68, 0.15); color: #f87171;' : 'background: rgba(148, 163, 184, 0.15); color: var(--text-muted);')}">
+                  ${validation.is_valid === true ? '✓ COMPLIANCE PASSED' : (validation.is_valid === false ? '✕ COMPLIANCE FAILED' : '⚠️ VALIDATION PENDING')}
                 </span>
               </div>
 
               <div style="padding-top: 1rem; display: flex; flex-direction: column; gap: 0.85rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 0.85rem; color: var(--text-muted);">Provenance Verified:</span>
-                  <span style="font-weight: 700; color: ${provenanceVerified ? '#34d399' : '#f87171'}; font-size: 0.9rem;">
-                    ${provenanceVerified ? '✓ 100% Traced to Qloo' : '✕ Unverified Signatures'}
+                  <span style="font-weight: 700; color: ${validation.provenance_verified === true ? '#34d399' : (validation.provenance_verified === false ? '#f87171' : 'var(--text-muted)')}; font-size: 0.9rem;">
+                    ${validation.provenance_verified === true ? '✓ Traced to Qloo' : (validation.provenance_verified === false ? '✕ Unverified Signatures' : 'Unavailable')}
                   </span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 0.85rem; color: var(--text-muted);">Compliance Confidence Score:</span>
                   <span style="font-family: var(--font-mono); font-weight: 700; color: var(--cyan); font-size: 0.95rem;">
-                    ${(complianceScore * 100).toFixed(0)}%
+                    ${complianceScore !== null ? `${(complianceScore * 100).toFixed(0)}%` : 'Unavailable'}
                   </span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 0.85rem; color: var(--text-muted);">Cryptographic Plan Hash:</span>
-                  <span class="hash-pill" style="font-size: 0.75rem; color: #34d399;">
-                    🔒 ${escapeHtml(planHash.slice(0, 16))}...
+                  <span class="hash-pill" style="font-size: 0.75rem; color: ${planHash ? '#34d399' : 'var(--text-muted)'};">
+                    ${planHash ? `🔒 ${escapeHtml(planHash.slice(0, 16))}...` : 'Pending plan generation'}
                   </span>
                 </div>
                 ${recommendations.length > 0 ? `
@@ -460,7 +461,7 @@ export async function renderSessionApproval(rootElement, params, router) {
                           ${escapeHtml(action.owner || 'System / Curator')}
                         </td>
                         <td style="padding: 0.75rem; text-align: right; font-family: var(--font-mono); font-weight: 700; color: #fbbf24; white-space: nowrap;">
-                          ${escapeHtml(action.estimated_cost || '$0')}
+                          ${escapeHtml(action.estimated_cost != null && action.estimated_cost !== '' ? action.estimated_cost : 'Not estimated')}
                         </td>
                       </tr>
                     `).join('')}

@@ -76,12 +76,12 @@ export async function renderSessionExecution(rootElement, params, router) {
       const isCurrentPlanVersion = Boolean(
         plan.plan_id &&
         approval.plan_version === (plan.version || 1) &&
-        (!approval.plan_hash || !plan.plan_hash || approval.plan_hash === plan.plan_hash)
+        (approval.plan_hash && plan.plan_hash ? approval.plan_hash === plan.plan_hash : true)
       );
 
       // 3. Successful Governance Validation
       const isGovernanceValid = Boolean(
-        validation.is_valid === true && (validation.compliance_score ?? 1.0) >= 0.85
+        validation.is_valid === true && (typeof validation.compliance_score === 'number' ? validation.compliance_score >= 0.85 : true)
       );
 
       // 4. Required Evidence
@@ -241,7 +241,7 @@ export async function renderSessionExecution(rootElement, params, router) {
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary);">
                   ${isGovernanceValid
-                    ? `Governance checks verified (Score: ${Math.round((validation.compliance_score ?? 1) * 100)}%)`
+                    ? `Governance checks verified (Score: ${typeof validation.compliance_score === 'number' ? Math.round(validation.compliance_score * 100) + '%' : 'Unavailable'})`
                     : `Validation failed: ${escapeHtml((validation.risk_flags || ['Unresolved risk flags']).join(', '))}`}
                 </div>
               </div>
@@ -332,7 +332,7 @@ export async function renderSessionExecution(rootElement, params, router) {
             <div class="card" style="padding: 1.15rem;">
               <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Total Plan Cost</div>
               <div style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 700; color: var(--emerald); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${escapeHtml(plan.estimated_cost || '$12,500 total')}
+                ${escapeHtml(plan.estimated_cost || 'Not estimated')}
               </div>
             </div>
           </div>
@@ -403,8 +403,17 @@ export async function renderSessionExecution(rootElement, params, router) {
                             </span>
                             <!-- estimated_cost -->
                             <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.725rem;">
-                              💰 ${escapeHtml(task.estimated_cost || '$0')}
+                              💰 ${escapeHtml(task.estimated_cost != null && task.estimated_cost !== '' ? task.estimated_cost : 'Not estimated')}
                             </span>
+                            ${task.is_mock === true ? `
+                              <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.725rem;">
+                                ⚠️ Simulation / Mock
+                              </span>
+                            ` : task.is_mock === false ? `
+                              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.725rem;">
+                                Live Dispatch
+                              </span>
+                            ` : ''}
                           </div>
 
                           <!-- description -->
@@ -460,7 +469,7 @@ export async function renderSessionExecution(rootElement, params, router) {
                             Estimated Cost
                           </div>
                           <div style="font-weight: 600; color: var(--emerald); font-size: 0.85rem;">
-                            ${escapeHtml(task.estimated_cost || '$0')}
+                            ${escapeHtml(task.estimated_cost != null && task.estimated_cost !== '' ? task.estimated_cost : 'Not estimated')}
                           </div>
                         </div>
 
@@ -501,7 +510,7 @@ export async function renderSessionExecution(rootElement, params, router) {
 
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
                           <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.725rem;">
-                            Idempotency: ${escapeHtml((task.idempotency_key || `idem_${task.task_id}`).slice(0, 18))}...
+                            Idempotency: ${escapeHtml(task.idempotency_key ? task.idempotency_key.slice(0, 18) + '...' : 'Unspecified')}
                           </span>
                         </div>
                       </div>

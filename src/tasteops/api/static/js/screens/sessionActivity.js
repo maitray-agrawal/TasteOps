@@ -492,14 +492,14 @@ function renderAgentSpecificOutputSummary(agent) {
       <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
         <div>
           <span style="color: var(--text-muted); font-weight: 600;">Provenance Verified:</span>
-          <span style="color: ${out.provenance_verified ? '#34d399' : '#f87171'}; font-weight: 700; margin-left: 0.4rem;">
-            ${out.provenance_verified ? '✓ 100% Traceable' : 'Audit Incomplete'}
+          <span style="color: ${out.provenance_verified === true ? '#34d399' : (out.provenance_verified === false ? '#f87171' : 'var(--text-muted)')}; font-weight: 700; margin-left: 0.4rem;">
+            ${out.provenance_verified === true ? '✓ Traceable' : (out.provenance_verified === false ? 'Unverified' : 'Unavailable')}
           </span>
         </div>
         <div>
           <span style="color: var(--text-muted); font-weight: 600;">Compliance Score:</span>
           <span style="color: var(--cyan); font-weight: 700; font-family: var(--font-mono); margin-left: 0.4rem;">
-            ${((out.compliance_score !== undefined ? out.compliance_score : 1.0) * 100).toFixed(0)}%
+            ${typeof out.compliance_score === 'number' ? `${(out.compliance_score * 100).toFixed(0)}%` : 'Unavailable'}
           </span>
         </div>
         <div>

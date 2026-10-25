@@ -247,3 +247,153 @@ def test_reject_session_flow(ui_test_client):
     failed_data = reject_resp.json()
     assert failed_data["current_state"] == WorkflowState.FAILED.value
     assert "Sonic profile conflicts" in failed_data["error_message"]
+
+
+# =============================================================================
+# 5. Frontend & Backend Data Integrity Regression Tests (Phase 5)
+# =============================================================================
+def test_frontend_integrity_no_fabricated_verifications_or_merkle_claims():
+    """Verifies frontend code does not fabricate audit verification or Merkle claims."""
+    static_root = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "tasteops"
+        / "api"
+        / "static"
+        / "js"
+    )
+    api_client_text = (static_root / "apiClient.js").read_text(encoding="utf-8")
+    ledger_text = (static_root / "screens" / "sessionLedger.js").read_text(
+        encoding="utf-8"
+    )
+
+    # 1. No unconditional is_verified: true or synthetic sha256:<event_id>
+    assert "is_verified: true" not in api_client_text
+    assert "sha256:${events[0]" not in api_client_text
+    assert "SHA-256 (Merkle / Chained Digests)" not in api_client_text
+
+    # 2. Must return explicit unavailable verification state
+    assert "status: 'UNAVAILABLE'" in api_client_text
+    assert "is_verified: false" in api_client_text
+
+    # 3. Ledger UI must clearly state stored audit log when hash-chain is unavailable
+    assert "STORED AUDIT LOG (HASH-CHAIN UNAVAILABLE)" in ledger_text
+    assert (
+        "Cryptographic hash-chain and Merkle ledger verification are not currently supported"
+        in ledger_text
+    )
+
+
+def test_frontend_integrity_no_fabricated_confidence_or_affinity_defaults():
+    """Verifies that missing confidence and affinity scores remain unavailable rather than defaulted."""
+    static_root = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "tasteops"
+        / "api"
+        / "static"
+        / "js"
+    )
+
+    blueprint_text = (static_root / "screens" / "sessionBlueprint.js").read_text(
+        encoding="utf-8"
+    )
+    detail_text = (static_root / "screens" / "sessionDetail.js").read_text(
+        encoding="utf-8"
+    )
+    api_client_text = (static_root / "apiClient.js").read_text(encoding="utf-8")
+
+    # No fabricated confidence: 1.0 or 0.92/0.95 defaults
+    assert "confidence: 1.0" not in api_client_text
+    assert "affinity_score: 1.0" not in api_client_text
+    assert "blueprint.confidence : 0.92" not in blueprint_text
+    assert "ent.confidence || 1.0" not in detail_text
+    assert "ct.confidence : 1.0" not in detail_text
+    assert "qloo_sig_verified" not in blueprint_text
+
+
+def test_frontend_integrity_no_fabricated_costs_or_mock_status():
+    """Verifies missing costs are never represented as genuine $0 or fake budgets, and mock status is not hardcoded."""
+    static_root = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "tasteops"
+        / "api"
+        / "static"
+        / "js"
+    )
+
+    api_client_text = (static_root / "apiClient.js").read_text(encoding="utf-8")
+    blueprint_text = (static_root / "screens" / "sessionBlueprint.js").read_text(
+        encoding="utf-8"
+    )
+    approval_text = (static_root / "screens" / "sessionApproval.js").read_text(
+        encoding="utf-8"
+    )
+    exec_text = (static_root / "screens" / "sessionExecution.js").read_text(
+        encoding="utf-8"
+    )
+
+    # apiClient must not hardcode is_mock: false
+    assert "is_mock: false" not in api_client_text
+
+    # No fallback $150,000 USD or universal $0 fallback for unknown costs
+    assert "blueprint.estimated_cost || '$150,000 USD'" not in blueprint_text
+    assert "session.plan?.estimated_cost || '$150,000 USD'" not in approval_text
+    assert "plan.estimated_cost || '$12,500 total'" not in exec_text
+    assert "task.estimated_cost || '$0'" not in exec_text
+
+
+def test_frontend_integrity_authoritative_approval_derivation(ui_test_client):
+    """Verifies approval state derivation strictly depends on authoritative backend state."""
+    static_root = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "tasteops"
+        / "api"
+        / "static"
+        / "js"
+    )
+    api_client_text = (static_root / "apiClient.js").read_text(encoding="utf-8")
+
+    # Authoritative derivation in _normalizeSession
+    assert "isAuthoritativelyApproved" in api_client_text
+    assert "context.approval.is_valid && context.approval.plan_hash" in api_client_text
+
+    # Verify backend approval gate rejects premature execution
+    resp = ui_test_client.post(
+        "/api/v1/sessions",
+        json={"raw_intent": "Auditing approval gate security boundary."},
+    )
+    session_id = resp.json()["session_id"]
+    ui_test_client.post(f"/api/v1/sessions/{session_id}/pipeline", json={})
+
+    # Cannot execute while in AWAITING_APPROVAL even if client simulates approval
+    exec_attempt = ui_test_client.post(
+        f"/api/v1/sessions/{session_id}/execute", json={}
+    )
+    assert exec_attempt.status_code == 400
+
+
+def test_audit_events_are_stored_logs_not_fabricated_merkle_digests(ui_test_client):
+    """Verifies audit events use real event IDs (evt_...) and do not fabricate cryptographic hash chaining."""
+    resp = ui_test_client.post(
+        "/api/v1/sessions",
+        json={"raw_intent": "Verify audit log integrity without synthetic hashes."},
+    )
+    session_id = resp.json()["session_id"]
+    ui_test_client.post(f"/api/v1/sessions/{session_id}/pipeline", json={})
+
+    audit_resp = ui_test_client.get(f"/api/v1/sessions/{session_id}/audit")
+    assert audit_resp.status_code == 200
+    events = audit_resp.json()
+    assert len(events) > 0
+
+    for ev in events:
+        event_id = ev["event_id"]
+        # Event IDs are UUID-based prefixed identifiers, NOT SHA-256 digests
+        assert event_id.startswith("evt_")
+        assert len(event_id) != 64  # Not a 64-character SHA-256 hex string
+        # Backend does not provide fake verification_hash or Merkle root
+        assert "verification_hash" not in ev
+        assert "merkle_root" not in ev

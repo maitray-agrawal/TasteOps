@@ -78,7 +78,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
       const budget = blueprint.budget_considerations || {};
       const risks = blueprint.risks || [];
       const evidence = blueprint.evidence || [];
-      const confidence = blueprint.confidence !== undefined ? blueprint.confidence : 0.92;
+      const confidence = typeof blueprint.confidence === 'number' ? blueprint.confidence : null;
       const actions = blueprint.execution_actions || [];
       const zones = blueprint.spatial_zones || expConcept.spatial_zones || [];
       const soundscape = blueprint.soundscape_design || expConcept.soundscape_design || {};
@@ -133,16 +133,16 @@ export async function renderSessionBlueprint(rootElement, params, router) {
               <!-- Cryptographic Hash -->
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Plan Signature:</span>
-                <span class="hash-pill" style="font-size: 0.75rem; font-family: var(--font-mono); color: #34d399;">
-                  🔒 ${escapeHtml((blueprint.plan_hash || 'SHA-256 Verified').slice(0, 18))}...
+                <span class="hash-pill" style="font-size: 0.75rem; font-family: var(--font-mono); color: ${blueprint.plan_hash ? '#34d399' : 'var(--text-muted)'};">
+                  ${blueprint.plan_hash ? `🔒 ${escapeHtml(blueprint.plan_hash.slice(0, 18))}...` : 'Pending approval sign-off'}
                 </span>
               </div>
 
               <!-- Signal Confidence -->
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Signal Confidence:</span>
-                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-weight: 700; font-family: var(--font-mono);">
-                  ${(confidence * 100).toFixed(0)}% Verified
+                <span class="badge" style="background: ${confidence !== null ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)'}; color: ${confidence !== null ? '#34d399' : 'var(--text-muted)'}; font-weight: 700; font-family: var(--font-mono);">
+                  ${confidence !== null ? `${(confidence * 100).toFixed(0)}% Model Confidence` : 'Unavailable'}
                 </span>
               </div>
 
@@ -150,7 +150,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Budget Target:</span>
                 <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-family: var(--font-mono);">
-                  💰 ${escapeHtml(budget.estimated_cost || blueprint.estimated_cost || '$150,000 USD')}
+                  💰 ${escapeHtml(budget.estimated_cost || blueprint.estimated_cost || 'Not estimated')}
                 </span>
               </div>
             </div>
@@ -388,23 +388,24 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                     🎧 Vetted Audio Recommendations (Qloo Grounded)
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem;">
-                    ${((soundscape.curated_recommendations && soundscape.curated_recommendations.length > 0) ? soundscape.curated_recommendations : [
-                      { recommendation: 'Ryuichi Sakamoto', expected_role: 'Signature twilight acoustic ambient rotation', confidence: 0.95 },
-                      { recommendation: 'Midori Takada', expected_role: 'Morning analog percussion focus', confidence: 0.92 }
-                    ]).map(rec => {
+                    ${(soundscape.curated_recommendations && soundscape.curated_recommendations.length > 0) ? soundscape.curated_recommendations.map(rec => {
                       const rTitle = rec.recommendation || rec.title || 'Artist';
                       return `
                         <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.6rem 0.85rem; display: flex; align-items: center; justify-content: space-between;">
                           <div>
                             <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">${escapeHtml(rTitle)}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(rec.expected_role || 'Lossless vinyl rotation')}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(rec.expected_role || 'Acoustic rotation')}</div>
                           </div>
                           <button class="btn btn-secondary btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="window.tasteopsInspectProvenance('${escapeHtml(rTitle)}')">
                             <span>❓ Why?</span>
                           </button>
                         </div>
                       `;
-                    }).join('')}
+                    }).join('') : `
+                      <div style="font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0;">
+                        No audio recommendations recorded in blueprint.
+                      </div>
+                    `}
                   </div>
                 </div>
               </div>
@@ -514,7 +515,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
             <div style="padding-top: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">
               ${partnerships.map(p => {
                 const bName = p.brand || p.partner_name || p.name || 'Brand Partner';
-                const score = p.score || ((p.affinity_score || 0.88) * 100);
+                const score = typeof p.score === 'number' ? p.score : (typeof p.affinity_score === 'number' ? p.affinity_score * 100 : null);
                 const breakdown = p.score_breakdown || {};
                 return `
                   <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
@@ -527,13 +528,13 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                             <span class="hash-pill" style="color: var(--amber); font-size: 0.75rem;">${escapeHtml(p.category || 'Partner')}</span>
                           </div>
                           <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
-                            ID: ${escapeHtml(p.brand_entity_id || p.partner_entity_id || 'qloo_brand')}
+                            ID: ${escapeHtml(p.brand_entity_id || p.partner_entity_id || 'Unspecified')}
                           </div>
                         </div>
                         <div style="text-align: right;">
                           <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted);">Composite Fit</div>
-                          <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: #34d399;">
-                            ${score.toFixed(0)}/100
+                          <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: ${score !== null ? '#34d399' : 'var(--text-muted)'};">
+                            ${score !== null ? `${score.toFixed(0)}/100` : 'Unavailable'}
                           </div>
                         </div>
                       </div>
@@ -604,7 +605,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                 <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem;">
                   <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Total Capital Allocation:</span>
                   <span style="font-family: var(--font-mono); font-size: 1.35rem; font-weight: 700; color: #fbbf24;">
-                    ${escapeHtml(budget.estimated_cost || '$150,000 USD')}
+                    ${escapeHtml(budget.estimated_cost || blueprint.estimated_cost || 'Not estimated')}
                   </span>
                 </div>
                 <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1.25rem;">
@@ -618,7 +619,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                     ${budget.action_costs.slice(0, 5).map(ac => `
                       <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
                         <span style="color: var(--text-primary);">${escapeHtml(ac.title || ac.action_id)}</span>
-                        <span style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24;">${escapeHtml(ac.cost)}</span>
+                        <span style="font-family: var(--font-mono); font-weight: 700; color: #fbbf24;">${escapeHtml(ac.cost || 'Unspecified')}</span>
                       </div>
                     `).join('')}
                   </div>
@@ -668,25 +669,28 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                   </div>
                 </div>
               </div>
-              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">🔬 100% VERIFIED SIGNATURES</span>
+              <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">🔬 ${evidence.length > 0 ? `${evidence.length} Retrieved Entities` : '0 Entities Recorded'}</span>
             </div>
 
             <div style="padding-top: 1.25rem;">
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
-                ${evidence.slice(0, 8).map(ev => `
+                ${evidence.slice(0, 8).map(ev => {
+                  const evScore = typeof ev.affinity === 'number' ? `${(ev.affinity * 100).toFixed(0)}% Affinity` : (typeof ev.confidence === 'number' ? `${(ev.confidence * 100).toFixed(0)}% Confidence` : 'Affinity Unavailable');
+                  return `
                   <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem;">
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.35rem;">
-                      <span style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">${escapeHtml(ev.name || ev.entity_id)}</span>
-                      <span class="hash-pill" style="font-size: 0.7rem; color: #34d399;">${((ev.affinity || ev.confidence || 0.9) * 100).toFixed(0)}% Affinity</span>
+                      <span style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">${escapeHtml(ev.name || ev.entity_id || 'Entity')}</span>
+                      <span class="hash-pill" style="font-size: 0.7rem; color: ${ev.affinity != null || ev.confidence != null ? '#34d399' : 'var(--text-muted)'};">${escapeHtml(evScore)}</span>
                     </div>
                     <div style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.35rem;">
-                      ${escapeHtml(ev.entity_id || 'qloo_id')}
+                      ${escapeHtml(ev.entity_id || 'Unspecified ID')}
                     </div>
                     <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
                       ${escapeHtml(ev.why_it_matters || 'Ground-truth cultural intelligence signal.')}
                     </div>
                   </div>
-                `).join('')}
+                `;
+                }).join('')}
               </div>
             </div>
           </div>
@@ -767,17 +771,17 @@ function renderProvenanceModal(item) {
             <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 700;">
               🔬 1. GROUND-TRUTH EVIDENCE
             </span>
-            <span style="font-size: 0.75rem; color: #34d399; font-family: var(--font-mono);">
-              ${((ev.affinity || 0.9) * 100).toFixed(0)}% Affinity Overlap
+            <span style="font-size: 0.75rem; color: ${typeof ev.affinity === 'number' ? '#34d399' : 'var(--text-muted)'}; font-family: var(--font-mono);">
+              ${typeof ev.affinity === 'number' ? `${(ev.affinity * 100).toFixed(0)}% Affinity Overlap` : (typeof ev.confidence === 'number' ? `${(ev.confidence * 100).toFixed(0)}% Confidence` : 'Affinity Unavailable')}
             </span>
           </div>
           <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.5rem;">
             Retrieved directly from Qloo Cultural AI database via verified search and matrix affinity endpoints.
           </div>
           <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);">
-            <div><strong>Entity Signature:</strong> ${escapeHtml(ev.entity_id || 'qloo_sig_verified')}</div>
-            <div><strong>Source Query:</strong> ${escapeHtml(ev.source || 'https://hackathon.api.qloo.com/v2/insights')}</div>
-            <div><strong>URN / Type:</strong> ${escapeHtml(ev.urn || 'urn:qloo:entity')}</div>
+            <div><strong>Entity Signature:</strong> ${escapeHtml(ev.entity_id || 'Unspecified')}</div>
+            <div><strong>Source Query:</strong> ${escapeHtml(ev.source || ev.source_query || 'Unspecified')}</div>
+            <div><strong>URN / Type:</strong> ${escapeHtml(ev.urn || 'Unspecified')}</div>
           </div>
         </div>
 

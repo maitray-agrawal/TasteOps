@@ -222,8 +222,8 @@ export async function renderSessionDetail(rootElement, params, router) {
                             </div>
                             <div style="text-align: right; flex-shrink: 0;">
                               <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Confidence</div>
-                              <div style="font-weight: 700; color: #34d399; font-size: 1.1rem; font-family: var(--font-mono);">
-                                ${((ent.confidence || 1.0) * 100).toFixed(0)}%
+                              <div style="font-weight: 700; color: ${typeof ent.confidence === 'number' ? '#34d399' : 'var(--text-muted)'}; font-size: 1.1rem; font-family: var(--font-mono);">
+                                ${typeof ent.confidence === 'number' ? `${(ent.confidence * 100).toFixed(0)}%` : 'Unavailable'}
                               </div>
                             </div>
                           </div>
@@ -358,8 +358,8 @@ export async function renderSessionDetail(rootElement, params, router) {
                 </div>
                 <div style="text-align: right;">
                   <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Overall Confidence</div>
-                  <div style="font-weight: 700; color: #a5b4fc; font-size: 1.25rem; font-family: var(--font-mono);">
-                    ${((ct.confidence !== undefined ? ct.confidence : 1.0) * 100).toFixed(0)}%
+                  <div style="font-weight: 700; color: ${typeof ct.confidence === 'number' ? '#a5b4fc' : 'var(--text-muted)'}; font-size: 1.25rem; font-family: var(--font-mono);">
+                    ${typeof ct.confidence === 'number' ? `${(ct.confidence * 100).toFixed(0)}%` : 'Unavailable'}
                   </div>
                 </div>
               </div>
@@ -532,13 +532,13 @@ export async function renderSessionDetail(rootElement, params, router) {
                     <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
                       <span>🧭</span> Cultural Strategist
                     </div>
-                    ${renderAgentStatusBadge(session.agent_summaries?.cultural_strategist?.status || 'COMPLETED')}
+                    ${renderAgentStatusBadge(session.agent_summaries?.cultural_strategist?.status || 'PENDING')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
                     ${escapeHtml(session.agent_summaries?.cultural_strategist?.output_summary?.decisions || 'Translates brief into Cultural Twin, resolves anchor terms in Qloo.')}
                   </div>
                   <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-                    Duration: ${escapeHtml(session.agent_summaries?.cultural_strategist?.duration || '0.15s')}
+                    Duration: ${escapeHtml(session.agent_summaries?.cultural_strategist?.duration || 'Not recorded')}
                   </div>
                 </div>
 
@@ -548,13 +548,13 @@ export async function renderSessionDetail(rootElement, params, router) {
                     <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
                       <span>📐</span> Experience Architect
                     </div>
-                    ${renderAgentStatusBadge(session.agent_summaries?.experience_architect?.status || 'COMPLETED')}
+                    ${renderAgentStatusBadge(session.agent_summaries?.experience_architect?.status || 'PENDING')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
                     ${escapeHtml(session.agent_summaries?.experience_architect?.output_summary?.decisions || 'Synthesizes spatial zones, acoustic identity, and sensory atmospheres.')}
                   </div>
                   <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-                    Duration: ${escapeHtml(session.agent_summaries?.experience_architect?.duration || '0.18s')}
+                    Duration: ${escapeHtml(session.agent_summaries?.experience_architect?.duration || 'Not recorded')}
                   </div>
                 </div>
 
@@ -564,13 +564,13 @@ export async function renderSessionDetail(rootElement, params, router) {
                     <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
                       <span>🤝</span> Partnership Agent
                     </div>
-                    ${renderAgentStatusBadge(session.agent_summaries?.partnership_agent?.status || 'COMPLETED')}
+                    ${renderAgentStatusBadge(session.agent_summaries?.partnership_agent?.status || 'PENDING')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
                     ${escapeHtml(session.agent_summaries?.partnership_agent?.output_summary?.decisions || 'Curates high-affinity brand and artist partnerships with commercial tiering.')}
                   </div>
                   <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-                    Duration: ${escapeHtml(session.agent_summaries?.partnership_agent?.duration || '0.14s')}
+                    Duration: ${escapeHtml(session.agent_summaries?.partnership_agent?.duration || 'Not recorded')}
                   </div>
                 </div>
 
@@ -580,13 +580,13 @@ export async function renderSessionDetail(rootElement, params, router) {
                     <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
                       <span>⚖️</span> Governance / Execution Agent
                     </div>
-                    ${renderAgentStatusBadge(session.agent_summaries?.governance_agent?.status || 'AWAITING_APPROVAL')}
+                    ${renderAgentStatusBadge(session.agent_summaries?.governance_agent?.status || 'PENDING')}
                   </div>
                   <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
                     ${escapeHtml(session.agent_summaries?.governance_agent?.output_summary?.decisions || 'Audited provenance against Qloo signatures, enforced approval gate.')}
                   </div>
                   <div style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-                    Duration: ${escapeHtml(session.agent_summaries?.governance_agent?.duration || '0.08s')}
+                    Duration: ${escapeHtml(session.agent_summaries?.governance_agent?.duration || 'Not recorded')}
                   </div>
                 </div>
               </div>
@@ -606,7 +606,7 @@ export async function renderSessionDetail(rootElement, params, router) {
               <div style="margin-bottom: 1rem;">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Provenance Chain</div>
                 <div style="color: #34d399; font-weight: 600; font-size: 0.9rem;">
-                  ${session.validation?.provenance_verified ? '✓ 100% Entities Provenance Verified' : 'Audit Incomplete'}
+                  ${session.validation?.provenance_verified === true ? '✓ Provenance Verified' : (session.validation?.provenance_verified === false ? 'Provenance Unverified' : 'Audit Incomplete')}
                 </div>
               </div>
 
@@ -621,8 +621,8 @@ export async function renderSessionDetail(rootElement, params, router) {
 
               <div style="padding-top: 1rem; border-top: 1px solid var(--border-subtle);">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">Cryptographic Plan Binding</div>
-                <div class="hash-pill" style="font-size: 0.75rem; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  ${escapeHtml(session.approval_state?.plan_hash || session.execution_plan?.plan_hash || 'SHA-256 bound')}
+                <div class="hash-pill" style="font-size: 0.75rem; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: ${session.approval_state?.plan_hash || session.execution_plan?.plan_hash ? '#34d399' : 'var(--text-muted)'};">
+                  ${escapeHtml(session.approval_state?.plan_hash || session.execution_plan?.plan_hash || 'Unsigned')}
                 </div>
               </div>
             </div>
