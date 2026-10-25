@@ -177,6 +177,9 @@ class SessionEventsResponse(BaseModel):
     history: list[dict[str, Any]] = Field(
         default_factory=list, description="State transition progression history"
     )
+    verification_status: dict[str, Any] | None = Field(
+        default=None, description="Cryptographic hash-chain and provenance verification status"
+    )
 
 
 class SessionBlueprintResponse(BaseModel):

@@ -20,6 +20,7 @@ export const ENDPOINTS = Object.freeze({
   SESSION_APPROVE: (id) => `/sessions/${encodeURIComponent(id)}/approve`,
   SESSION_REJECT: (id) => `/sessions/${encodeURIComponent(id)}/reject`,
   SESSION_EXECUTE: (id) => `/sessions/${encodeURIComponent(id)}/execute`,
+  SESSION_LEDGER_VERIFY: (id) => `/sessions/${encodeURIComponent(id)}/ledger/verify`,
   HEALTH: '/health',
   READY: '/ready',
 });
@@ -149,6 +150,11 @@ export class TasteOpsAPIClient {
   async getSessionEvents(sessionId) {
     if (!sessionId) throw new Error('Session ID is required');
     return this._fetch(ENDPOINTS.SESSION_EVENTS(sessionId), { method: 'GET' });
+  }
+
+  async verifySessionLedger(sessionId) {
+    if (!sessionId) throw new Error('Session ID is required');
+    return this._fetch(ENDPOINTS.SESSION_LEDGER_VERIFY(sessionId), { method: 'GET' });
   }
 
   async getSessionBlueprint(sessionId) {

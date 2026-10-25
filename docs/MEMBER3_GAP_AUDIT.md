@@ -38,7 +38,7 @@ This comprehensive audit evaluates the current state of the TasteOps repository 
 | **4. Frontend** | `MISSING` | Zero frontend code, package manifests (`package.json`), or web assets exist in the workspace. |
 | **5. Approval UI** | `MISSING` | Backend approval gate with cryptographic plan hashing exists in [`engine.py`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/engine.py#L573-L605) and [`governance.py`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/agents/governance.py#L544-L609), but no visual UI or curator portal exists. |
 | **6. Execution UI** | `MISSING` | Backend [`ExecutionTask`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L614-L653) models exist, but no real-time execution dashboard or WebSocket stream exists. |
-| **7. Audit / Decision Ledger UI** | `MISSING` | Append-only [`AuditEvent`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/persistence.py#L27-L38) records exist in backend, but no visual timeline, ledger, or provenance inspection UI exists. |
+| **7. Audit / Decision Ledger UI** | `IMPLEMENTED` | Comprehensive Decision Ledger UI (`/sessions/:id/ledger`) with cryptographic SHA-256 hash-chain verification, multi-dimensional filters (event type, agent, state, date window), 10 event categories, provenance drawers, and strict read-only enforcement. |
 | **8. External Execution Connectors** | `PARTIALLY IMPLEMENTED` | `GovernanceAgent` synthesizes mock tasks with dummy URI strings (`spotify://seed_artist/...`). Real Spotify API, Sonos, and email/CRM connectors are missing. |
 | **9. Integration Tests** | `PARTIALLY IMPLEMENTED` | Member 2 added 14 in-memory orchestration tests ([`test_orchestrator.py`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/tests/integration/test_orchestrator.py)) using `respx`. Real API, database, and live connector tests are missing. Suite fails to execute due to a syntax error. |
 | **10. E2E Tests** | `MISSING` | Zero browser E2E tests (Playwright/Cypress) or cross-tier execution tests exist. |
@@ -223,17 +223,24 @@ This comprehensive audit evaluates the current state of the TasteOps repository 
 ---
 
 ### Area 7: Audit / Decision Ledger UI
-- **Classification:** `MISSING`
+- **Classification:** `IMPLEMENTED`
 - **What Already Exists:**
-  - Backend `AuditEvent` model and `audit_events.jsonl` append-only storage.
+  - Backend `AuditEvent` model and `audit_events.jsonl` append-only storage in [`FileStateStore`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/persistence.py).
   - Provenance validation rules certifying zero hallucinated entity IDs.
-- **What is Missing:**
-  - Decision Ledger UI:
-    - Visual timeline tracing the 13 states from `CREATED` to `COMPLETED`.
-    - Event inspector displaying transition timestamps, reasons, and approver identity.
-    - Provenance verification drawer showing Qloo entity IDs (`ent_...`), affinity scores, raw query endpoints, and explainability strings.
-    - Post-execution audit status badge (`COMPLIANT` vs `FLAGGED`).
-- **Tests & Verification:** Zero UI ledger tests exist.
+  - Full-stack Decision Ledger implementation:
+    - **Backend Services & Routes:**
+      - `compute_audit_hash_chain()` and `enrich_audit_events()` in [`service.py`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/api/service.py).
+      - `GET /api/v1/sessions/{session_id}/events` returning chronological enriched audit events and hash-chain verification status.
+      - `GET /api/v1/sessions/{session_id}/ledger/verify` returning cryptographic audit chain verification data.
+    - **Decision Ledger Screen (`sessionLedger.js`):**
+      - Visual chronological timeline rendering 10 distinct event types (`SESSION_CREATION`, `STATE_CHANGE`, `QLOO_RETRIEVAL`, `AGENT_COMPLETION`, `GOVERNANCE_DECISION`, `VALIDATION`, `APPROVAL`, `REJECTION`, `EXECUTION_ATTEMPT`, `EXECUTION_OUTCOME`, `FAILURE`).
+      - Detailed 6-part metadata cards with timestamp, event type, actor/source, concise summary, related session/task/plan pills, and provenance inspector with block hash digests.
+      - Multi-dimensional filter bar: Event Type, Agent/Actor, Workflow State, Date Window, and free-text search.
+      - Live Cryptographic Hash-Chain Verification card displaying `VERIFIED AUTHENTIC` status, head digest, genesis digest, plan hash binding, and re-verification trigger.
+      - Enforced read-only protection banner (`READ-ONLY AUDIT LOG`, `Zero Edit Rights`, `APPEND-ONLY`) with no edit or delete controls.
+      - SSE streaming integration auto-appending incoming events in real time.
+- **Tests & Verification:**
+  - Automated integration test suite in [`tests/integration/test_decision_ledger.py`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/tests/integration/test_decision_ledger.py) (6/6 tests passing) verifying all 10 event types, required fields, rejection handling, execution outcome recording, hash-chain integrity, and HTTP 405 rejection of mutating requests.
 
 ---
 

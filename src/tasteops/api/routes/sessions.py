@@ -791,21 +791,35 @@ async def get_session(session_id: str, service: ServiceDep) -> SessionDetailResp
 async def get_session_events(
     session_id: str, service: ServiceDep
 ) -> SessionEventsResponse:
+    ctx = service.get_session(session_id)
     audit_events, history = service.get_session_events(session_id)
-    serialized_events = [
-        evt.model_dump() if hasattr(evt, "model_dump") else dict(evt)
-        for evt in audit_events
-    ]
+    verification_status, hashes = service.compute_audit_hash_chain(audit_events, ctx)
+    enriched_events = service.enrich_audit_events(ctx, audit_events, hashes)
     serialized_history = [
         h.model_dump() if hasattr(h, "model_dump") else dict(h) for h in history
     ]
 
     return SessionEventsResponse(
         session_id=session_id,
-        total_events=len(serialized_events),
-        events=serialized_events,
+        total_events=len(enriched_events),
+        events=enriched_events,
         history=serialized_history,
+        verification_status=verification_status,
     )
+
+
+@router.get(
+    "/{session_id}/ledger/verify",
+    status_code=status.HTTP_200_OK,
+    summary="Verify Audit Ledger Hash Chain",
+    description="Validates cryptographic hash-chain integrity of the append-only audit ledger and plan hashes.",
+    responses={404: {"description": "Session not found"}},
+)
+async def verify_session_ledger(
+    session_id: str,
+    service: ServiceDep,
+) -> dict[str, Any]:
+    return service.verify_audit_chain(session_id)
 
 
 @router.get(
