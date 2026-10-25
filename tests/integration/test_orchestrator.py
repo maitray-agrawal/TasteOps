@@ -28,6 +28,7 @@ from tasteops.agents.governance import (
     ProvenanceValidationError,
     UnapprovedExecutionError,
 )
+from tasteops.connectors import create_configured_mock_registry
 from tasteops.models.cultural_matrix import (
     CulturalMatrix,
     CulturalRecommendation,
@@ -83,7 +84,10 @@ def mock_mumbai_respx():
 async def test_01_complete_workflow(mock_mcp_adapter, mock_mumbai_respx):
     """Test full sequential lifecycle from creation to approval, execution, and completion."""
     adapter, _, _, _ = mock_mcp_adapter
-    orchestrator = TasteOpsOrchestrator(mcp_adapter=adapter)
+    orchestrator = TasteOpsOrchestrator(
+        mcp_adapter=adapter,
+        connector_registry=create_configured_mock_registry(),
+    )
 
     # Step 1: Create session
     ctx = orchestrator.create_session(
@@ -345,7 +349,10 @@ async def test_07_successful_approval(mock_mcp_adapter, mock_mumbai_respx):
 async def test_08_execution(mock_mcp_adapter, mock_mumbai_respx):
     """Test Execution dispatches tasks with full provenance and reaches COMPLETED."""
     adapter, _, _, _ = mock_mcp_adapter
-    orchestrator = TasteOpsOrchestrator(mcp_adapter=adapter)
+    orchestrator = TasteOpsOrchestrator(
+        mcp_adapter=adapter,
+        connector_registry=create_configured_mock_registry(),
+    )
 
     ctx = orchestrator.create_session(MUMBAI_DEMO_RAW_INTENT, hints=MUMBAI_DEMO_HINTS)
     await orchestrator.run_until_approval(ctx.session_id)
@@ -367,7 +374,10 @@ async def test_08_execution(mock_mcp_adapter, mock_mumbai_respx):
 async def test_09_duplicate_execution(mock_mcp_adapter, mock_mumbai_respx):
     """Test Duplicate execution returns previous result and avoids duplicate dispatch."""
     adapter, _, _, _ = mock_mcp_adapter
-    orchestrator = TasteOpsOrchestrator(mcp_adapter=adapter)
+    orchestrator = TasteOpsOrchestrator(
+        mcp_adapter=adapter,
+        connector_registry=create_configured_mock_registry(),
+    )
 
     ctx = orchestrator.create_session(MUMBAI_DEMO_RAW_INTENT, hints=MUMBAI_DEMO_HINTS)
     await orchestrator.run_until_approval(ctx.session_id)

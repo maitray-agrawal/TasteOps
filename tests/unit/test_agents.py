@@ -728,7 +728,9 @@ async def test_governance_agent_executes_tasks_with_provenance_and_audit(
         )
     )
 
-    governance = GovernanceAgent()
+    from tasteops.connectors import create_configured_mock_registry
+
+    governance = GovernanceAgent(connector_registry=create_configured_mock_registry())
     gov_input = GovernanceValidationInput(
         cultural_twin=sample_twin,
         cultural_matrix=sample_curated_matrix,
