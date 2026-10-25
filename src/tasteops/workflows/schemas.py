@@ -774,6 +774,10 @@ class CulturalActivationPlan(BaseModel):
         description="Pre-approval execution plan with actions, dependencies, and cost",
     )
     execution_summary: ExecutionSummary | None = None
+    agent_telemetry: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Per-agent execution timing, entity counts, status, and validation metrics",
+    )
 
     def compute_hash(self) -> str:
         """Computes a deterministic hash of substantive plan content to detect mutations."""

@@ -6,6 +6,8 @@
 import { apiClient } from '../apiClient.js';
 
 export async function renderSavedSpaces(rootElement, params, router) {
+  const customSpaces = await apiClient.listSpaces();
+
   rootElement.innerHTML = `
     <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
       <!-- Header -->
@@ -31,7 +33,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
         <div class="card" style="padding: 2.25rem; display: flex; flex-direction: column;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
             <div>
-              <span class="status-badge status-completed" style="font-size: 0.72rem; margin-bottom: 0.5rem;">Active Activation</span>
+              <span class="status-badge status-waiting" style="font-size: 0.72rem; margin-bottom: 0.5rem;">Reference Preset</span>
               <h3 style="font-family: var(--font-serif); font-size: 1.35rem; color: var(--forest-green); margin: 0.25rem 0 0 0;">
                 Austin Co-working Hub
               </h3>
@@ -39,7 +41,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
             </div>
             <div style="text-align: right;">
               <span style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--forest-green); font-weight: 700;">87%</span>
-              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Affinity</div>
+              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Sample Affinity</div>
             </div>
           </div>
 
@@ -55,7 +57,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
           </div>
 
           <div style="margin-top: auto; padding-top: 1.25rem; border-top: 1px solid var(--warm-stone-light); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Last sync: Today, 14:42</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Preset Model (Demo)</span>
             <a href="/home" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
               Open Workspace
             </a>
@@ -66,7 +68,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
         <div class="card" style="padding: 2.25rem; display: flex; flex-direction: column;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
             <div>
-              <span class="status-badge status-completed" style="font-size: 0.72rem; margin-bottom: 0.5rem;">Active Activation</span>
+              <span class="status-badge status-waiting" style="font-size: 0.72rem; margin-bottom: 0.5rem;">Reference Preset</span>
               <h3 style="font-family: var(--font-serif); font-size: 1.35rem; color: var(--forest-green); margin: 0.25rem 0 0 0;">
                 Shibuya Listening Lounge
               </h3>
@@ -74,7 +76,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
             </div>
             <div style="text-align: right;">
               <span style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--forest-green); font-weight: 700;">94%</span>
-              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Affinity</div>
+              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Sample Affinity</div>
             </div>
           </div>
 
@@ -89,7 +91,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
           </div>
 
           <div style="margin-top: auto; padding-top: 1.25rem; border-top: 1px solid var(--warm-stone-light); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Last sync: Yesterday</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Preset Model (Demo)</span>
             <a href="/home" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
               Open Workspace
             </a>
@@ -100,7 +102,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
         <div class="card" style="padding: 2.25rem; display: flex; flex-direction: column;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
             <div>
-              <span class="status-badge status-waiting" style="font-size: 0.72rem; margin-bottom: 0.5rem;">In Governance Review</span>
+              <span class="status-badge status-waiting" style="font-size: 0.72rem; margin-bottom: 0.5rem;">Reference Preset</span>
               <h3 style="font-family: var(--font-serif); font-size: 1.35rem; color: var(--forest-green); margin: 0.25rem 0 0 0;">
                 SoHo Concept Hotel & Lounge
               </h3>
@@ -108,7 +110,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
             </div>
             <div style="text-align: right;">
               <span style="font-family: var(--font-serif); font-size: 1.5rem; color: var(--forest-green); font-weight: 700;">89%</span>
-              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Affinity</div>
+              <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Sample Affinity</div>
             </div>
           </div>
 
@@ -123,7 +125,7 @@ export async function renderSavedSpaces(rootElement, params, router) {
           </div>
 
           <div style="margin-top: auto; padding-top: 1.25rem; border-top: 1px solid var(--warm-stone-light); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Awaiting Approval</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Preset Model (Demo)</span>
             <a href="/execution-plan" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
               Review Plan
             </a>
