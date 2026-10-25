@@ -59,6 +59,14 @@ class TestValidateSafeUrl:
         with pytest.raises(ValueError, match="SSRF Protection"):
             validate_safe_url("http://192.168.1.1/setup")
 
+    def test_ipv4_mapped_ipv6_addresses_blocked(self):
+        with pytest.raises(ValueError, match="SSRF Protection"):
+            validate_safe_url("http://[::ffff:169.254.169.254]/latest/meta-data/")
+        with pytest.raises(ValueError, match="SSRF Protection"):
+            validate_safe_url("http://[::ffff:127.0.0.1]/admin")
+        with pytest.raises(ValueError, match="SSRF Protection"):
+            validate_safe_url("http://[::ffff:10.0.0.1]/internal")
+
     def test_allow_private_flag_permits_private_ips(self):
         assert validate_safe_url("http://10.0.0.5/api", allow_private=True) is True
         assert validate_safe_url("http://192.168.1.1/setup", allow_private=True) is True

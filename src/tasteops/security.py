@@ -94,8 +94,15 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
             ips = [ipaddress.ip_address(item[4][0]) for item in addr_info]
 
         for resolved_ip in ips:
+            target_ip: ipaddress.IPv4Address | ipaddress.IPv6Address = resolved_ip
+            if (
+                isinstance(resolved_ip, ipaddress.IPv6Address)
+                and resolved_ip.ipv4_mapped is not None
+            ):
+                target_ip = resolved_ip.ipv4_mapped
+
             for blocked_net in BLOCKED_IP_NETWORKS:
-                if resolved_ip in blocked_net:
+                if target_ip in blocked_net:
                     raise ValueError(
                         f"SSRF Protection: Hostname '{hostname}' resolves to restricted IP address {resolved_ip}."
                     )
