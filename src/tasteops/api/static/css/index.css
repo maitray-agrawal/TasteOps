@@ -459,6 +459,28 @@ button, input, select, textarea {
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
+.badge-pending {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.badge-skipped {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-not-configured {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+}
+
 /* Hash Pill */
 .hash-pill {
   font-family: var(--font-mono);

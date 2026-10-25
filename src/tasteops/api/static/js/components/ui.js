@@ -103,12 +103,18 @@ export function renderBadge(state) {
     badgeClass = 'badge-awaiting-approval';
   } else if (s === 'APPROVED') {
     badgeClass = 'badge-approved';
-  } else if (s === 'EXECUTING') {
+  } else if (s === 'EXECUTING' || s === 'RUNNING') {
     badgeClass = 'badge-executing';
-  } else if (s === 'COMPLETED') {
+  } else if (s === 'COMPLETED' || s === 'EXECUTED') {
     badgeClass = 'badge-completed';
   } else if (s === 'FAILED') {
     badgeClass = 'badge-failed';
+  } else if (s === 'SKIPPED') {
+    badgeClass = 'badge-skipped';
+  } else if (s === 'PENDING') {
+    badgeClass = 'badge-pending';
+  } else if (s === 'NOT_CONFIGURED') {
+    badgeClass = 'badge-not-configured';
   } else if (s.includes('RUNNING') || s.includes('PARSED') || s.includes('READY')) {
     badgeClass = 'badge-in-progress';
   }

@@ -629,15 +629,96 @@ class TasteOpsApplicationService:
         return await self.orchestrator.reject_session(session_id, reason=reason)
 
     async def execute_session(self, session_id: str) -> WorkflowContext:
-        """Dispatches verified execution tasks with idempotency guarantees."""
-        ctx = self.get_session(session_id)
-        if ctx.current_state != WorkflowState.APPROVED:
-            from tasteops.agents.governance import UnapprovedExecutionError
+        """Dispatches verified execution tasks with idempotency guarantees.
 
+        Enforces strict backend preconditions:
+        1. Approved session (curator approval record present and valid)
+        2. Current plan version (approval matches active plan version and hash)
+        3. Successful governance validation (is_valid=True)
+        4. Required evidence (provenance verified with Qloo ground-truth signals)
+        5. Executable tasks (plan or context contains actionable tasks)
+        """
+        ctx = self.get_session(session_id)
+        from tasteops.agents.governance import (
+            ProvenanceValidationError,
+            UnapprovedExecutionError,
+        )
+        from tasteops.workflows.states import InvalidStateTransitionError
+
+        # 1. Approved Session Precondition
+        if ctx.current_state != WorkflowState.APPROVED:
             raise UnapprovedExecutionError(
                 f"Cannot execute session '{session_id}' in state '{ctx.current_state.value}'. "
                 f"Session must be explicitly approved by a human curator first."
             )
+
+        if not ctx.approval or not ctx.approval.is_valid:
+            raise UnapprovedExecutionError(
+                f"Execution blocked: Session '{session_id}' lacks a valid human approval record."
+            )
+
+        # 2. Current Plan Version Precondition
+        if not ctx.plan:
+            raise UnapprovedExecutionError(
+                f"Execution blocked: Plan is missing for session '{session_id}'."
+            )
+
+        if ctx.approval.plan_id != ctx.plan.plan_id:
+            raise UnapprovedExecutionError(
+                f"Approval plan_id '{ctx.approval.plan_id}' does not match plan '{ctx.plan.plan_id}'."
+            )
+
+        if ctx.approval.plan_version != ctx.plan.version:
+            raise UnapprovedExecutionError(
+                f"Approval for plan version {ctx.approval.plan_version} does not authorize current plan version {ctx.plan.version}."
+            )
+
+        # Check plan hash integrity if present
+        current_hash = ctx.plan.compute_hash()
+        if ctx.approval.plan_hash and ctx.approval.plan_hash != current_hash:
+            ctx.approval.is_valid = False
+            ctx.approval.invalidation_reason = "Plan was mutated after approval"
+            raise UnapprovedExecutionError(
+                "Execution blocked: Plan was mutated after approval. Previous approval is invalidated."
+            )
+
+        # 3. Successful Governance Validation Precondition
+        if not ctx.plan.governance or not ctx.plan.governance.is_valid:
+            risk_flags = getattr(ctx.plan.governance, "risk_flags", ["Unvalidated governance status"])
+            raise UnapprovedExecutionError(
+                f"Execution blocked: Governance validation failed ({', '.join(risk_flags)})."
+            )
+
+        # 4. Required Evidence Precondition
+        if not ctx.plan.governance.provenance_verified:
+            raise ProvenanceValidationError(
+                "Execution blocked: Required evidence provenance verification failed."
+            )
+
+        has_evidence = bool(
+            (ctx.cultural_twin and (ctx.cultural_twin.anchor_entities or ctx.cultural_twin.resolved_entities))
+            or (ctx.cultural_matrix and ctx.cultural_matrix.evidence)
+            or (ctx.plan.cultural_matrix and ctx.plan.cultural_matrix.evidence)
+        )
+        if not has_evidence:
+            raise ProvenanceValidationError(
+                "Execution blocked: Plan lacks required Qloo cultural evidence ground truth."
+            )
+
+        # 5. Executable Tasks Precondition
+        has_tasks = bool(
+            ctx.execution_tasks
+            or (ctx.plan.execution_plan and ctx.plan.execution_plan.actions)
+            or (ctx.plan.cultural_matrix and ctx.plan.cultural_matrix.artists)
+            or (ctx.plan.partnerships and ctx.plan.partnerships.partnerships)
+            or (ctx.plan.experience_design and ctx.plan.experience_design.spatial_zones)
+        )
+        if not has_tasks:
+            raise InvalidStateTransitionError(
+                ctx.current_state,
+                WorkflowState.EXECUTING,
+            )
+
         return await self.orchestrator.execute_approved_plan(session_id)
 
     # -------------------------------------------------------------------------

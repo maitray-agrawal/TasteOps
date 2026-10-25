@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,6 +30,195 @@ from tasteops.workflows.states import WorkflowState
 
 logger = logging.getLogger("tasteops.api.routes.sessions")
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
+
+
+def _resolve_connector(category: str, task_type: str, desc: str) -> str:
+    """Determines external connector availability.
+
+    If the connector credentials or integrations are not configured in the environment,
+    returns 'NOT_CONFIGURED'. Does not simulate external execution.
+    """
+    cat_lower = (category or "").lower()
+    type_lower = (task_type or "").lower()
+    desc_lower = (desc or "").lower()
+
+    if "spotify" in cat_lower or "spotify" in type_lower or "spotify" in desc_lower or "sonic" in cat_lower:
+        spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID")
+        if spotify_client_id and spotify_client_id.strip():
+            return "Spotify Web API"
+        return "NOT_CONFIGURED"
+
+    if "outreach" in cat_lower or "partner" in cat_lower or "brand" in cat_lower or "outreach" in desc_lower:
+        outreach_key = os.getenv("PARTNER_OUTREACH_API_KEY") or os.getenv("SENDGRID_API_KEY")
+        if outreach_key and outreach_key.strip():
+            return "Partner Outreach Mailer"
+        return "NOT_CONFIGURED"
+
+    if "spatial" in cat_lower or "design" in cat_lower or "cad" in cat_lower or "spatial" in desc_lower:
+        cad_key = os.getenv("CAD_CONNECTOR_KEY") or os.getenv("AUTODESK_API_KEY")
+        if cad_key and cad_key.strip():
+            return "Spatial CAD Specifier"
+        return "NOT_CONFIGURED"
+
+    if "programming" in cat_lower or "calendar" in cat_lower or "salon" in desc_lower:
+        calendar_key = os.getenv("CALENDAR_API_KEY") or os.getenv("NOTION_API_KEY")
+        if calendar_key and calendar_key.strip():
+            return "Curatorial Calendar Dispatcher"
+        return "NOT_CONFIGURED"
+
+    if "hospitality" in cat_lower or "training" in cat_lower or "tempo" in desc_lower:
+        lms_key = os.getenv("LMS_CONNECTOR_KEY")
+        if lms_key and lms_key.strip():
+            return "Staff Operations Portal"
+        return "NOT_CONFIGURED"
+
+    return "NOT_CONFIGURED"
+
+
+def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
+    """Formats execution tasks with complete 10-field telemetry and connector detection.
+
+    Required Fields:
+    - task_id
+    - task_type
+    - description
+    - status (PENDING, APPROVED, RUNNING, COMPLETED, FAILED, SKIPPED)
+    - estimated_cost
+    - connector (NOT_CONFIGURED if unavailable)
+    - approval_status
+    - execution_timestamp
+    - result
+    - error
+    """
+    is_session_approved = bool(
+        ctx.current_state == WorkflowState.APPROVED
+        or (ctx.approval and ctx.approval.is_valid)
+        or ctx.current_state in {WorkflowState.EXECUTING, WorkflowState.COMPLETED}
+    )
+    approval_str = "APPROVED" if is_session_approved else "PENDING"
+
+    # Pre-build action cost lookup map from execution plan
+    cost_map: dict[str, str] = {}
+    if ctx.execution_plan and hasattr(ctx.execution_plan, "actions"):
+        for a in ctx.execution_plan.actions:
+            if hasattr(a, "action_id"):
+                cost_map[a.action_id] = getattr(a, "estimated_cost", "$0")
+            if getattr(a, "target_entity_id", None):
+                cost_map[a.target_entity_id] = getattr(a, "estimated_cost", "$0")
+
+    tasks_out: list[dict[str, Any]] = []
+
+    # Case 1: Tasks exist in context
+    if ctx.execution_tasks:
+        for t in ctx.execution_tasks:
+            raw_status = str(getattr(t, "status", "PENDING")).upper()
+            if raw_status in {"EXECUTED", "COMPLETED"}:
+                status = "COMPLETED"
+            elif raw_status == "FAILED":
+                status = "FAILED"
+            elif raw_status == "SKIPPED":
+                status = "SKIPPED"
+            elif raw_status in {"RUNNING", "EXECUTING"}:
+                status = "RUNNING"
+            elif raw_status == "APPROVED" or (raw_status == "PENDING" and is_session_approved):
+                status = "APPROVED"
+            else:
+                status = "PENDING"
+
+            category = getattr(t, "category", "") or "general_execution"
+            task_type = getattr(t, "task_type", "") or category
+            desc = getattr(t, "description", "") or getattr(t, "action", "")
+
+            # Cost resolution
+            cost = getattr(t, "estimated_cost", None)
+            if not cost or cost == "$0":
+                cost = (
+                    cost_map.get(t.task_id)
+                    or cost_map.get(getattr(t, "target_entity_id", None))
+                    or cost_map.get(t.task_id.replace("task_", "act_"), "$0")
+                )
+
+            # Connector resolution
+            connector = getattr(t, "connector", None)
+            if not connector or connector == "NOT_CONFIGURED":
+                connector = _resolve_connector(category, task_type, desc)
+
+            # Timestamp resolution
+            exec_ts = None
+            if status in {"COMPLETED", "FAILED", "RUNNING"}:
+                ts_val = getattr(t, "executed_at", None) or getattr(t, "timestamp", None)
+                if ts_val:
+                    exec_ts = ts_val.isoformat() if hasattr(ts_val, "isoformat") else str(ts_val)
+
+            # Result resolution
+            res = getattr(t, "result", None)
+            if not res and getattr(t, "output_reference", None):
+                res = {"output_reference": t.output_reference}
+
+            # Error resolution
+            err = getattr(t, "error", None)
+            if not err and status == "FAILED" and isinstance(res, dict):
+                err = res.get("error")
+
+            tasks_out.append({
+                "task_id": t.task_id,
+                "task_type": task_type,
+                "description": desc,
+                "status": status,
+                "estimated_cost": cost,
+                "connector": connector,
+                "approval_status": approval_str,
+                "execution_timestamp": exec_ts,
+                "result": res,
+                "error": err,
+                # Backward-compatibility fields
+                "action": getattr(t, "action", desc),
+                "owner": getattr(t, "owner", "GovernanceAgent"),
+                "output_reference": getattr(t, "output_reference", None),
+                "idempotency_key": getattr(t, "idempotency_key", f"idem_{t.task_id}"),
+            })
+
+    # Case 2: No execution_tasks yet, but execution_plan has planned actions (pre-execution state)
+    elif ctx.execution_plan and hasattr(ctx.execution_plan, "actions") and ctx.execution_plan.actions:
+        for a in ctx.execution_plan.actions:
+            act_id = getattr(a, "action_id", "act_01")
+            title = getattr(a, "title", "")
+            desc = getattr(a, "description", "") or title
+
+            # Infer task type
+            if "sonic" in act_id or "spotify" in title.lower() or "audio" in title.lower():
+                category = "spotify_audio_seed"
+            elif "outreach" in act_id or "brand" in act_id or "partner" in title.lower():
+                category = "partner_outreach_brief"
+            elif "hospitality" in act_id or "spatial" in title.lower() or "atmosphere" in title.lower():
+                category = "spatial_design_spec"
+            elif "prog" in act_id or "salon" in title.lower() or "calendar" in title.lower():
+                category = "curatorial_programming"
+            else:
+                category = "general_execution"
+
+            status = "APPROVED" if is_session_approved else "PENDING"
+            connector = _resolve_connector(category, category, desc)
+
+            tasks_out.append({
+                "task_id": f"task_{act_id}",
+                "task_type": category,
+                "description": desc,
+                "status": status,
+                "estimated_cost": getattr(a, "estimated_cost", "$0"),
+                "connector": connector,
+                "approval_status": approval_str,
+                "execution_timestamp": None,
+                "result": None,
+                "error": None,
+                # Backward-compatibility fields
+                "action": desc,
+                "owner": getattr(a, "owner", "GovernanceAgent"),
+                "output_reference": None,
+                "idempotency_key": f"idem_{act_id}",
+            })
+
+    return tasks_out
 
 
 def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
@@ -488,30 +678,24 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
         approval_state["notes"] = getattr(ctx.approval, "notes", getattr(ctx.approval, "invalidation_reason", None))
 
     # 8. Execution State
-    executed_tasks = sum(1 for t in ctx.execution_tasks if t.status == "EXECUTED")
-    failed_tasks = sum(1 for t in ctx.execution_tasks if t.status == "FAILED")
-    total_tasks = len(ctx.execution_tasks)
+    tasks_list = _format_execution_tasks(ctx)
+    executed_tasks = sum(1 for t in tasks_list if t["status"] == "COMPLETED")
+    failed_tasks = sum(1 for t in tasks_list if t["status"] == "FAILED")
+    total_tasks = len(tasks_list)
     exec_status = "NOT_STARTED"
     if total_tasks > 0:
         if executed_tasks == total_tasks:
             exec_status = "COMPLETED"
         elif executed_tasks > 0 or failed_tasks > 0:
             exec_status = "EXECUTING"
+        elif any(t["status"] == "RUNNING" for t in tasks_list):
+            exec_status = "EXECUTING"
     execution_state = {
         "status": exec_status,
         "total_tasks": total_tasks,
         "executed_tasks": executed_tasks,
         "failed_tasks": failed_tasks,
-        "tasks": [
-            {
-                "task_id": t.task_id,
-                "action": t.action,
-                "owner": t.owner,
-                "status": t.status,
-                "output_reference": t.output_reference,
-            }
-            for t in ctx.execution_tasks
-        ],
+        "tasks": tasks_list,
     }
 
     # 9. Errors (Sanitized, no stack traces or chain of thought)
@@ -801,22 +985,22 @@ async def execute_session(
     service: ServiceDep,
 ) -> ExecutionResponse:
     ctx = await service.execute_session(session_id)
-    tasks = [
-        task.model_dump() if hasattr(task, "model_dump") else dict(task)
-        for task in ctx.execution_tasks
-    ]
-    executed = sum(1 for t in ctx.execution_tasks if t.status == "EXECUTED")
-    failed = sum(1 for t in ctx.execution_tasks if t.status == "FAILED")
+    tasks = _format_execution_tasks(ctx)
+    executed = sum(1 for t in tasks if t["status"] == "COMPLETED")
+    failed = sum(1 for t in tasks if t["status"] == "FAILED")
 
     audit_report = None
-    if ctx.agent_results and ctx.agent_results.strategy:
-        pass
-    # Extract audit report if stored in context
     if hasattr(ctx, "governance_output") and ctx.governance_output:
         audit_report = (
             ctx.governance_output.model_dump()
             if hasattr(ctx.governance_output, "model_dump")
             else dict(ctx.governance_output)
+        )
+    elif ctx.plan and ctx.plan.execution_summary and ctx.plan.execution_summary.audit_report:
+        audit_report = (
+            ctx.plan.execution_summary.audit_report.model_dump()
+            if hasattr(ctx.plan.execution_summary.audit_report, "model_dump")
+            else dict(ctx.plan.execution_summary.audit_report)
         )
 
     return ExecutionResponse(
