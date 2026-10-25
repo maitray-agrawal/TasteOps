@@ -1,0 +1,96 @@
+name: TasteOps Security CI
+
+on:
+  push:
+    branches: [ "main", "feature/**" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  python-vulnerability-audit:
+    name: Dependency Vulnerability Audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pip-audit
+        run: pip install --upgrade pip-audit
+
+      - name: Audit Production Dependencies
+        run: |
+          pip-audit --desc on
+
+  sast-code-analysis:
+    name: Static Application Security Testing (Bandit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Bandit
+        run: pip install --upgrade bandit
+
+      - name: Run Bandit SAST Scan
+        run: |
+          bandit -r src/ -ll -x tests/ -f screen
+
+  secret-detection:
+    name: Secret Leakage & Credential Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check for Unredacted Secrets
+        run: |
+          echo "Verifying no live API keys or credentials exist in source tree..."
+          # Fail if hardcoded high-entropy tokens are present
+          ! grep -rE "([A-Za-z0-9_-]{24,})" \
+            --exclude-dir=".git" \
+            --exclude-dir=".pytest_cache" \
+            --exclude="*.lock" \
+            --exclude="*.md" \
+            --exclude="conftest.py" \
+            --include="*.py" \
+            | grep -iE "(api_key|client_secret|private_key)\s*=\s*['\"][A-Za-z0-9]{16,}['\"]"
+
+  docker-security-audit:
+    name: Container Configuration Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Non-Root User in Dockerfile
+        run: |
+          grep -E "^USER\s+[0-9]+:[0-9]+" Dockerfile || (echo "Error: Dockerfile must enforce unprivileged non-root USER UID:GID" && exit 1)
+
+      - name: Verify Healthcheck in Dockerfile
+        run: |
+          grep -E "^HEALTHCHECK" Dockerfile || (echo "Error: Dockerfile must define an automated HEALTHCHECK" && exit 1)

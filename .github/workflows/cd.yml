@@ -1,0 +1,74 @@
+name: TasteOps Continuous Deployment (CD)
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  validate-and-deploy:
+    name: Build, Migrate & Deploy Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install Dependencies
+        run: |
+          uv sync --frozen --no-dev
+
+      - name: Validate Relational Schema & Migrations
+        env:
+          ENVIRONMENT: "production"
+          DATABASE_PATH: "/tmp/cd_verify_tasteops.db"
+        run: |
+          uv run python -c "from tasteops.persistence.database import Database; db = Database('/tmp/cd_verify_tasteops.db'); print('Schema DDL verified successfully')"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: tasteops/api:${{ github.sha }},tasteops/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Ephemeral Container Verification
+        run: |
+          docker run -d --name tasteops-test-run -p 8000:8000 \
+            -e ENVIRONMENT=production \
+            -e QLOO_API_KEY=mock_cd_qloo_key_12345678 \
+            -e TASTEOPS_API_KEY=mock_cd_tasteops_key_12345678 \
+            tasteops/api:${{ github.sha }}
+          
+          # Wait for container startup
+          sleep 5
+          
+          # Verify liveness probe
+          curl -f http://localhost:8000/health || (echo "Health check failed" && docker logs tasteops-test-run && exit 1)
+          
+          # Verify readiness probe
+          curl -f http://localhost:8000/ready || (echo "Readiness check failed" && docker logs tasteops-test-run && exit 1)
+          
+          docker stop tasteops-test-run
+          docker rm tasteops-test-run
