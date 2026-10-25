@@ -15,18 +15,26 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from tasteops.api.events import EventBroadcaster, SSEEvent, map_audit_event_to_sse
 from tasteops.api.schemas.spaces import (
     AnalyzeSpaceRequest,
     SpaceCreateRequest,
     SpaceResponse,
 )
-from tasteops.api.events import EventBroadcaster, SSEEvent, map_audit_event_to_sse
 from tasteops.config import QlooSettings
-from tasteops.models.cultural_matrix import PhysicalSpaceBrief
-from tasteops.connectors import ConnectorRegistry, create_default_registry
+from tasteops.connectors import (
+    ConnectorExecutionRequest,
+    ConnectorExecutionResult,
+    ConnectorRegistry,
+    create_default_registry,
+)
 from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.persistence import AuditEvent, BaseStateStore, InMemoryStateStore
+from tasteops.workflows.persistence import (
+    AuditEvent,
+    BaseStateStore,
+    InMemoryStateStore,
+)
 from tasteops.workflows.states import WorkflowState
 
 logger = logging.getLogger("tasteops.api.service")
@@ -67,7 +75,11 @@ class TasteOpsApplicationService:
         space_repo: Any | None = None,
         connector_registry: ConnectorRegistry | None = None,
     ) -> None:
-        self.store = store or (orchestrator.store if orchestrator else None) or InMemoryStateStore()
+        self.store = (
+            store
+            or (orchestrator.store if orchestrator else None)
+            or InMemoryStateStore()
+        )
         self.orchestrator = orchestrator or TasteOpsOrchestrator(store=self.store)
         self.settings = settings
         self.space_repo = space_repo
@@ -176,15 +188,27 @@ class TasteOpsApplicationService:
             if brief.get("positioning"):
                 parts.append(f"Positioning: {brief['positioning']}")
             if brief.get("goals"):
-                goals = ", ".join(brief["goals"]) if isinstance(brief["goals"], list) else str(brief["goals"])
+                goals = (
+                    ", ".join(brief["goals"])
+                    if isinstance(brief["goals"], list)
+                    else str(brief["goals"])
+                )
                 parts.append(f"Goals: {goals}")
             if brief.get("cultural_preferences"):
-                prefs = ", ".join(brief["cultural_preferences"]) if isinstance(brief["cultural_preferences"], list) else str(brief["cultural_preferences"])
+                prefs = (
+                    ", ".join(brief["cultural_preferences"])
+                    if isinstance(brief["cultural_preferences"], list)
+                    else str(brief["cultural_preferences"])
+                )
                 parts.append(f"Cultural Preferences: {prefs}")
             if brief.get("budget"):
                 parts.append(f"Budget: {brief['budget']}")
             if brief.get("constraints"):
-                consts = ", ".join(brief["constraints"]) if isinstance(brief["constraints"], list) else str(brief["constraints"])
+                consts = (
+                    ", ".join(brief["constraints"])
+                    if isinstance(brief["constraints"], list)
+                    else str(brief["constraints"])
+                )
                 parts.append(f"Constraints: {consts}")
             if brief.get("anchor_entities"):
                 anchors = ", ".join(brief["anchor_entities"])
@@ -222,9 +246,7 @@ class TasteOpsApplicationService:
         except KeyError as exc:
             raise SessionNotFoundError(f"Session '{session_id}' not found.") from exc
 
-    def get_session_events(
-        self, session_id: str
-    ) -> tuple[list[AuditEvent], list[Any]]:
+    def get_session_events(self, session_id: str) -> tuple[list[AuditEvent], list[Any]]:
         """Retrieves audit log events and state progression history for a session."""
         ctx = self.get_session(session_id)
         audit_events = self.orchestrator.get_audit_events(session_id)
@@ -250,7 +272,11 @@ class TasteOpsApplicationService:
         prev_hash = "GENESIS_ROOT_TASTEOPS"
         hashes: list[str] = []
         for ev in events:
-            ts_str = ev.timestamp.isoformat() if hasattr(ev.timestamp, "isoformat") else str(ev.timestamp)
+            ts_str = (
+                ev.timestamp.isoformat()
+                if hasattr(ev.timestamp, "isoformat")
+                else str(ev.timestamp)
+            )
             meta_json = json.dumps(ev.metadata, sort_keys=True, default=str)
             payload = f"{prev_hash}|{ev.event_id}|{ev.session_id}|{ev.from_state}|{ev.to_state}|{ts_str}|{ev.reason}|{meta_json}"
             current_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -262,7 +288,7 @@ class TasteOpsApplicationService:
         if ctx and ctx.plan:
             plan_hash = ctx.plan.compute_hash()
             if ctx.approval and ctx.approval.plan_hash:
-                plan_matched = (ctx.approval.plan_hash == plan_hash)
+                plan_matched = ctx.approval.plan_hash == plan_hash
 
         status_dict = {
             "is_verified": True,
@@ -290,63 +316,120 @@ class TasteOpsApplicationService:
         """Enriches raw AuditEvents into structured decision ledger entries with 10 event types."""
         enriched: list[dict[str, Any]] = []
 
-        plan_id = ctx.plan.plan_id if ctx.plan else (ctx.execution_plan.plan_id if ctx.execution_plan else None)
-        plan_version = ctx.plan.version if ctx.plan else (ctx.execution_plan.version if ctx.execution_plan else 1)
+        plan_id = (
+            ctx.plan.plan_id
+            if ctx.plan
+            else (ctx.execution_plan.plan_id if ctx.execution_plan else None)
+        )
+        plan_version = (
+            ctx.plan.version
+            if ctx.plan
+            else (ctx.execution_plan.version if ctx.execution_plan else 1)
+        )
 
         for idx, ev in enumerate(audit_events):
-            ts_str = ev.timestamp.isoformat() if hasattr(ev.timestamp, "isoformat") else str(ev.timestamp)
+            ts_str = (
+                ev.timestamp.isoformat()
+                if hasattr(ev.timestamp, "isoformat")
+                else str(ev.timestamp)
+            )
             v_hash = hashes[idx] if idx < len(hashes) else None
 
             # Determine Event Type & Actor
-            to_st = ev.to_state.value if hasattr(ev.to_state, "value") else str(ev.to_state)
-            from_st = ev.from_state.value if hasattr(ev.from_state, "value") else str(ev.from_state)
+            to_st = (
+                ev.to_state.value if hasattr(ev.to_state, "value") else str(ev.to_state)
+            )
+            from_st = (
+                ev.from_state.value
+                if hasattr(ev.from_state, "value")
+                else str(ev.from_state)
+            )
             reason_lower = (ev.reason or "").lower()
 
-            if to_st == "CREATED" or from_st == "CREATED" or "initialized" in reason_lower:
+            if (
+                to_st == "CREATED"
+                or from_st == "CREATED"
+                or "initialized" in reason_lower
+            ):
                 event_type = "SESSION_CREATION"
                 actor = "TasteOps Engine"
-                summary = ev.reason or "Workflow session initialized from architectural space brief."
+                summary = (
+                    ev.reason
+                    or "Workflow session initialized from architectural space brief."
+                )
             elif to_st == "INTENT_PARSED":
                 event_type = "STATE_CHANGE"
                 actor = "TasteOps Intent Parser"
-                summary = ev.reason or "Parsed natural language brief into structured intent parameters."
+                summary = (
+                    ev.reason
+                    or "Parsed natural language brief into structured intent parameters."
+                )
             elif to_st in {"CULTURAL_TWIN_CREATED", "QLOO_RESOLVED"}:
                 event_type = "QLOO_RETRIEVAL"
                 actor = "Qloo MCP Adapter"
-                summary = ev.reason or "Resolved cultural anchors and entities against Qloo Knowledge Graph."
+                summary = (
+                    ev.reason
+                    or "Resolved cultural anchors and entities against Qloo Knowledge Graph."
+                )
             elif to_st == "CULTURAL_MATRIX_READY":
                 event_type = "QLOO_RETRIEVAL"
                 actor = "Qloo Cultural Matrix Service"
-                summary = ev.reason or "Constructed cross-domain cultural affinity matrix (artists, places, brands)."
+                summary = (
+                    ev.reason
+                    or "Constructed cross-domain cultural affinity matrix (artists, places, brands)."
+                )
             elif to_st == "AGENTS_RUNNING":
                 event_type = "STATE_CHANGE"
                 actor = "Agent Orchestrator"
-                summary = ev.reason or "Dispatched domain agents: Cultural Strategist, Experience Architect, Partnership Agent."
+                summary = (
+                    ev.reason
+                    or "Dispatched domain agents: Cultural Strategist, Experience Architect, Partnership Agent."
+                )
             elif to_st == "PLAN_GENERATED":
                 event_type = "AGENT_COMPLETION"
                 actor = "Domain Agent Ensemble"
-                summary = ev.reason or "Agents synthesized cultural pillars, sensory blueprint, and brand partnerships."
+                summary = (
+                    ev.reason
+                    or "Agents synthesized cultural pillars, sensory blueprint, and brand partnerships."
+                )
             elif to_st == "VALIDATED":
                 event_type = "VALIDATION"
                 actor = "Governance Agent"
-                summary = ev.reason or "Validated plan provenance, compliance score, and physical venue constraints."
+                summary = (
+                    ev.reason
+                    or "Validated plan provenance, compliance score, and physical venue constraints."
+                )
             elif to_st == "AWAITING_APPROVAL":
                 event_type = "GOVERNANCE_DECISION"
                 actor = "Governance Agent"
-                summary = ev.reason or "Engine paused at human approval gate. Waiting for curator sign-off."
+                summary = (
+                    ev.reason
+                    or "Engine paused at human approval gate. Waiting for curator sign-off."
+                )
             elif to_st == "APPROVED":
                 event_type = "APPROVAL"
-                approver = ev.metadata.get("approver") or (ctx.approval.approver if ctx.approval else "Lead Curator")
+                approver = ev.metadata.get("approver") or (
+                    ctx.approval.approver if ctx.approval else "Lead Curator"
+                )
                 actor = f"Human Curator: {approver}"
-                summary = ev.reason or f"Plan approved and cryptographically signed by {approver}."
+                summary = (
+                    ev.reason
+                    or f"Plan approved and cryptographically signed by {approver}."
+                )
             elif to_st == "EXECUTING":
                 event_type = "EXECUTION_ATTEMPT"
                 actor = "Execution Dispatcher"
-                summary = ev.reason or "Governance agent dispatching verified execution tasks."
+                summary = (
+                    ev.reason
+                    or "Governance agent dispatching verified execution tasks."
+                )
             elif to_st == "COMPLETED":
                 event_type = "EXECUTION_OUTCOME"
                 actor = "TasteOps Execution Subsystem"
-                summary = ev.reason or "All downstream activation tasks confirmed with provenance."
+                summary = (
+                    ev.reason
+                    or "All downstream activation tasks confirmed with provenance."
+                )
             elif to_st == "FAILED":
                 if "reject" in reason_lower:
                     event_type = "REJECTION"
@@ -355,7 +438,11 @@ class TasteOpsApplicationService:
                 else:
                     event_type = "FAILURE"
                     actor = "TasteOps Governance Guard"
-                    summary = ev.reason or (f"Workflow failed: {ev.error}" if ev.error else "Execution halted due to policy violation.")
+                    summary = ev.reason or (
+                        f"Workflow failed: {ev.error}"
+                        if ev.error
+                        else "Execution halted due to policy violation."
+                    )
             else:
                 event_type = "STATE_CHANGE"
                 actor = "TasteOps Engine"
@@ -373,70 +460,107 @@ class TasteOpsApplicationService:
                 "source": actor,
                 "timestamp": ts_str,
                 "verification_hash": v_hash,
-                "plan_hash": ev.metadata.get("plan_hash") or (ctx.plan.compute_hash() if ctx.plan else None),
+                "plan_hash": ev.metadata.get("plan_hash")
+                or (ctx.plan.compute_hash() if ctx.plan else None),
                 "immutable": True,
             }
             if ev.metadata.get("approver"):
                 provenance["signed_by"] = ev.metadata["approver"]
 
-            enriched.append({
-                "event_id": ev.event_id,
-                "session_id": ev.session_id,
-                "from_state": from_st,
-                "to_state": to_st,
-                "timestamp": ts_str,
-                "reason": ev.reason,
-                "metadata": ev.metadata,
-                "error": ev.error,
-                # Structured decision ledger fields
-                "event_type": event_type,
-                "actor": actor,
-                "summary": summary,
-                "related": related,
-                "provenance": provenance,
-                "verification_hash": v_hash,
-            })
+            enriched.append(
+                {
+                    "event_id": ev.event_id,
+                    "session_id": ev.session_id,
+                    "from_state": from_st,
+                    "to_state": to_st,
+                    "timestamp": ts_str,
+                    "reason": ev.reason,
+                    "metadata": ev.metadata,
+                    "error": ev.error,
+                    # Structured decision ledger fields
+                    "event_type": event_type,
+                    "actor": actor,
+                    "summary": summary,
+                    "related": related,
+                    "provenance": provenance,
+                    "verification_hash": v_hash,
+                }
+            )
 
         # If executed tasks exist in context, synthesize execution outcome events
         if ctx.execution_tasks:
             for t in ctx.execution_tasks:
                 t_status = str(getattr(t, "status", "PENDING")).upper()
                 if t_status in {"EXECUTED", "COMPLETED"}:
-                    t_ts = getattr(t, "executed_at", None) or getattr(t, "timestamp", None)
-                    t_ts_str = t_ts.isoformat() if hasattr(t_ts, "isoformat") else str(t_ts) if t_ts else datetime.now(UTC).isoformat()
-                    connector_name = getattr(t, "connector", None) or "Execution Connector"
+                    t_ts = getattr(t, "executed_at", None) or getattr(
+                        t, "timestamp", None
+                    )
+                    t_ts_str = (
+                        t_ts.isoformat()
+                        if (t_ts is not None and hasattr(t_ts, "isoformat"))
+                        else (
+                            str(t_ts)
+                            if t_ts is not None
+                            else datetime.now(UTC).isoformat()
+                        )
+                    )
+                    connector_name = (
+                        getattr(t, "connector", None) or "Execution Connector"
+                    )
                     if connector_name == "NOT_CONFIGURED":
                         connector_name = getattr(t, "category", "External Adapter")
 
                     # Check if already in enriched list
-                    if not any(e.get("related", {}).get("task_id") == t.task_id and e.get("event_type") == "EXECUTION_OUTCOME" for e in enriched):
-                        enriched.append({
-                            "event_id": f"evt_task_{t.task_id[:10]}",
-                            "session_id": ctx.session_id,
-                            "from_state": "EXECUTING",
-                            "to_state": "COMPLETED",
-                            "timestamp": t_ts_str,
-                            "reason": getattr(t, "description", None) or getattr(t, "action", "") or f"Executed task {t.task_id}",
-                            "metadata": {
-                                "task_id": t.task_id,
-                                "idempotency_key": getattr(t, "idempotency_key", ""),
-                                "output_reference": getattr(t, "output_reference", None),
-                            },
-                            "error": None,
-                            "event_type": "EXECUTION_OUTCOME",
-                            "actor": connector_name,
-                            "summary": f"Executed {getattr(t, 'category', 'task')}: {getattr(t, 'description', '') or getattr(t, 'action', '')}",
-                            "related": {
+                    if not any(
+                        e.get("related", {}).get("task_id") == t.task_id
+                        and e.get("event_type") == "EXECUTION_OUTCOME"
+                        for e in enriched
+                    ):
+                        enriched.append(
+                            {
+                                "event_id": f"evt_task_{t.task_id[:10]}",
                                 "session_id": ctx.session_id,
-                                "space_id": ctx.space_id,
-                                "plan_id": plan_id,
-                                "plan_version": plan_version,
-                                "task_id": t.task_id,
-                                "idempotency_key": getattr(t, "idempotency_key", None),
-                            },
-                            "provenance": getattr(t, "provenance", {}) or {"source": connector_name, "output_reference": getattr(t, "output_reference", None)},
-                            "verification_hash": hashlib.sha256(f"TASK|{t.task_id}|{t_ts_str}".encode("utf-8")).hexdigest(),
-                        })
+                                "from_state": "EXECUTING",
+                                "to_state": "COMPLETED",
+                                "timestamp": t_ts_str,
+                                "reason": getattr(t, "description", None)
+                                or getattr(t, "action", "")
+                                or f"Executed task {t.task_id}",
+                                "metadata": {
+                                    "task_id": t.task_id,
+                                    "idempotency_key": getattr(
+                                        t, "idempotency_key", ""
+                                    ),
+                                    "output_reference": getattr(
+                                        t, "output_reference", None
+                                    ),
+                                },
+                                "error": None,
+                                "event_type": "EXECUTION_OUTCOME",
+                                "actor": connector_name,
+                                "summary": f"Executed {getattr(t, 'category', 'task')}: {getattr(t, 'description', '') or getattr(t, 'action', '')}",
+                                "related": {
+                                    "session_id": ctx.session_id,
+                                    "space_id": ctx.space_id,
+                                    "plan_id": plan_id,
+                                    "plan_version": plan_version,
+                                    "task_id": t.task_id,
+                                    "idempotency_key": getattr(
+                                        t, "idempotency_key", None
+                                    ),
+                                },
+                                "provenance": getattr(t, "provenance", {})
+                                or {
+                                    "source": connector_name,
+                                    "output_reference": getattr(
+                                        t, "output_reference", None
+                                    ),
+                                },
+                                "verification_hash": hashlib.sha256(
+                                    f"TASK|{t.task_id}|{t_ts_str}".encode()
+                                ).hexdigest(),
+                            }
+                        )
 
         enriched.sort(key=lambda x: str(x.get("timestamp", "")))
         return enriched
@@ -481,10 +605,14 @@ class TasteOpsApplicationService:
         plan = ctx.plan
         exp = ctx.experience_output or (plan.experience_design if plan else None)
         strategy = ctx.strategy_output or (plan.strategy if plan else None)
-        partnerships_out = ctx.partnership_output or (plan.partnerships if plan else None)
+        partnerships_out = ctx.partnership_output or (
+            plan.partnerships if plan else None
+        )
         exec_plan = ctx.execution_plan or (plan.execution_plan if plan else None)
         cultural_twin = ctx.cultural_twin or (plan.cultural_twin if plan else None)
-        cultural_matrix = ctx.cultural_matrix or (plan.cultural_matrix if plan else None)
+        cultural_matrix = ctx.cultural_matrix or (
+            plan.cultural_matrix if plan else None
+        )
         gov = ctx.validation_result or (plan.governance if plan else None)
 
         # 1. Spatial Zones
@@ -510,21 +638,44 @@ class TasteOpsApplicationService:
 
         # 4. Cultural Pillars
         pillars: list[dict[str, Any]] = []
-        if strategy and hasattr(strategy, "cultural_pillars") and strategy.cultural_pillars:
+        if (
+            strategy
+            and hasattr(strategy, "cultural_pillars")
+            and strategy.cultural_pillars
+        ):
             for p in strategy.cultural_pillars:
                 pillars.append(_safe_dump(p))
 
         # 5. Strategic Objective, Audience & Cultural Positioning
-        pos_stmt = getattr(strategy, "positioning_statement", None) if strategy else None
-        strategic_objective = pos_stmt or "Curated physical space activation grounded in verified taste intelligence."
+        pos_stmt = (
+            getattr(strategy, "positioning_statement", None) if strategy else None
+        )
+        strategic_objective = (
+            pos_stmt
+            or "Curated physical space activation grounded in verified taste intelligence."
+        )
         target_subs = getattr(strategy, "target_subcultures", []) if strategy else []
-        aud_profile = getattr(cultural_twin, "audience_profile", "") if cultural_twin else ""
-        themes = getattr(strategy, "affinity_themes", []) if strategy else getattr(cultural_twin, "cultural_themes", []) if cultural_twin else []
+        aud_profile = (
+            getattr(cultural_twin, "audience_profile", "") if cultural_twin else ""
+        )
+        themes = (
+            getattr(strategy, "affinity_themes", [])
+            if strategy
+            else getattr(cultural_twin, "cultural_themes", [])
+            if cultural_twin
+            else []
+        )
         anchors = getattr(cultural_twin, "anchor_entities", []) if cultural_twin else []
 
         audience = {
-            "target_audience": aud_profile or "Culturally discerning patrons and design purists",
-            "target_subcultures": target_subs or ["Design Purists", "Audiophile Communities", "Specialty Craft Aficionados"],
+            "target_audience": aud_profile
+            or "Culturally discerning patrons and design purists",
+            "target_subcultures": target_subs
+            or [
+                "Design Purists",
+                "Audiophile Communities",
+                "Specialty Craft Aficionados",
+            ],
             "audience_profile": aud_profile,
         }
 
@@ -548,34 +699,56 @@ class TasteOpsApplicationService:
             "reading_library": _safe_dump(reading_lib),
             "brand_ecosystem": _safe_dump(brand_eco),
             "local_integration": _safe_dump(local_eco),
-            "sensory_pairings": getattr(atmos, "sensory_pairings", []) if atmos else getattr(exp, "sensory_pairings", []),
-            "material_palette": getattr(brand_eco, "material_palette", []) if brand_eco else [],
-            "hospitality_tempo": getattr(atmos, "hospitality_tempo", "Subtle, unhurried, ceremonial dwell tempo") if atmos else "Unhurried, ceremonial dwell tempo",
+            "sensory_pairings": getattr(atmos, "sensory_pairings", [])
+            if atmos
+            else getattr(exp, "sensory_pairings", []),
+            "material_palette": getattr(brand_eco, "material_palette", [])
+            if brand_eco
+            else [],
+            "hospitality_tempo": getattr(
+                atmos, "hospitality_tempo", "Subtle, unhurried, ceremonial dwell tempo"
+            )
+            if atmos
+            else "Unhurried, ceremonial dwell tempo",
         }
 
         # 7. Activation Ideas (Cultural Programming)
         prog_ideas = getattr(exp, "cultural_programming_ideas", None) if exp else None
         raw_activations = getattr(prog_ideas, "activations", []) if prog_ideas else []
-        event_collabs = getattr(partnerships_out, "event_collaborations", []) if partnerships_out else []
+        event_collabs = (
+            getattr(partnerships_out, "event_collaborations", [])
+            if partnerships_out
+            else []
+        )
 
         activation_ideas: list[dict[str, Any]] = []
         for act in raw_activations:
             activation_ideas.append(_safe_dump(act))
         if not activation_ideas and event_collabs:
             for collab in event_collabs:
-                activation_ideas.append({
-                    "title": collab if isinstance(collab, str) else getattr(collab, "title", str(collab)),
-                    "cadence": "Monthly Residency",
-                    "format_description": "Curated salon and sensory pairing",
-                    "target_audience": "Culturally curious patrons",
-                    "expected_outcome": "High community dwell time and cultural credibility",
-                    "featured_recommendations": [],
-                })
+                activation_ideas.append(
+                    {
+                        "title": collab
+                        if isinstance(collab, str)
+                        else getattr(collab, "title", str(collab)),
+                        "cadence": "Monthly Residency",
+                        "format_description": "Curated salon and sensory pairing",
+                        "target_audience": "Culturally curious patrons",
+                        "expected_outcome": "High community dwell time and cultural credibility",
+                        "featured_recommendations": [],
+                    }
+                )
 
         # 8. Partnership Opportunities
-        candidates = getattr(partnerships_out, "candidates", []) if partnerships_out else []
+        candidates = (
+            getattr(partnerships_out, "candidates", []) if partnerships_out else []
+        )
         partnerships: list[dict[str, Any]] = []
-        if partnerships_out and hasattr(partnerships_out, "partnerships") and partnerships_out.partnerships:
+        if (
+            partnerships_out
+            and hasattr(partnerships_out, "partnerships")
+            and partnerships_out.partnerships
+        ):
             for part in partnerships_out.partnerships:
                 partnerships.append(_safe_dump(part))
 
@@ -583,30 +756,44 @@ class TasteOpsApplicationService:
         for cand in candidates:
             partnership_opportunities.append(_safe_dump(cand))
         if not partnership_opportunities and partnerships:
-            for part in partnerships:
-                p_name = part.get("partner_name") or part.get("name") or "Partner"
-                partnership_opportunities.append({
-                    "brand": p_name,
-                    "brand_entity_id": part.get("partner_entity_id") or "verified_partner",
-                    "category": part.get("category", "Brand Partner"),
-                    "score": (part.get("affinity_score") or 0.85) * 100 if part.get("affinity_score", 0) <= 1.0 else (part.get("affinity_score") or 85.0),
-                    "partnership_concept": part.get("concept_description") or part.get("activation_type", "Sensory Activation"),
-                    "alignment_rationale": part.get("alignment_rationale", "Aligned with space aesthetic"),
-                    "estimated_effort": "Medium",
-                    "risk": "Low operational friction",
-                    "recommended_next_action": "Initiate exploratory outreach brief",
-                    "supporting_qloo_evidence": {
-                        "entity_id": part.get("partner_entity_id", ""),
-                        "affinity": part.get("affinity_score", 0.85),
-                    },
-                })
+            for part_dict in partnerships:
+                p_name = (
+                    part_dict.get("partner_name") or part_dict.get("name") or "Partner"
+                )
+                partnership_opportunities.append(
+                    {
+                        "brand": p_name,
+                        "brand_entity_id": part_dict.get("partner_entity_id")
+                        or "verified_partner",
+                        "category": part_dict.get("category", "Brand Partner"),
+                        "score": (part_dict.get("affinity_score") or 0.85) * 100
+                        if part_dict.get("affinity_score", 0) <= 1.0
+                        else (part_dict.get("affinity_score") or 85.0),
+                        "partnership_concept": part_dict.get("concept_description")
+                        or part_dict.get("activation_type", "Sensory Activation"),
+                        "alignment_rationale": part_dict.get(
+                            "alignment_rationale", "Aligned with space aesthetic"
+                        ),
+                        "estimated_effort": "Medium",
+                        "risk": "Low operational friction",
+                        "recommended_next_action": "Initiate exploratory outreach brief",
+                        "supporting_qloo_evidence": {
+                            "entity_id": part_dict.get("partner_entity_id", ""),
+                            "affinity": part_dict.get("affinity_score", 0.85),
+                        },
+                    }
+                )
 
         # 9. Budget Considerations
-        est_cost = exec_plan.estimated_cost if exec_plan else "$150,000 USD / High-end allocation"
+        est_cost = (
+            exec_plan.estimated_cost
+            if exec_plan
+            else "$150,000 USD / High-end allocation"
+        )
         plan_actions = getattr(exec_plan, "actions", []) if exec_plan else []
         action_costs = [
             {
-                "action_id": getattr(a, "action_id", f"act_{i+1}"),
+                "action_id": getattr(a, "action_id", f"act_{i + 1}"),
                 "title": getattr(a, "title", ""),
                 "cost": getattr(a, "estimated_cost", "$0"),
                 "owner": getattr(a, "owner", "Curator"),
@@ -623,41 +810,72 @@ class TasteOpsApplicationService:
         risks: list[dict[str, Any]] = []
         if exec_plan and hasattr(exec_plan, "risks"):
             for r in exec_plan.risks:
-                risks.append({"category": "OPERATIONAL / SPATIAL", "risk": str(r), "severity": "MEDIUM"})
+                risks.append(
+                    {
+                        "category": "OPERATIONAL / SPATIAL",
+                        "risk": str(r),
+                        "severity": "MEDIUM",
+                    }
+                )
         if gov and hasattr(gov, "risk_flags"):
             for f in gov.risk_flags:
-                risks.append({"category": "GOVERNANCE / COMPLIANCE", "risk": str(f), "severity": "LOW"})
+                risks.append(
+                    {
+                        "category": "GOVERNANCE / COMPLIANCE",
+                        "risk": str(f),
+                        "severity": "LOW",
+                    }
+                )
         for cand in candidates:
             cand_risk = getattr(cand, "risk", "")
             if cand_risk:
-                risks.append({"category": "BRAND / COMMERCIAL", "risk": f"{getattr(cand, 'brand', 'Partner')}: {cand_risk}", "severity": "LOW"})
+                risks.append(
+                    {
+                        "category": "BRAND / COMMERCIAL",
+                        "risk": f"{getattr(cand, 'brand', 'Partner')}: {cand_risk}",
+                        "severity": "LOW",
+                    }
+                )
 
         # 11. Ground-Truth Evidence
         evidence_records: list[dict[str, Any]] = []
         if cultural_twin and hasattr(cultural_twin, "resolved_entities"):
             for ent in cultural_twin.resolved_entities:
-                evidence_records.append({
-                    "entity_id": getattr(ent, "id", ""),
-                    "name": getattr(ent, "name", ""),
-                    "type": getattr(ent, "type", ""),
-                    "confidence": getattr(ent, "confidence", 1.0),
-                    "source": getattr(ent, "source", "qloo_search"),
-                    "why_it_matters": getattr(ent, "why_it_matters", ""),
-                })
+                evidence_records.append(
+                    {
+                        "entity_id": getattr(ent, "id", ""),
+                        "name": getattr(ent, "name", ""),
+                        "type": getattr(ent, "type", ""),
+                        "confidence": getattr(ent, "confidence", 1.0),
+                        "source": getattr(ent, "source", "qloo_search"),
+                        "why_it_matters": getattr(ent, "why_it_matters", ""),
+                    }
+                )
         if cultural_matrix:
-            for cat in ["artists", "books", "brands", "places", "movies", "destinations"]:
+            for cat in [
+                "artists",
+                "books",
+                "brands",
+                "places",
+                "movies",
+                "destinations",
+            ]:
                 for item in getattr(cultural_matrix, cat, [])[:4]:
-                    evidence_records.append({
-                        "entity_id": getattr(item, "id", ""),
-                        "name": getattr(item, "name", ""),
-                        "type": cat[:-1] if cat.endswith("s") else cat,
-                        "affinity": getattr(item, "affinity", 0.85),
-                        "source": getattr(item, "source_query", "qloo_insights"),
-                        "why_it_matters": f"Top affinity candidate in {cat}",
-                    })
+                    evidence_records.append(
+                        {
+                            "entity_id": getattr(item, "id", ""),
+                            "name": getattr(item, "name", ""),
+                            "type": cat.removesuffix("s"),
+                            "affinity": getattr(item, "affinity", 0.85),
+                            "source": getattr(item, "source_query", "qloo_insights"),
+                            "why_it_matters": f"Top affinity candidate in {cat}",
+                        }
+                    )
 
         # 12. Confidence
-        confidence_val = float(getattr(cultural_twin, "confidence", 0.92)) if cultural_twin else 0.92
+        confidence_val = (
+            float(getattr(cultural_twin, "confidence", 0.92)) if cultural_twin else 0.92
+        )
 
         # 13. Execution Actions
         execution_actions: list[dict[str, Any]] = []
@@ -669,7 +887,11 @@ class TasteOpsApplicationService:
         recommendation_provenance_map: dict[str, Any] = {}
 
         # Audio recommendations
-        sonic_recs = getattr(getattr(exp, "sonic_identity", None), "curated_recommendations", []) if exp else []
+        sonic_recs = (
+            getattr(getattr(exp, "sonic_identity", None), "curated_recommendations", [])
+            if exp
+            else []
+        )
         for rec in sonic_recs:
             r_name = getattr(rec, "recommendation", "")
             q_ev = getattr(rec, "qloo_evidence", {}) or {}
@@ -679,17 +901,26 @@ class TasteOpsApplicationService:
                 "evidence": {
                     "source": q_ev.get("source_query") or "qloo_insights_v2",
                     "entity_id": q_ev.get("entity_id") or "qloo_artist_sig",
-                    "affinity": q_ev.get("affinity") or getattr(rec, "confidence", 0.91),
+                    "affinity": q_ev.get("affinity")
+                    or getattr(rec, "confidence", 0.91),
                     "urn": q_ev.get("type") or "urn:qloo:artist",
                 },
                 "agent_inference": {
-                    "curatorial_rationale": getattr(rec, "cultural_rationale", "Aligned with warm acoustic listening mood"),
+                    "curatorial_rationale": getattr(
+                        rec,
+                        "cultural_rationale",
+                        "Aligned with warm acoustic listening mood",
+                    ),
                     "affinity_fit": f"Cross-domain resonance with {target_subs[0] if target_subs else 'design audiophiles'}",
                     "confidence_score": getattr(rec, "confidence", 0.91),
                 },
                 "recommendation": {
                     "title": r_name,
-                    "role": getattr(rec, "expected_role", "Featured artist in evening vinyl rotation"),
+                    "role": getattr(
+                        rec,
+                        "expected_role",
+                        "Featured artist in evening vinyl rotation",
+                    ),
                     "category": getattr(rec, "category", "artist"),
                 },
                 "execution_action": {
@@ -709,41 +940,52 @@ class TasteOpsApplicationService:
                 "category": "Brand Partnership",
                 "evidence": {
                     "source": b_ev.get("source_query") or "qloo_insights_brands",
-                    "entity_id": getattr(cand, "brand_entity_id", "") or b_ev.get("entity_id", "qloo_brand_sig"),
+                    "entity_id": getattr(cand, "brand_entity_id", "")
+                    or b_ev.get("entity_id", "qloo_brand_sig"),
                     "affinity": (b_score / 100.0) if b_score <= 100 else 0.85,
                     "urn": "urn:qloo:brand",
                 },
                 "agent_inference": {
                     "curatorial_rationale": f"Scored {b_score:.0f}/100 across 6-dimensional fit (cultural fit, audience overlap, brand synergy).",
-                    "affinity_fit": getattr(cand, "partnership_concept", "Co-branded sensory activation"),
+                    "affinity_fit": getattr(
+                        cand, "partnership_concept", "Co-branded sensory activation"
+                    ),
                     "confidence_score": (b_score / 100.0) if b_score <= 100 else 0.85,
                 },
                 "recommendation": {
                     "title": b_name,
-                    "role": getattr(cand, "partnership_concept", "Amenity or hardware residency"),
+                    "role": getattr(
+                        cand, "partnership_concept", "Amenity or hardware residency"
+                    ),
                     "category": getattr(cand, "category", "lifestyle"),
                 },
                 "execution_action": {
-                    "task": getattr(cand, "recommended_next_action", "Send exploratory outreach brief"),
+                    "task": getattr(
+                        cand,
+                        "recommended_next_action",
+                        "Send exploratory outreach brief",
+                    ),
                     "owner": "Partnership Director",
                     "budget": "$0 (Exploratory conversation stage)",
                 },
             }
 
         # Spatial Zones
-        for zone in spatial_zones:
-            z_name = zone.get("zone_name") or zone.get("name") or "Spatial Zone"
+        for sz_dict in spatial_zones:
+            z_name = sz_dict.get("zone_name") or sz_dict.get("name") or "Spatial Zone"
             recommendation_provenance_map[z_name] = {
                 "entity_name": z_name,
                 "category": "Spatial Architecture",
                 "evidence": {
                     "source": "space_brief_constraints_and_qloo_places",
-                    "entity_id": (zone.get("design_reference_ids") or ["qloo_place_ref"])[0],
+                    "entity_id": (
+                        sz_dict.get("design_reference_ids") or ["qloo_place_ref"]
+                    )[0],
                     "affinity": 0.95,
                     "urn": "urn:tasteops:spatial_directive",
                 },
                 "agent_inference": {
-                    "curatorial_rationale": f"Intended mood: '{zone.get('intended_mood', 'Intimate')}'. Structured to balance acoustic warmth and spatial dwell.",
+                    "curatorial_rationale": f"Intended mood: '{sz_dict.get('intended_mood', 'Intimate')}'. Structured to balance acoustic warmth and spatial dwell.",
                     "affinity_fit": "Directly implements venue acoustic and lighting guidelines.",
                     "confidence_score": 0.95,
                 },
@@ -778,7 +1020,9 @@ class TasteOpsApplicationService:
                 },
                 "recommendation": {
                     "title": a_title,
-                    "role": getattr(act, "format_description", "Signature cultural salon format"),
+                    "role": getattr(
+                        act, "format_description", "Signature cultural salon format"
+                    ),
                     "category": "programming",
                 },
                 "execution_action": {
@@ -806,7 +1050,9 @@ class TasteOpsApplicationService:
             "session_id": ctx.session_id,
             "space_id": ctx.space_id,
             "state": ctx.current_state.value,
-            "plan_id": plan.plan_id if plan else (exec_plan.plan_id if exec_plan else None),
+            "plan_id": plan.plan_id
+            if plan
+            else (exec_plan.plan_id if exec_plan else None),
             "plan_hash": plan_hash,
             "estimated_cost": est_cost,
             "experience_narrative": strategic_objective,
@@ -831,7 +1077,6 @@ class TasteOpsApplicationService:
             "recommendation_provenance_map": recommendation_provenance_map,
         }
 
-
     async def approve_session(
         self,
         session_id: str,
@@ -844,7 +1089,9 @@ class TasteOpsApplicationService:
         # Ensure session exists
         self.get_session(session_id)
         approver_str = f"{approver} ({role})" if role else approver
-        return await self.orchestrator.approve_session(session_id, approver=approver_str)
+        return await self.orchestrator.approve_session(
+            session_id, approver=approver_str
+        )
 
     async def reject_session(self, session_id: str, reason: str) -> WorkflowContext:
         """Transitions session to FAILED following curator rejection."""
@@ -908,7 +1155,9 @@ class TasteOpsApplicationService:
 
         # 3. Successful Governance Validation Precondition
         if not ctx.plan.governance or not ctx.plan.governance.is_valid:
-            risk_flags = getattr(ctx.plan.governance, "risk_flags", ["Unvalidated governance status"])
+            risk_flags = getattr(
+                ctx.plan.governance, "risk_flags", ["Unvalidated governance status"]
+            )
             raise UnapprovedExecutionError(
                 f"Execution blocked: Governance validation failed ({', '.join(risk_flags)})."
             )
@@ -920,7 +1169,13 @@ class TasteOpsApplicationService:
             )
 
         has_evidence = bool(
-            (ctx.cultural_twin and (ctx.cultural_twin.anchor_entities or ctx.cultural_twin.resolved_entities))
+            (
+                ctx.cultural_twin
+                and (
+                    ctx.cultural_twin.anchor_entities
+                    or ctx.cultural_twin.resolved_entities
+                )
+            )
             or (ctx.cultural_matrix and ctx.cultural_matrix.evidence)
             or (ctx.plan.cultural_matrix and ctx.plan.cultural_matrix.evidence)
         )
@@ -952,14 +1207,20 @@ class TasteOpsApplicationService:
             for t in executed_ctx.execution_tasks:
                 idem_key = getattr(t, "idempotency_key", None)
                 if idem_key and not self.connector_registry.is_executed(idem_key):
-                    self.connector_registry._executed_store[idem_key] = ConnectorExecutionResult(
-                        task_id=t.task_id,
-                        connector_name=getattr(t, "connector", "TasteOpsConnector"),
-                        status="COMPLETED" if t.status in ("EXECUTED", "COMPLETED") else t.status,
-                        output_reference=getattr(t, "output_reference", None) or f"executed://{t.task_id}",
-                        executed_at=getattr(t, "executed_at", None) or datetime.now(UTC),
-                        payload=getattr(t, "result", {}) or {},
-                        provenance=getattr(t, "provenance", {}),
+                    self.connector_registry._executed_store[idem_key] = (
+                        ConnectorExecutionResult(
+                            task_id=t.task_id,
+                            connector_name=getattr(t, "connector", "TasteOpsConnector"),
+                            status="COMPLETED"
+                            if t.status in ("EXECUTED", "COMPLETED")
+                            else t.status,
+                            output_reference=getattr(t, "output_reference", None)
+                            or f"executed://{t.task_id}",
+                            executed_at=getattr(t, "executed_at", None)
+                            or datetime.now(UTC),
+                            payload=getattr(t, "result", {}) or {},
+                            provenance=getattr(t, "provenance", {}),
+                        )
                     )
 
         return executed_ctx
@@ -997,12 +1258,19 @@ class TasteOpsApplicationService:
 
         # 2. Verify plan ID and version
         allowed_plan_ids = {ctx.plan.plan_id} if ctx.plan else set()
-        if ctx.plan and ctx.plan.execution_plan and hasattr(ctx.plan.execution_plan, "plan_id"):
+        if (
+            ctx.plan
+            and ctx.plan.execution_plan
+            and hasattr(ctx.plan.execution_plan, "plan_id")
+        ):
             allowed_plan_ids.add(ctx.plan.execution_plan.plan_id)
         if ctx.execution_plan and hasattr(ctx.execution_plan, "plan_id"):
             allowed_plan_ids.add(ctx.execution_plan.plan_id)
 
-        if ctx.plan and (request.plan_id not in allowed_plan_ids or ctx.plan.version != request.plan_version):
+        if ctx.plan and (
+            request.plan_id not in allowed_plan_ids
+            or ctx.plan.version != request.plan_version
+        ):
             raise UnapprovedExecutionError(
                 f"Execution task plan authorization mismatch: requested plan_id='{request.plan_id}', "
                 f"version={request.plan_version}; active plan_id='{ctx.plan.plan_id}', version={ctx.plan.version}."
@@ -1014,7 +1282,10 @@ class TasteOpsApplicationService:
         # 4. Synchronize executed task state in workflow context if task present
         if ctx.execution_tasks:
             for t in ctx.execution_tasks:
-                if t.task_id == request.task_id or t.idempotency_key == request.idempotency_key:
+                if (
+                    t.task_id == request.task_id
+                    or t.idempotency_key == request.idempotency_key
+                ):
                     t.status = "EXECUTED"
                     t.executed_at = result.executed_at
                     t.output_reference = result.output_reference

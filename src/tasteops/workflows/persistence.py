@@ -10,9 +10,10 @@ import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -188,7 +189,9 @@ class FileStateStore(BaseStateStore):
         try:
             self._validate_session_id(session_id)
         except ValueError as val_err:
-            logger.warning("Rejected malicious session_id in get_audit_events: %s", val_err)
+            logger.warning(
+                "Rejected malicious session_id in get_audit_events: %s", val_err
+            )
             return []
 
         events = self._in_memory_fallback.get_audit_events(session_id)

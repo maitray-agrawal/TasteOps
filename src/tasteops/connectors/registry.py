@@ -12,7 +12,6 @@ from typing import Any
 
 from tasteops.connectors.base import (
     BaseConnector,
-    ConfigurationStatus,
     ConnectorExecutionRequest,
     ConnectorExecutionResult,
     DuplicateExecutionError,
@@ -43,7 +42,9 @@ class ConnectorRegistry:
         # Tracks executed idempotency keys: idempotency_key -> ConnectorExecutionResult
         self._executed_store: dict[str, ConnectorExecutionResult] = {}
 
-    def register(self, connector: BaseConnector, alias_capabilities: list[str] | None = None) -> None:
+    def register(
+        self, connector: BaseConnector, alias_capabilities: list[str] | None = None
+    ) -> None:
         """Registers a connector under its primary capability and optional aliases."""
         self._connectors[connector.capability] = connector
         self._connectors[connector.name] = connector
@@ -68,18 +69,22 @@ class ConnectorRegistry:
             if conn.name in seen:
                 continue
             seen.add(conn.name)
-            summaries.append({
-                "name": conn.name,
-                "capability": conn.capability,
-                "configuration_status": conn.configuration_status.value,
-            })
+            summaries.append(
+                {
+                    "name": conn.name,
+                    "capability": conn.capability,
+                    "configuration_status": conn.configuration_status.value,
+                }
+            )
         return summaries
 
     def is_executed(self, idempotency_key: str) -> bool:
         """Returns True if the idempotency key was already executed."""
         return idempotency_key in self._executed_store
 
-    def get_execution_result(self, idempotency_key: str) -> ConnectorExecutionResult | None:
+    def get_execution_result(
+        self, idempotency_key: str
+    ) -> ConnectorExecutionResult | None:
         """Retrieves prior execution result for an idempotency key."""
         return self._executed_store.get(idempotency_key)
 
@@ -100,11 +105,15 @@ class ConnectorRegistry:
         if not request.plan_id or not request.plan_id.strip():
             raise ValueError("Execution request must include non-empty 'plan_id'.")
         if not request.plan_version or request.plan_version < 1:
-            raise ValueError("Execution request must include valid 'plan_version' >= 1.")
+            raise ValueError(
+                "Execution request must include valid 'plan_version' >= 1."
+            )
         if not request.task_id or not request.task_id.strip():
             raise ValueError("Execution request must include non-empty 'task_id'.")
         if not request.idempotency_key or not request.idempotency_key.strip():
-            raise ValueError("Execution request must include non-empty 'idempotency_key'.")
+            raise ValueError(
+                "Execution request must include non-empty 'idempotency_key'."
+            )
 
         # 2. Reject duplicate execution attempts for the same idempotency key
         if request.idempotency_key in self._executed_store:
@@ -160,11 +169,15 @@ def create_default_registry() -> ConnectorRegistry:
 
     # 1. Spotify Audio Seeding Connector
     spotify = SpotifyConnector()
-    registry.register(spotify, alias_capabilities=["spotify", "sonic_identity", "audio_seeding"])
+    registry.register(
+        spotify, alias_capabilities=["spotify", "sonic_identity", "audio_seeding"]
+    )
 
     # 2. Email & Partnership Outreach Connector
     email = EmailConnector()
-    registry.register(email, alias_capabilities=["email", "partner_outreach", "outreach_brief"])
+    registry.register(
+        email, alias_capabilities=["email", "partner_outreach", "outreach_brief"]
+    )
 
     # 3. Procurement & Equipment Connector
     procurement = ProcurementConnector()

@@ -12,7 +12,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Path, Query, Request, Response, status
+from fastapi import APIRouter, Header, Path, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from tasteops.api.dependencies import AuthDep, ServiceDep
@@ -46,19 +46,36 @@ def _resolve_connector(category: str, task_type: str, desc: str) -> str:
     type_lower = (task_type or "").lower()
     desc_lower = (desc or "").lower()
 
-    if "spotify" in cat_lower or "spotify" in type_lower or "spotify" in desc_lower or "sonic" in cat_lower:
+    if (
+        "spotify" in cat_lower
+        or "spotify" in type_lower
+        or "spotify" in desc_lower
+        or "sonic" in cat_lower
+    ):
         spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID")
         if spotify_client_id and spotify_client_id.strip():
             return "Spotify Web API"
         return "NOT_CONFIGURED"
 
-    if "outreach" in cat_lower or "partner" in cat_lower or "brand" in cat_lower or "outreach" in desc_lower:
-        outreach_key = os.getenv("PARTNER_OUTREACH_API_KEY") or os.getenv("SENDGRID_API_KEY")
+    if (
+        "outreach" in cat_lower
+        or "partner" in cat_lower
+        or "brand" in cat_lower
+        or "outreach" in desc_lower
+    ):
+        outreach_key = os.getenv("PARTNER_OUTREACH_API_KEY") or os.getenv(
+            "SENDGRID_API_KEY"
+        )
         if outreach_key and outreach_key.strip():
             return "Partner Outreach Mailer"
         return "NOT_CONFIGURED"
 
-    if "spatial" in cat_lower or "design" in cat_lower or "cad" in cat_lower or "spatial" in desc_lower:
+    if (
+        "spatial" in cat_lower
+        or "design" in cat_lower
+        or "cad" in cat_lower
+        or "spatial" in desc_lower
+    ):
         cad_key = os.getenv("CAD_CONNECTOR_KEY") or os.getenv("AUTODESK_API_KEY")
         if cad_key and cad_key.strip():
             return "Spatial CAD Specifier"
@@ -107,8 +124,9 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
         for a in ctx.execution_plan.actions:
             if hasattr(a, "action_id"):
                 cost_map[a.action_id] = getattr(a, "estimated_cost", "$0")
-            if getattr(a, "target_entity_id", None):
-                cost_map[a.target_entity_id] = getattr(a, "estimated_cost", "$0")
+            target_id = getattr(a, "target_entity_id", None)
+            if target_id:
+                cost_map[str(target_id)] = getattr(a, "estimated_cost", "$0")
 
     tasks_out: list[dict[str, Any]] = []
 
@@ -124,7 +142,9 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
                 status = "SKIPPED"
             elif raw_status in {"RUNNING", "EXECUTING"}:
                 status = "RUNNING"
-            elif raw_status == "APPROVED" or (raw_status == "PENDING" and is_session_approved):
+            elif raw_status == "APPROVED" or (
+                raw_status == "PENDING" and is_session_approved
+            ):
                 status = "APPROVED"
             else:
                 status = "PENDING"
@@ -136,9 +156,11 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
             # Cost resolution
             cost = getattr(t, "estimated_cost", None)
             if not cost or cost == "$0":
+                t_target_id = getattr(t, "target_entity_id", None)
+                target_cost = cost_map.get(str(t_target_id)) if t_target_id else None
                 cost = (
                     cost_map.get(t.task_id)
-                    or cost_map.get(getattr(t, "target_entity_id", None))
+                    or target_cost
                     or cost_map.get(t.task_id.replace("task_", "act_"), "$0")
                 )
 
@@ -150,9 +172,15 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
             # Timestamp resolution
             exec_ts = None
             if status in {"COMPLETED", "FAILED", "RUNNING"}:
-                ts_val = getattr(t, "executed_at", None) or getattr(t, "timestamp", None)
+                ts_val = getattr(t, "executed_at", None) or getattr(
+                    t, "timestamp", None
+                )
                 if ts_val:
-                    exec_ts = ts_val.isoformat() if hasattr(ts_val, "isoformat") else str(ts_val)
+                    exec_ts = (
+                        ts_val.isoformat()
+                        if hasattr(ts_val, "isoformat")
+                        else str(ts_val)
+                    )
 
             # Result resolution
             res = getattr(t, "result", None)
@@ -164,39 +192,61 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
             if not err and status == "FAILED" and isinstance(res, dict):
                 err = res.get("error")
 
-            tasks_out.append({
-                "task_id": t.task_id,
-                "task_type": task_type,
-                "description": desc,
-                "status": status,
-                "estimated_cost": cost,
-                "connector": connector,
-                "approval_status": approval_str,
-                "execution_timestamp": exec_ts,
-                "result": res,
-                "error": err,
-                # Backward-compatibility fields
-                "action": getattr(t, "action", desc),
-                "owner": getattr(t, "owner", "GovernanceAgent"),
-                "output_reference": getattr(t, "output_reference", None),
-                "idempotency_key": getattr(t, "idempotency_key", f"idem_{t.task_id}"),
-            })
+            tasks_out.append(
+                {
+                    "task_id": t.task_id,
+                    "task_type": task_type,
+                    "description": desc,
+                    "status": status,
+                    "estimated_cost": cost,
+                    "connector": connector,
+                    "approval_status": approval_str,
+                    "execution_timestamp": exec_ts,
+                    "result": res,
+                    "error": err,
+                    # Backward-compatibility fields
+                    "action": getattr(t, "action", desc),
+                    "owner": getattr(t, "owner", "GovernanceAgent"),
+                    "output_reference": getattr(t, "output_reference", None),
+                    "idempotency_key": getattr(
+                        t, "idempotency_key", f"idem_{t.task_id}"
+                    ),
+                }
+            )
 
     # Case 2: No execution_tasks yet, but execution_plan has planned actions (pre-execution state)
-    elif ctx.execution_plan and hasattr(ctx.execution_plan, "actions") and ctx.execution_plan.actions:
+    elif (
+        ctx.execution_plan
+        and hasattr(ctx.execution_plan, "actions")
+        and ctx.execution_plan.actions
+    ):
         for a in ctx.execution_plan.actions:
             act_id = getattr(a, "action_id", "act_01")
             title = getattr(a, "title", "")
             desc = getattr(a, "description", "") or title
 
             # Infer task type
-            if "sonic" in act_id or "spotify" in title.lower() or "audio" in title.lower():
+            if (
+                "sonic" in act_id
+                or "spotify" in title.lower()
+                or "audio" in title.lower()
+            ):
                 category = "spotify_audio_seed"
-            elif "outreach" in act_id or "brand" in act_id or "partner" in title.lower():
+            elif (
+                "outreach" in act_id or "brand" in act_id or "partner" in title.lower()
+            ):
                 category = "partner_outreach_brief"
-            elif "hospitality" in act_id or "spatial" in title.lower() or "atmosphere" in title.lower():
+            elif (
+                "hospitality" in act_id
+                or "spatial" in title.lower()
+                or "atmosphere" in title.lower()
+            ):
                 category = "spatial_design_spec"
-            elif "prog" in act_id or "salon" in title.lower() or "calendar" in title.lower():
+            elif (
+                "prog" in act_id
+                or "salon" in title.lower()
+                or "calendar" in title.lower()
+            ):
                 category = "curatorial_programming"
             else:
                 category = "general_execution"
@@ -204,23 +254,25 @@ def _format_execution_tasks(ctx: WorkflowContext) -> list[dict[str, Any]]:
             status = "APPROVED" if is_session_approved else "PENDING"
             connector = _resolve_connector(category, category, desc)
 
-            tasks_out.append({
-                "task_id": f"task_{act_id}",
-                "task_type": category,
-                "description": desc,
-                "status": status,
-                "estimated_cost": getattr(a, "estimated_cost", "$0"),
-                "connector": connector,
-                "approval_status": approval_str,
-                "execution_timestamp": None,
-                "result": None,
-                "error": None,
-                # Backward-compatibility fields
-                "action": desc,
-                "owner": getattr(a, "owner", "GovernanceAgent"),
-                "output_reference": None,
-                "idempotency_key": f"idem_{act_id}",
-            })
+            tasks_out.append(
+                {
+                    "task_id": f"task_{act_id}",
+                    "task_type": category,
+                    "description": desc,
+                    "status": status,
+                    "estimated_cost": getattr(a, "estimated_cost", "$0"),
+                    "connector": connector,
+                    "approval_status": approval_str,
+                    "execution_timestamp": None,
+                    "result": None,
+                    "error": None,
+                    # Backward-compatibility fields
+                    "action": desc,
+                    "owner": getattr(a, "owner", "GovernanceAgent"),
+                    "output_reference": None,
+                    "idempotency_key": f"idem_{act_id}",
+                }
+            )
 
     return tasks_out
 
@@ -247,55 +299,71 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
 
         resolved_entities_list = []
         for e in getattr(ct, "resolved_entities", []):
-            resolved_entities_list.append({
-                "id": getattr(e, "id", ""),
-                "name": getattr(e, "name", ""),
-                "type": getattr(e, "type", ""),
-                "confidence": getattr(e, "confidence", 1.0),
-                "why_it_matters": getattr(e, "why_it_matters", ""),
-                "source": getattr(e, "source", "qloo_search"),
-                "evidence": getattr(e, "evidence", {}) if isinstance(getattr(e, "evidence", {}), dict) else {},
-            })
+            resolved_entities_list.append(
+                {
+                    "id": getattr(e, "id", ""),
+                    "name": getattr(e, "name", ""),
+                    "type": getattr(e, "type", ""),
+                    "confidence": getattr(e, "confidence", 1.0),
+                    "why_it_matters": getattr(e, "why_it_matters", ""),
+                    "source": getattr(e, "source", "qloo_search"),
+                    "evidence": getattr(e, "evidence", {})
+                    if isinstance(getattr(e, "evidence", {}), dict)
+                    else {},
+                }
+            )
 
         resolved_tags_list = []
         for t in getattr(ct, "resolved_tag_details", []):
-            resolved_tags_list.append({
-                "id": getattr(t, "id", ""),
-                "name": getattr(t, "name", ""),
-                "category": getattr(t, "category", None),
-                "confidence": getattr(t, "confidence", 1.0),
-                "why_it_matters": getattr(t, "why_it_matters", ""),
-            })
+            resolved_tags_list.append(
+                {
+                    "id": getattr(t, "id", ""),
+                    "name": getattr(t, "name", ""),
+                    "category": getattr(t, "category", None),
+                    "confidence": getattr(t, "confidence", 1.0),
+                    "why_it_matters": getattr(t, "why_it_matters", ""),
+                }
+            )
 
         matrix_evidence = []
         if ctx.cultural_matrix and hasattr(ctx.cultural_matrix, "evidence"):
             for ev in ctx.cultural_matrix.evidence:
-                matrix_evidence.append({
-                    "category": getattr(ev, "category", ""),
-                    "message": getattr(ev, "message", ""),
-                    "timestamp": getattr(ev, "timestamp", datetime.now(UTC)).isoformat() if hasattr(getattr(ev, "timestamp", None), "isoformat") else str(getattr(ev, "timestamp", "")),
-                    "signals_used": getattr(ev, "signals_used", []),
-                })
+                matrix_evidence.append(
+                    {
+                        "category": getattr(ev, "category", ""),
+                        "message": getattr(ev, "message", ""),
+                        "timestamp": getattr(
+                            ev, "timestamp", datetime.now(UTC)
+                        ).isoformat()
+                        if hasattr(getattr(ev, "timestamp", None), "isoformat")
+                        else str(getattr(ev, "timestamp", "")),
+                        "signals_used": getattr(ev, "signals_used", []),
+                    }
+                )
 
         provenance_trace = []
         for ent in resolved_entities_list:
-            provenance_trace.append({
-                "type": "entity_resolution",
-                "target_id": ent["id"],
-                "target_name": ent["name"],
-                "source": ent["source"],
-                "confidence": ent["confidence"],
-                "evidence": ent["evidence"],
-            })
+            provenance_trace.append(
+                {
+                    "type": "entity_resolution",
+                    "target_id": ent["id"],
+                    "target_name": ent["name"],
+                    "source": ent["source"],
+                    "confidence": ent["confidence"],
+                    "evidence": ent["evidence"],
+                }
+            )
         for mev in matrix_evidence:
-            provenance_trace.append({
-                "type": "cultural_matrix_query",
-                "category": mev["category"],
-                "source": "qloo_cultural_matrix",
-                "message": mev["message"],
-                "signals_used": mev["signals_used"],
-                "timestamp": mev["timestamp"],
-            })
+            provenance_trace.append(
+                {
+                    "type": "cultural_matrix_query",
+                    "category": mev["category"],
+                    "source": "qloo_cultural_matrix",
+                    "message": mev["message"],
+                    "signals_used": mev["signals_used"],
+                    "timestamp": mev["timestamp"],
+                }
+            )
 
         raw_constraints = getattr(ct, "constraints", {})
         if isinstance(raw_constraints, dict) and "raw_constraints" in raw_constraints:
@@ -366,7 +434,11 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     strat = ctx.strategy_output or (ctx.plan.strategy if ctx.plan else None)
     exp = ctx.experience_output or (ctx.plan.experience_design if ctx.plan else None)
     part = ctx.partnership_output or (ctx.plan.partnerships if ctx.plan else None)
-    gov = ctx.validation_result or ctx.governance_output or (ctx.plan.governance if ctx.plan else None)
+    gov = (
+        ctx.validation_result
+        or ctx.governance_output
+        or (ctx.plan.governance if ctx.plan else None)
+    )
 
     curr = ctx.current_state
     state_timestamps: dict[WorkflowState, datetime] = {}
@@ -378,18 +450,31 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     strat_start = init_time.isoformat()
     if WorkflowState.CULTURAL_MATRIX_READY in state_timestamps:
         strat_end = state_timestamps[WorkflowState.CULTURAL_MATRIX_READY].isoformat()
-        strat_dur = max(0.12, (state_timestamps[WorkflowState.CULTURAL_MATRIX_READY] - init_time).total_seconds())
+        strat_dur = max(
+            0.12,
+            (
+                state_timestamps[WorkflowState.CULTURAL_MATRIX_READY] - init_time
+            ).total_seconds(),
+        )
         strat_dur_str = f"{strat_dur:.2f}s"
         strat_status = "COMPLETED"
     elif curr == WorkflowState.FAILED and not strat:
         strat_end = datetime.now(UTC).isoformat()
         strat_dur_str = "0.00s"
         strat_status = "FAILED"
-    elif ctx.qloo_retry_count > 0 and curr in {WorkflowState.CULTURAL_TWIN_CREATED, WorkflowState.QLOO_RESOLVED}:
+    elif ctx.qloo_retry_count > 0 and curr in {
+        WorkflowState.CULTURAL_TWIN_CREATED,
+        WorkflowState.QLOO_RESOLVED,
+    }:
         strat_end = None
         strat_dur_str = None
         strat_status = "RETRYING"
-    elif curr in {WorkflowState.CREATED, WorkflowState.INTENT_PARSED, WorkflowState.CULTURAL_TWIN_CREATED, WorkflowState.QLOO_RESOLVED}:
+    elif curr in {
+        WorkflowState.CREATED,
+        WorkflowState.INTENT_PARSED,
+        WorkflowState.CULTURAL_TWIN_CREATED,
+        WorkflowState.QLOO_RESOLVED,
+    }:
         strat_end = None
         strat_dur_str = None
         strat_status = "RUNNING"
@@ -399,28 +484,54 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
         strat_status = "COMPLETED"
 
     pillars = getattr(strat, "cultural_pillars", []) if strat else []
-    strat_evidence_cnt = len(getattr(ctx.cultural_twin, "resolved_entities", [])) + len(getattr(ctx.cultural_twin, "resolved_tags", [])) if ctx.cultural_twin else 0
+    strat_evidence_cnt = (
+        len(getattr(ctx.cultural_twin, "resolved_entities", []))
+        + len(getattr(ctx.cultural_twin, "resolved_tags", []))
+        if ctx.cultural_twin
+        else 0
+    )
 
     # 4B. Experience Architect
-    if curr in {WorkflowState.CREATED, WorkflowState.INTENT_PARSED, WorkflowState.CULTURAL_TWIN_CREATED, WorkflowState.QLOO_RESOLVED}:
+    if curr in {
+        WorkflowState.CREATED,
+        WorkflowState.INTENT_PARSED,
+        WorkflowState.CULTURAL_TWIN_CREATED,
+        WorkflowState.QLOO_RESOLVED,
+    }:
         exp_status = "BLOCKED"
         exp_start = None
         exp_end = None
         exp_dur_str = None
-    elif curr in {WorkflowState.CULTURAL_MATRIX_READY, WorkflowState.AGENTS_RUNNING} and not exp:
+    elif (
+        curr in {WorkflowState.CULTURAL_MATRIX_READY, WorkflowState.AGENTS_RUNNING}
+        and not exp
+    ):
         exp_status = "RETRYING" if ctx.agent_retry_count > 0 else "RUNNING"
-        exp_start = (state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)).isoformat()
+        exp_start = (
+            state_timestamps.get(WorkflowState.AGENTS_RUNNING)
+            or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)
+        ).isoformat()
         exp_end = None
         exp_dur_str = None
-    elif curr == WorkflowState.FAILED and not exp and curr == WorkflowState.AGENTS_RUNNING:
+    elif (
+        curr == WorkflowState.FAILED
+        and not exp
+        and curr == WorkflowState.AGENTS_RUNNING
+    ):
         exp_status = "FAILED"
-        exp_start = state_timestamps.get(WorkflowState.AGENTS_RUNNING, init_time).isoformat()
+        exp_start = state_timestamps.get(
+            WorkflowState.AGENTS_RUNNING, init_time
+        ).isoformat()
         exp_end = datetime.now(UTC).isoformat()
         exp_dur_str = None
     else:
         exp_status = "COMPLETED" if exp else "BLOCKED"
-        t0 = state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)
-        t1 = state_timestamps.get(WorkflowState.PLAN_GENERATED) or state_timestamps.get(WorkflowState.VALIDATED, t0)
+        t0 = state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(
+            WorkflowState.CULTURAL_MATRIX_READY, init_time
+        )
+        t1 = state_timestamps.get(WorkflowState.PLAN_GENERATED) or state_timestamps.get(
+            WorkflowState.VALIDATED, t0
+        )
         exp_start = t0.isoformat()
         exp_end = t1.isoformat()
         exp_dur = max(0.18, (t1 - t0).total_seconds()) if exp else 0.0
@@ -430,28 +541,51 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     sonic = getattr(exp, "sonic_identity", None) if exp else None
     reading = getattr(exp, "reading_library_identity", None) if exp else None
     brand = getattr(exp, "brand_ecosystem", None) if exp else None
-    exp_evidence_cnt = len(zones) + len(getattr(brand, "material_palette", [])) if exp else 0
+    exp_evidence_cnt = (
+        len(zones) + len(getattr(brand, "material_palette", [])) if exp else 0
+    )
 
     # 4C. Partnership Agent
-    if curr in {WorkflowState.CREATED, WorkflowState.INTENT_PARSED, WorkflowState.CULTURAL_TWIN_CREATED, WorkflowState.QLOO_RESOLVED}:
+    if curr in {
+        WorkflowState.CREATED,
+        WorkflowState.INTENT_PARSED,
+        WorkflowState.CULTURAL_TWIN_CREATED,
+        WorkflowState.QLOO_RESOLVED,
+    }:
         part_status = "BLOCKED"
         part_start = None
         part_end = None
         part_dur_str = None
-    elif curr in {WorkflowState.CULTURAL_MATRIX_READY, WorkflowState.AGENTS_RUNNING} and not part:
+    elif (
+        curr in {WorkflowState.CULTURAL_MATRIX_READY, WorkflowState.AGENTS_RUNNING}
+        and not part
+    ):
         part_status = "RETRYING" if ctx.agent_retry_count > 0 else "RUNNING"
-        part_start = (state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)).isoformat()
+        part_start = (
+            state_timestamps.get(WorkflowState.AGENTS_RUNNING)
+            or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)
+        ).isoformat()
         part_end = None
         part_dur_str = None
-    elif curr == WorkflowState.FAILED and not part and curr == WorkflowState.AGENTS_RUNNING:
+    elif (
+        curr == WorkflowState.FAILED
+        and not part
+        and curr == WorkflowState.AGENTS_RUNNING
+    ):
         part_status = "FAILED"
-        part_start = state_timestamps.get(WorkflowState.AGENTS_RUNNING, init_time).isoformat()
+        part_start = state_timestamps.get(
+            WorkflowState.AGENTS_RUNNING, init_time
+        ).isoformat()
         part_end = datetime.now(UTC).isoformat()
         part_dur_str = None
     else:
         part_status = "COMPLETED" if part else "BLOCKED"
-        t0 = state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(WorkflowState.CULTURAL_MATRIX_READY, init_time)
-        t1 = state_timestamps.get(WorkflowState.PLAN_GENERATED) or state_timestamps.get(WorkflowState.VALIDATED, t0)
+        t0 = state_timestamps.get(WorkflowState.AGENTS_RUNNING) or state_timestamps.get(
+            WorkflowState.CULTURAL_MATRIX_READY, init_time
+        )
+        t1 = state_timestamps.get(WorkflowState.PLAN_GENERATED) or state_timestamps.get(
+            WorkflowState.VALIDATED, t0
+        )
         part_start = t0.isoformat()
         part_end = t1.isoformat()
         part_dur = max(0.14, (t1 - t0).total_seconds()) if part else 0.0
@@ -461,27 +595,41 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     part_evidence_cnt = len(partnerships)
 
     # 4D. Governance / Execution Agent
-    if curr in {WorkflowState.CREATED, WorkflowState.INTENT_PARSED, WorkflowState.CULTURAL_TWIN_CREATED, WorkflowState.QLOO_RESOLVED, WorkflowState.CULTURAL_MATRIX_READY, WorkflowState.AGENTS_RUNNING}:
+    if curr in {
+        WorkflowState.CREATED,
+        WorkflowState.INTENT_PARSED,
+        WorkflowState.CULTURAL_TWIN_CREATED,
+        WorkflowState.QLOO_RESOLVED,
+        WorkflowState.CULTURAL_MATRIX_READY,
+        WorkflowState.AGENTS_RUNNING,
+    }:
         gov_status = "BLOCKED"
         gov_start = None
         gov_end = None
         gov_dur_str = None
     elif curr == WorkflowState.PLAN_GENERATED:
         gov_status = "RETRYING" if ctx.validation_cycle_count > 0 else "RUNNING"
-        gov_start = state_timestamps.get(WorkflowState.PLAN_GENERATED, init_time).isoformat()
+        gov_start = state_timestamps.get(
+            WorkflowState.PLAN_GENERATED, init_time
+        ).isoformat()
         gov_end = None
         gov_dur_str = None
     elif curr in {WorkflowState.VALIDATED, WorkflowState.AWAITING_APPROVAL}:
         gov_status = "AWAITING_APPROVAL"
         t0 = state_timestamps.get(WorkflowState.PLAN_GENERATED, init_time)
-        t1 = state_timestamps.get(WorkflowState.AWAITING_APPROVAL, state_timestamps.get(WorkflowState.VALIDATED, t0))
+        t1 = state_timestamps.get(
+            WorkflowState.AWAITING_APPROVAL,
+            state_timestamps.get(WorkflowState.VALIDATED, t0),
+        )
         gov_start = t0.isoformat()
         gov_end = t1.isoformat()
         gov_dur = max(0.08, (t1 - t0).total_seconds())
         gov_dur_str = f"{gov_dur:.2f}s"
     elif curr == WorkflowState.APPROVED:
         gov_status = "AWAITING_APPROVAL"
-        gov_start = state_timestamps.get(WorkflowState.PLAN_GENERATED, init_time).isoformat()
+        gov_start = state_timestamps.get(
+            WorkflowState.PLAN_GENERATED, init_time
+        ).isoformat()
         gov_end = state_timestamps.get(WorkflowState.APPROVED, init_time).isoformat()
         gov_dur_str = "0.10s"
     elif curr == WorkflowState.EXECUTING:
@@ -499,7 +647,9 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
         gov_dur_str = f"{gov_dur:.2f}s"
     elif curr == WorkflowState.FAILED:
         gov_status = "FAILED"
-        gov_start = state_timestamps.get(WorkflowState.PLAN_GENERATED, init_time).isoformat()
+        gov_start = state_timestamps.get(
+            WorkflowState.PLAN_GENERATED, init_time
+        ).isoformat()
         gov_end = datetime.now(UTC).isoformat()
         gov_dur_str = None
     else:
@@ -508,7 +658,11 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
         gov_end = None
         gov_dur_str = None
 
-    gov_evidence_cnt = len(getattr(gov, "risk_flags", [])) + len(ctx.execution_tasks) + (len(ctx.cultural_matrix.evidence) if ctx.cultural_matrix else 0)
+    gov_evidence_cnt = (
+        len(getattr(gov, "risk_flags", []))
+        + len(ctx.execution_tasks)
+        + (len(ctx.cultural_matrix.evidence) if ctx.cultural_matrix else 0)
+    )
 
     agent_summaries: dict[str, Any] = {
         "cultural_strategist": {
@@ -517,12 +671,24 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
             "start": strat_start,
             "completion": strat_end,
             "duration": strat_dur_str,
-            "validation_status": "PASSED" if strat_status == "COMPLETED" else ("FAILED" if strat_status == "FAILED" else "PENDING_REVIEW"),
+            "validation_status": "PASSED"
+            if strat_status == "COMPLETED"
+            else ("FAILED" if strat_status == "FAILED" else "PENDING_REVIEW"),
             "evidence_count": strat_evidence_cnt,
-            "failure_information": ctx.error_message if strat_status == "FAILED" else None,
+            "failure_information": ctx.error_message
+            if strat_status == "FAILED"
+            else None,
             "output_summary": {
-                "positioning": getattr(strat, "positioning_statement", "Cultural anchor positioning synthesized") if strat else "Brief transformation pending",
-                "target_audience": getattr(strat, "target_audience", "") if strat else "",
+                "positioning": getattr(
+                    strat,
+                    "positioning_statement",
+                    "Cultural anchor positioning synthesized",
+                )
+                if strat
+                else "Brief transformation pending",
+                "target_audience": getattr(strat, "target_audience", "")
+                if strat
+                else "",
                 "pillars": [getattr(p, "name", str(p)) for p in pillars],
                 "decisions": "Synthesized Cultural Twin, resolved anchor terms via Qloo, and established aesthetic constraints.",
             },
@@ -538,16 +704,28 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
             "start": exp_start,
             "completion": exp_end,
             "duration": exp_dur_str,
-            "validation_status": "PASSED" if exp_status == "COMPLETED" else ("BLOCKED" if exp_status == "BLOCKED" else "PENDING_REVIEW"),
+            "validation_status": "PASSED"
+            if exp_status == "COMPLETED"
+            else ("BLOCKED" if exp_status == "BLOCKED" else "PENDING_REVIEW"),
             "evidence_count": exp_evidence_cnt,
-            "failure_information": ctx.error_message if exp_status == "FAILED" else None,
+            "failure_information": ctx.error_message
+            if exp_status == "FAILED"
+            else None,
             "output_summary": {
                 "spatial_zones_count": len(zones),
                 "spatial_zones": [getattr(z, "name", str(z)) for z in zones],
-                "sonic_profile": getattr(sonic, "acoustic_profile", "") if sonic else None,
-                "reading_library": getattr(reading, "overview", "") if reading else None,
-                "material_palette": getattr(brand, "material_palette", []) if brand else [],
-                "decisions": "Constructed multi-zone sensory architecture, circadian lighting, and acoustic identity." if exp else "Pending Cultural Matrix inputs.",
+                "sonic_profile": getattr(sonic, "acoustic_profile", "")
+                if sonic
+                else None,
+                "reading_library": getattr(reading, "overview", "")
+                if reading
+                else None,
+                "material_palette": getattr(brand, "material_palette", [])
+                if brand
+                else [],
+                "decisions": "Constructed multi-zone sensory architecture, circadian lighting, and acoustic identity."
+                if exp
+                else "Pending Cultural Matrix inputs.",
             },
             # Backward-compatibility fields:
             "spatial_zones_count": len(zones),
@@ -561,9 +739,13 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
             "start": part_start,
             "completion": part_end,
             "duration": part_dur_str,
-            "validation_status": "PASSED" if part_status == "COMPLETED" else ("BLOCKED" if part_status == "BLOCKED" else "PENDING_REVIEW"),
+            "validation_status": "PASSED"
+            if part_status == "COMPLETED"
+            else ("BLOCKED" if part_status == "BLOCKED" else "PENDING_REVIEW"),
             "evidence_count": part_evidence_cnt,
-            "failure_information": ctx.error_message if part_status == "FAILED" else None,
+            "failure_information": ctx.error_message
+            if part_status == "FAILED"
+            else None,
             "output_summary": {
                 "partnerships_count": len(partnerships),
                 "partners": [
@@ -574,7 +756,9 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
                     }
                     for p in partnerships
                 ],
-                "decisions": "Curated high-affinity brand and artist partnerships with commercial tiering." if part else "Pending Cultural Matrix inputs.",
+                "decisions": "Curated high-affinity brand and artist partnerships with commercial tiering."
+                if part
+                else "Pending Cultural Matrix inputs.",
             },
             # Backward-compatibility fields:
             "partnerships_count": len(partnerships),
@@ -593,20 +777,34 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
             "start": gov_start,
             "completion": gov_end,
             "duration": gov_dur_str,
-            "validation_status": "PASSED" if (gov and getattr(gov, "is_valid", False)) else ("FAILED" if (gov and not getattr(gov, "is_valid", False)) else ("BLOCKED" if gov_status == "BLOCKED" else "PENDING_REVIEW")),
+            "validation_status": "PASSED"
+            if (gov and getattr(gov, "is_valid", False))
+            else (
+                "FAILED"
+                if (gov and not getattr(gov, "is_valid", False))
+                else ("BLOCKED" if gov_status == "BLOCKED" else "PENDING_REVIEW")
+            ),
             "evidence_count": gov_evidence_cnt,
-            "failure_information": ctx.error_message if gov_status == "FAILED" else None,
+            "failure_information": ctx.error_message
+            if gov_status == "FAILED"
+            else None,
             "output_summary": {
                 "is_valid": getattr(gov, "is_valid", False) if gov else False,
-                "provenance_verified": getattr(gov, "provenance_verified", True) if gov else False,
-                "compliance_score": getattr(gov, "compliance_score", 1.0) if gov else 1.0,
+                "provenance_verified": getattr(gov, "provenance_verified", True)
+                if gov
+                else False,
+                "compliance_score": getattr(gov, "compliance_score", 1.0)
+                if gov
+                else 1.0,
                 "risk_flags_count": len(getattr(gov, "risk_flags", [])) if gov else 0,
                 "execution_tasks_count": len(ctx.execution_tasks),
                 "decisions": "Audited 100% entity provenance against Qloo signatures, verified spatial constraints, and enforced approval gate.",
             },
             # Backward-compatibility fields:
             "is_valid": getattr(gov, "is_valid", True) if gov else True,
-            "provenance_verified": getattr(gov, "provenance_verified", True) if gov else True,
+            "provenance_verified": getattr(gov, "provenance_verified", True)
+            if gov
+            else True,
             "compliance_score": getattr(gov, "compliance_score", 1.0) if gov else 1.0,
             "risk_flags_count": len(getattr(gov, "risk_flags", [])) if gov else 0,
         },
@@ -626,7 +824,9 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     # 6. Execution Plan
     plan_dict: dict[str, Any] | None = None
     if ctx.plan:
-        plan_dict = ctx.plan.model_dump() if hasattr(ctx.plan, "model_dump") else dict(ctx.plan)
+        plan_dict = (
+            ctx.plan.model_dump() if hasattr(ctx.plan, "model_dump") else dict(ctx.plan)
+        )
 
     exec_plan = ctx.execution_plan or (ctx.plan.execution_plan if ctx.plan else None)
     execution_plan_dict: dict[str, Any] | None = None
@@ -642,7 +842,9 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
             }
             for a in getattr(exec_plan, "actions", [])
         ]
-        plan_hash = getattr(exec_plan, "plan_hash", None) or (ctx.plan.compute_hash() if ctx.plan else None)
+        plan_hash = getattr(exec_plan, "plan_hash", None) or (
+            ctx.plan.compute_hash() if ctx.plan else None
+        )
         execution_plan_dict = {
             "plan_id": exec_plan.plan_id,
             "version": exec_plan.version,
@@ -657,7 +859,11 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     # 7. Approval State
     approval_dict: dict[str, Any] | None = None
     if ctx.approval:
-        approval_dict = ctx.approval.model_dump() if hasattr(ctx.approval, "model_dump") else dict(ctx.approval)
+        approval_dict = (
+            ctx.approval.model_dump()
+            if hasattr(ctx.approval, "model_dump")
+            else dict(ctx.approval)
+        )
 
     approval_state: dict[str, Any] = {
         "is_approved": False,
@@ -670,16 +876,22 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     }
     if ctx.approval:
         approval_state["is_approved"] = bool(ctx.approval.is_valid)
-        approval_state["status"] = "APPROVED" if ctx.approval.is_valid else "INVALIDATED"
+        approval_state["status"] = (
+            "APPROVED" if ctx.approval.is_valid else "INVALIDATED"
+        )
         approval_state["approver"] = ctx.approval.approver
-        approval_state["role"] = getattr(ctx.approval, "role", "Lead Cultural Strategist")
+        approval_state["role"] = getattr(
+            ctx.approval, "role", "Lead Cultural Strategist"
+        )
         approval_state["approved_at"] = (
             ctx.approval.approved_at.isoformat()
             if hasattr(ctx.approval.approved_at, "isoformat")
             else str(ctx.approval.approved_at)
         )
         approval_state["plan_hash"] = ctx.approval.plan_hash
-        approval_state["notes"] = getattr(ctx.approval, "notes", getattr(ctx.approval, "invalidation_reason", None))
+        approval_state["notes"] = getattr(
+            ctx.approval, "notes", getattr(ctx.approval, "invalidation_reason", None)
+        )
 
     # 8. Execution State
     tasks_list = _format_execution_tasks(ctx)
@@ -690,9 +902,11 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     if total_tasks > 0:
         if executed_tasks == total_tasks:
             exec_status = "COMPLETED"
-        elif executed_tasks > 0 or failed_tasks > 0:
-            exec_status = "EXECUTING"
-        elif any(t["status"] == "RUNNING" for t in tasks_list):
+        elif (
+            executed_tasks > 0
+            or failed_tasks > 0
+            or any(t["status"] == "RUNNING" for t in tasks_list)
+        ):
             exec_status = "EXECUTING"
     execution_state = {
         "status": exec_status,
@@ -776,7 +990,9 @@ def format_session_detail(ctx: WorkflowContext) -> SessionDetailResponse:
     responses={404: {"description": "Session not found"}},
 )
 async def get_session(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
 ) -> SessionDetailResponse:
     ctx = service.get_session(session_id)
@@ -792,7 +1008,9 @@ async def get_session(
     responses={404: {"description": "Session not found"}},
 )
 async def get_session_events(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
 ) -> SessionEventsResponse:
     ctx = service.get_session(session_id)
@@ -820,7 +1038,9 @@ async def get_session_events(
     responses={404: {"description": "Session not found"}},
 )
 async def verify_session_ledger(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     return service.verify_audit_chain(session_id)
@@ -838,7 +1058,9 @@ async def verify_session_ledger(
     },
 )
 async def get_session_blueprint(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
 ) -> SessionBlueprintResponse:
     blueprint = service.get_session_blueprint(session_id)
@@ -860,11 +1082,15 @@ async def get_session_blueprint(
 )
 async def stream_session_events(
     request: Request,
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     last_event_id_query: str | None = Query(None, alias="last_event_id"),
-    wait: bool = Query(True, description="Keep stream open for live events if session is active"),
+    wait: bool = Query(
+        True, description="Keep stream open for live events if session is active"
+    ),
 ) -> StreamingResponse:
     # 1. Authoritative verification that session exists (raises 404 if not found)
     service.get_session(session_id)
@@ -896,7 +1122,8 @@ async def stream_session_events(
             # If session is already terminal or wait=False, close stream cleanly
             current_ctx = service.get_session(session_id)
             if (
-                current_ctx.current_state in (WorkflowState.COMPLETED, WorkflowState.FAILED)
+                current_ctx.current_state
+                in (WorkflowState.COMPLETED, WorkflowState.FAILED)
                 or not wait
             ):
                 return
@@ -915,7 +1142,7 @@ async def stream_session_events(
 
                     if ev.event_type in ("execution.completed", "workflow.failed"):
                         break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     if await request.is_disconnected():
                         break
                     yield ": ping\n\n"
@@ -954,7 +1181,9 @@ async def stream_session_events(
 )
 async def approve_session(
     request: ApproveSessionRequest,
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
     _actor: AuthDep = "dev-curator",
 ) -> SessionDetailResponse:
@@ -981,7 +1210,9 @@ async def approve_session(
 )
 async def reject_session(
     request: RejectSessionRequest,
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
     _actor: AuthDep = "dev-curator",
 ) -> SessionDetailResponse:
@@ -1006,7 +1237,9 @@ async def reject_session(
     },
 )
 async def execute_session(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
     _actor: AuthDep = "dev-curator",
 ) -> ExecutionResponse:
@@ -1022,7 +1255,11 @@ async def execute_session(
             if hasattr(ctx.governance_output, "model_dump")
             else dict(ctx.governance_output)
         )
-    elif ctx.plan and ctx.plan.execution_summary and ctx.plan.execution_summary.audit_report:
+    elif (
+        ctx.plan
+        and ctx.plan.execution_summary
+        and ctx.plan.execution_summary.audit_report
+    ):
         audit_report = (
             ctx.plan.execution_summary.audit_report.model_dump()
             if hasattr(ctx.plan.execution_summary.audit_report, "model_dump")
@@ -1049,14 +1286,20 @@ async def execute_session(
     responses={
         403: {"description": "Unapproved session"},
         404: {"description": "Session not found"},
-        409: {"description": "Duplicate execution attempt for the same idempotency key"},
+        409: {
+            "description": "Duplicate execution attempt for the same idempotency key"
+        },
         422: {"description": "Connector missing or unconfigured"},
     },
 )
 async def execute_task_connector(
     request: ConnectorExecutionRequest,
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
-    task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
+    task_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
     _actor: AuthDep = "dev-curator",
 ) -> ConnectorExecutionResult:
@@ -1078,7 +1321,9 @@ async def execute_task_connector(
     },
 )
 async def list_session_connectors(
-    session_id: str = Path(..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128),
+    session_id: str = Path(
+        ..., pattern=r"^[a-zA-Z0-9_\-]+$", min_length=1, max_length=128
+    ),
     service: ServiceDep = None,  # type: ignore[assignment]
 ) -> list[dict[str, Any]]:
     # Verify session exists

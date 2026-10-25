@@ -49,12 +49,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -177,8 +173,17 @@ def test_normal_stream_to_approval_gate(test_setup, mock_qloo_api):
 
         # Safety assertions: zero secrets, zero chain-of-thought, zero tracebacks
         data_str = json.dumps(ev["data"]).lower()
-        for forbidden in ("secret", "api_key", "bearer", "authorization", "stacktrace", "traceback"):
-            assert forbidden not in data_str, f"Forbidden substring '{forbidden}' found in event payload"
+        for forbidden in (
+            "secret",
+            "api_key",
+            "bearer",
+            "authorization",
+            "stacktrace",
+            "traceback",
+        ):
+            assert forbidden not in data_str, (
+                f"Forbidden substring '{forbidden}' found in event payload"
+            )
 
     # 5. Verify deterministic ordering of canonical progression
     event_types = [ev["event_type"] for ev in events]
@@ -193,12 +198,22 @@ def test_normal_stream_to_approval_gate(test_setup, mock_qloo_api):
     assert "approval.required" in event_types
 
     # Invariant: session.created must come before approval.required
-    assert event_types.index("session.created") < event_types.index("qloo.search_started")
-    assert event_types.index("qloo.search_started") < event_types.index("cultural_matrix.ready")
-    assert event_types.index("cultural_matrix.ready") < event_types.index("agent.started")
+    assert event_types.index("session.created") < event_types.index(
+        "qloo.search_started"
+    )
+    assert event_types.index("qloo.search_started") < event_types.index(
+        "cultural_matrix.ready"
+    )
+    assert event_types.index("cultural_matrix.ready") < event_types.index(
+        "agent.started"
+    )
     assert event_types.index("agent.started") < event_types.index("agent.completed")
-    assert event_types.index("agent.completed") < event_types.index("governance.completed")
-    assert event_types.index("governance.completed") < event_types.index("approval.required")
+    assert event_types.index("agent.completed") < event_types.index(
+        "governance.completed"
+    )
+    assert event_types.index("governance.completed") < event_types.index(
+        "approval.required"
+    )
 
 
 # =============================================================================
@@ -220,7 +235,11 @@ def test_completed_session_stream(test_setup, mock_qloo_api):
     space_id = space_resp.json()["space_id"]
     analyze_resp = client.post(
         f"/api/v1/spaces/{space_id}/analyze",
-        json={"user_input": MUMBAI_DEMO_RAW_INTENT, "hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+        json={
+            "user_input": MUMBAI_DEMO_RAW_INTENT,
+            "hints": MUMBAI_DEMO_HINTS,
+            "auto_run": True,
+        },
     )
     session_id = analyze_resp.json()["session_id"]
 
@@ -245,7 +264,9 @@ def test_completed_session_stream(test_setup, mock_qloo_api):
     assert "execution.completed" in event_types
 
     # Find execution.completed event
-    completed_ev = next(ev for ev in events if ev["event_type"] == "execution.completed")
+    completed_ev = next(
+        ev for ev in events if ev["event_type"] == "execution.completed"
+    )
     assert completed_ev["data"]["status"] == "COMPLETED"
     assert completed_ev["data"]["total_tasks"] > 0
     assert completed_ev["data"]["executed_tasks"] == completed_ev["data"]["total_tasks"]
@@ -270,14 +291,20 @@ def test_failed_session_stream(test_setup, mock_qloo_api):
     space_id = space_resp.json()["space_id"]
     analyze_resp = client.post(
         f"/api/v1/spaces/{space_id}/analyze",
-        json={"user_input": MUMBAI_DEMO_RAW_INTENT, "hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+        json={
+            "user_input": MUMBAI_DEMO_RAW_INTENT,
+            "hints": MUMBAI_DEMO_HINTS,
+            "auto_run": True,
+        },
     )
     session_id = analyze_resp.json()["session_id"]
 
     # 2. Reject plan
     reject_resp = client.post(
         f"/api/v1/sessions/{session_id}/reject",
-        json={"reason": "Curator rejected: sonic identity unaligned with heritage guidelines"},
+        json={
+            "reason": "Curator rejected: sonic identity unaligned with heritage guidelines"
+        },
     )
     assert reject_resp.status_code == 200
     assert reject_resp.json()["current_state"] == "FAILED"
@@ -314,7 +341,11 @@ def test_reconnect_stream_with_last_event_id(test_setup, mock_qloo_api):
     space_id = space_resp.json()["space_id"]
     analyze_resp = client.post(
         f"/api/v1/spaces/{space_id}/analyze",
-        json={"user_input": MUMBAI_DEMO_RAW_INTENT, "hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+        json={
+            "user_input": MUMBAI_DEMO_RAW_INTENT,
+            "hints": MUMBAI_DEMO_HINTS,
+            "auto_run": True,
+        },
     )
     session_id = analyze_resp.json()["session_id"]
 
@@ -383,7 +414,11 @@ async def test_client_disconnect_cleans_up_broadcaster(test_setup, mock_qloo_api
     space_id = space_resp.json()["space_id"]
     analyze_resp = client.post(
         f"/api/v1/spaces/{space_id}/analyze",
-        json={"user_input": MUMBAI_DEMO_RAW_INTENT, "hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+        json={
+            "user_input": MUMBAI_DEMO_RAW_INTENT,
+            "hints": MUMBAI_DEMO_HINTS,
+            "auto_run": True,
+        },
     )
     session_id = analyze_resp.json()["session_id"]
 

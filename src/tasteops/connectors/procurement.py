@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
 
 import httpx
 
@@ -39,17 +38,27 @@ class ProcurementConnector(BaseConnector):
         endpoint_url: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._api_key = api_key or os.getenv("PROCUREMENT_API_KEY") or os.getenv("ERP_API_KEY")
+        self._api_key = (
+            api_key or os.getenv("PROCUREMENT_API_KEY") or os.getenv("ERP_API_KEY")
+        )
         self._endpoint_url = endpoint_url or os.getenv(
-            "PROCUREMENT_ENDPOINT_URL", "https://api.procurement.tasteops.internal/v1/orders"
+            "PROCUREMENT_ENDPOINT_URL",
+            "https://api.procurement.tasteops.internal/v1/orders",
         )
         self._http_client = http_client
 
     @property
     def configuration_status(self) -> ConfigurationStatus:
         """Evaluates whether Procurement API credentials are appropriately configured."""
-        key = (self._api_key or os.getenv("PROCUREMENT_API_KEY") or os.getenv("ERP_API_KEY") or "").strip()
-        url = (self._endpoint_url or os.getenv("PROCUREMENT_ENDPOINT_URL") or "").strip()
+        key = (
+            self._api_key
+            or os.getenv("PROCUREMENT_API_KEY")
+            or os.getenv("ERP_API_KEY")
+            or ""
+        ).strip()
+        url = (
+            self._endpoint_url or os.getenv("PROCUREMENT_ENDPOINT_URL") or ""
+        ).strip()
 
         if not key:
             return ConfigurationStatus.NOT_CONFIGURED
@@ -57,7 +66,7 @@ class ProcurementConnector(BaseConnector):
         if len(key) < 6 or " " in key:
             return ConfigurationStatus.INVALID_CONFIGURATION
 
-        if not (url.startswith("http://") or url.startswith("https://")):
+        if not url.startswith(("http://", "https://")):
             return ConfigurationStatus.INVALID_CONFIGURATION
 
         from tasteops.security import validate_safe_url
@@ -78,7 +87,9 @@ class ProcurementConnector(BaseConnector):
                 "Procurement credentials (PROCUREMENT_API_KEY or ERP_API_KEY) are not configured.",
             )
         if status == ConfigurationStatus.INVALID_CONFIGURATION:
-            url = (self._endpoint_url or os.getenv("PROCUREMENT_ENDPOINT_URL") or "").strip()
+            url = (
+                self._endpoint_url or os.getenv("PROCUREMENT_ENDPOINT_URL") or ""
+            ).strip()
             from tasteops.security import validate_safe_url
 
             try:
@@ -96,7 +107,12 @@ class ProcurementConnector(BaseConnector):
 
         if request is not None:
             payload = request.payload or {}
-            item = payload.get("vendor") or payload.get("order_items") or payload.get("item") or payload.get("zone_name")
+            item = (
+                payload.get("vendor")
+                or payload.get("order_items")
+                or payload.get("item")
+                or payload.get("zone_name")
+            )
             if not item and not request.metadata.get("action"):
                 raise ValueError(
                     f"Procurement task '{request.task_id}' requires 'vendor' or 'order_items' in payload."
@@ -111,8 +127,14 @@ class ProcurementConnector(BaseConnector):
         self.validate(request)
 
         payload = request.payload or {}
-        vendor = payload.get("vendor") or payload.get("vendor_name") or "Verified Craft Guild"
-        order_items = payload.get("order_items") or [payload.get("item") or "Acoustic Hardware & Tableware"]
+        vendor = (
+            payload.get("vendor")
+            or payload.get("vendor_name")
+            or "Verified Craft Guild"
+        )
+        order_items = payload.get("order_items") or [
+            payload.get("item") or "Acoustic Hardware & Tableware"
+        ]
         po_number = f"PO_{request.task_id[:10].upper()}"
 
         logger.info(
@@ -125,6 +147,8 @@ class ProcurementConnector(BaseConnector):
 
         try:
             if self._http_client:
+                if not self._endpoint_url:
+                    raise InvalidConfigurationError(self.name, "Missing endpoint_url")
                 resp = await self._http_client.post(
                     self._endpoint_url,
                     headers={"Authorization": f"Bearer {self._api_key}"},

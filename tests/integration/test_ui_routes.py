@@ -18,6 +18,7 @@ Verifies:
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -98,7 +99,13 @@ def test_static_assets_served_correctly(client, asset_path, content_type_substr)
 # =============================================================================
 def test_no_provider_secrets_exposed_in_frontend():
     """Verifies that provider API keys and database URLs are never written into static frontend assets."""
-    static_root = Path(__file__).resolve().parent.parent.parent / "src" / "tasteops" / "api" / "static"
+    static_root = (
+        Path(__file__).resolve().parent.parent.parent
+        / "src"
+        / "tasteops"
+        / "api"
+        / "static"
+    )
     assert static_root.exists()
 
     forbidden_patterns = [
@@ -114,4 +121,6 @@ def test_no_provider_secrets_exposed_in_frontend():
         if file_path.is_file():
             text = file_path.read_text(encoding="utf-8", errors="ignore")
             for pattern in forbidden_patterns:
-                assert pattern not in text, f"Found sensitive secret pattern '{pattern}' in {file_path}"
+                assert pattern not in text, (
+                    f"Found sensitive secret pattern '{pattern}' in {file_path}"
+                )

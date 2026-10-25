@@ -48,13 +48,13 @@ class ConnectorExecutionRequest(BaseModel):
         ..., min_length=1, description="Unique execution task identifier"
     )
     idempotency_key: str = Field(
-        ..., min_length=1, description="Unique key preventing duplicate external dispatch"
+        ...,
+        min_length=1,
+        description="Unique key preventing duplicate external dispatch",
     )
 
     # Optional task payload & context
-    task_type: str = Field(
-        default="", description="Category/capability classification"
-    )
+    task_type: str = Field(default="", description="Category/capability classification")
     payload: dict[str, Any] = Field(
         default_factory=dict, description="Execution input parameters"
     )
@@ -100,7 +100,8 @@ class ConnectorExecutionResult(BaseModel):
     connector_name: str = Field(..., description="Authoritative connector name")
     status: str = Field(default="COMPLETED", description="Execution status")
     output_reference: str = Field(
-        ..., description="External resource reference URI (e.g. spotify://..., email://...)"
+        ...,
+        description="External resource reference URI (e.g. spotify://..., email://...)",
     )
     executed_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -121,7 +122,8 @@ class ConnectorExecutionErrorDetail(BaseModel):
     error_code: str = Field(..., description="Standardized error code")
     message: str = Field(..., description="Sanitized human-readable error description")
     details: dict[str, Any] = Field(
-        default_factory=dict, description="Contextual diagnostic details without secrets"
+        default_factory=dict,
+        description="Contextual diagnostic details without secrets",
     )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -250,7 +252,6 @@ class BaseConnector(ABC):
     @abstractmethod
     def configuration_status(self) -> ConfigurationStatus:
         """Returns the active configuration status of this connector."""
-        pass
 
     @abstractmethod
     def validate(self, request: ConnectorExecutionRequest | None = None) -> bool:
@@ -261,7 +262,6 @@ class BaseConnector(ABC):
             InvalidConfigurationError: If connector settings are malformed.
             ValueError: If request payload is missing required fields.
         """
-        pass
 
     @abstractmethod
     async def execute(
@@ -272,4 +272,3 @@ class BaseConnector(ABC):
         Must NEVER fake external execution. If connector is unconfigured,
         execution must fail explicitly.
         """
-        pass

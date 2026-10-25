@@ -40,7 +40,6 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
     MUMBAI_DEMO_HINTS,
     MUMBAI_INSIGHTS_MOCK_RESPONSE,
@@ -55,12 +54,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -114,7 +109,12 @@ def test_experience_blueprint_complete_telemetry(client, mock_qloo_api):
             "desired_mood": "Warm analog acoustic resonance, wabi-sabi minimalism",
             "target_audience": "Design purists, vinyl collectors, ambient music lovers",
             "positioning": "Tokyo-Parisian intimate sound and coffee sanctuary",
-            "anchor_entities": ["Ryuichi Sakamoto", "Midori Takada", "Aesop", "Snow Peak"],
+            "anchor_entities": [
+                "Ryuichi Sakamoto",
+                "Midori Takada",
+                "Aesop",
+                "Snow Peak",
+            ],
         },
     )
     assert space_resp.status_code == 201
@@ -234,7 +234,7 @@ def test_recommendation_provenance_path_answers_why_recommended(client, mock_qlo
     assert len(prov_map) > 0
 
     # Test each recommendation in the map has the 4 distinct epistemic layers
-    for rec_name, trail in prov_map.items():
+    for trail in prov_map.values():
         assert "entity_name" in trail
         assert "category" in trail
 
@@ -298,7 +298,9 @@ def test_no_raw_chain_of_thought_in_blueprint(client, mock_qloo_api):
         "system_prompt",
     ]
     for token in forbidden_tokens:
-        assert token not in raw_text, f"Forbidden chain-of-thought token detected: {token}"
+        assert token not in raw_text, (
+            f"Forbidden chain-of-thought token detected: {token}"
+        )
 
 
 def test_blueprint_route_and_static_asset_served(client):

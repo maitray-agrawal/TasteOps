@@ -406,7 +406,10 @@ def test_human_rejection(client, mock_mumbai_respx):
     assert reject_resp.status_code == 200
     data = reject_resp.json()
     assert data["current_state"] == WorkflowState.FAILED.value
-    assert data["error_message"] == "Acoustic decibel levels unacceptable for residential zone."
+    assert (
+        data["error_message"]
+        == "Acoustic decibel levels unacceptable for residential zone."
+    )
 
 
 # ---------------------------------------------------------------------------

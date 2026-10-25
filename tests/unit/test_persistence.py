@@ -15,7 +15,6 @@ Verifies:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
@@ -29,14 +28,13 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.session_repository import SQLiteSessionRepository
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
-from tasteops.workflows.context import StateTransitionRecord, WorkflowContext
+from tasteops.workflows.context import WorkflowContext
 from tasteops.workflows.persistence import AuditEvent
 from tasteops.workflows.schemas import (
     ApprovalRecord,
     AtmosphereGuidelines,
     BrandEcosystem,
     CulturalProgrammingIdeas,
-    DaypartProgram,
     ExecutionPlan,
     ExecutionPlanAction,
     ExecutionTask,
@@ -168,12 +166,18 @@ def test_space_brief_foreign_key_cascade(db, space_repo):
 
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT count(*) as count FROM space_briefs WHERE space_id = ?;", (space.space_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM space_briefs WHERE space_id = ?;",
+        (space.space_id,),
+    )
     assert cursor.fetchone()["count"] == 1
 
     # Delete space
     space_repo.delete_space(space.space_id)
-    cursor.execute("SELECT count(*) as count FROM space_briefs WHERE space_id = ?;", (space.space_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM space_briefs WHERE space_id = ?;",
+        (space.space_id,),
+    )
     assert cursor.fetchone()["count"] == 0
     cursor.close()
 
@@ -206,22 +210,40 @@ def test_session_child_artifacts_cascade_delete(db, session_repo):
 
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT count(*) as count FROM cultural_twins WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM cultural_twins WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 1
-    cursor.execute("SELECT count(*) as count FROM cultural_matrices WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM cultural_matrices WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 1
-    cursor.execute("SELECT count(*) as count FROM audit_events WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM audit_events WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 1
 
     # Delete session
     session_repo.delete_session(ctx.session_id)
 
     # Verify children are deleted via foreign key ON DELETE CASCADE
-    cursor.execute("SELECT count(*) as count FROM cultural_twins WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM cultural_twins WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 0
-    cursor.execute("SELECT count(*) as count FROM cultural_matrices WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM cultural_matrices WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 0
-    cursor.execute("SELECT count(*) as count FROM audit_events WHERE session_id = ?;", (ctx.session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM audit_events WHERE session_id = ?;",
+        (ctx.session_id,),
+    )
     assert cursor.fetchone()["count"] == 0
     cursor.close()
 
@@ -238,7 +260,13 @@ def test_transaction_rollback_on_error(db, space_repo):
         with db.transaction() as cursor:
             cursor.execute(
                 "INSERT INTO spaces (space_id, name, business_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?);",
-                ("space_rollback_1", "Rollback Space", "Cafe", datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()),
+                (
+                    "space_rollback_1",
+                    "Rollback Space",
+                    "Cafe",
+                    datetime.now(UTC).isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
             )
             # Raise exception before COMMIT
             raise RuntimeError("Simulated mid-transaction failure")
@@ -343,7 +371,9 @@ def test_complete_session_relational_recovery(db, session_repo):
                 type="artist",
                 affinity=0.94,
                 source_query="/v2/insights",
-                explainability=["Strong cross-affinity with design and minimalist audio"],
+                explainability=[
+                    "Strong cross-affinity with design and minimalist audio"
+                ],
             )
         ]
     )
@@ -479,7 +509,9 @@ def test_complete_session_relational_recovery(db, session_repo):
 
     # Verify CulturalTwin recovery
     assert recovered.cultural_twin is not None
-    assert recovered.cultural_twin.audience_profile == "Contemporary Indian design leaders"
+    assert (
+        recovered.cultural_twin.audience_profile == "Contemporary Indian design leaders"
+    )
     assert "creative" in recovered.cultural_twin.cultural_themes
     assert "Teak wood" in recovered.cultural_twin.anchor_entities
     assert recovered.cultural_twin.mood_profile == "Craft Audio Sanctuary"
@@ -494,7 +526,9 @@ def test_complete_session_relational_recovery(db, session_repo):
     assert recovered.execution_plan.plan_id == "plan_mumbai_v1"
     assert recovered.execution_plan.version == 1
     assert recovered.execution_plan.plan_hash == "hash_mumbai_plan_sha256_abcdef"
-    assert recovered.execution_plan.estimated_cost == "$150,000 opening phase allocation"
+    assert (
+        recovered.execution_plan.estimated_cost == "$150,000 opening phase allocation"
+    )
 
     # Verify ExecutionTask recovery
     assert len(recovered.execution_tasks) == 1

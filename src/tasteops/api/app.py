@@ -12,9 +12,9 @@ Initializes FastAPI with:
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,11 +32,15 @@ logger = logging.getLogger("tasteops.api")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Manages application lifecycle events (graceful startup and shutdown)."""
     settings: APISettings = getattr(app.state, "settings", APISettings())
     logging.basicConfig(level=settings.log_level)
-    logger.info("Initializing TasteOps API (version: %s, env: %s)", settings.version, settings.environment)
+    logger.info(
+        "Initializing TasteOps API (version: %s, env: %s)",
+        settings.version,
+        settings.environment,
+    )
 
     yield
 

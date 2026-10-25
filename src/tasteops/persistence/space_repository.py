@@ -66,7 +66,9 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
         if request.cultural_preferences and "cultural_preferences" not in meta:
             meta["cultural_preferences"] = request.cultural_preferences
 
-        location_json = json.dumps(request.location) if request.location is not None else None
+        location_json = (
+            json.dumps(request.location) if request.location is not None else None
+        )
         metadata_json = json.dumps(meta)
         constraints_json = json.dumps(request.constraints or [])
         anchors_json = json.dumps(request.anchor_entities or [])
@@ -84,7 +86,15 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
                     metadata_json = excluded.metadata_json,
                     updated_at = excluded.updated_at;
                 """,
-                (s_id, request.name, request.business_type, location_json, metadata_json, now, now),
+                (
+                    s_id,
+                    request.name,
+                    request.business_type,
+                    location_json,
+                    metadata_json,
+                    now,
+                    now,
+                ),
             )
 
             # 2. Insert or update SpaceBrief
@@ -128,7 +138,8 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
             "goals": request.goals or meta.get("goals"),
             "budget": request.budget,
             "constraints": request.constraints or [],
-            "cultural_preferences": request.cultural_preferences or meta.get("cultural_preferences"),
+            "cultural_preferences": request.cultural_preferences
+            or meta.get("cultural_preferences"),
             "anchor_entities": request.anchor_entities or [],
         }
 
@@ -165,10 +176,18 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
             if not row:
                 return None
 
-            location = json.loads(row["location_json"]) if row["location_json"] else None
+            location = (
+                json.loads(row["location_json"]) if row["location_json"] else None
+            )
             metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
-            constraints = json.loads(row["constraints_json"]) if row["constraints_json"] else []
-            anchors = json.loads(row["anchor_entities_json"]) if row["anchor_entities_json"] else []
+            constraints = (
+                json.loads(row["constraints_json"]) if row["constraints_json"] else []
+            )
+            anchors = (
+                json.loads(row["anchor_entities_json"])
+                if row["anchor_entities_json"]
+                else []
+            )
 
             brief_dict: dict[str, Any] = {
                 "business_type": row["business_type"],
@@ -219,8 +238,16 @@ class SQLiteSpaceRepository(BaseSpaceRepository):
             for row in rows:
                 loc = json.loads(row["location_json"]) if row["location_json"] else None
                 meta = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
-                constraints = json.loads(row["constraints_json"]) if row["constraints_json"] else []
-                anchors = json.loads(row["anchor_entities_json"]) if row["anchor_entities_json"] else []
+                constraints = (
+                    json.loads(row["constraints_json"])
+                    if row["constraints_json"]
+                    else []
+                )
+                anchors = (
+                    json.loads(row["anchor_entities_json"])
+                    if row["anchor_entities_json"]
+                    else []
+                )
 
                 brief_dict: dict[str, Any] = {
                     "business_type": row["business_type"],

@@ -30,7 +30,6 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
     MUMBAI_DEMO_HINTS,
     MUMBAI_INSIGHTS_MOCK_RESPONSE,
@@ -45,12 +44,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -177,11 +172,18 @@ def test_approve_session_action_and_state_refresh(client, mock_qloo_api):
     # Create Space & Analyze
     space_resp = tc.post(
         "/api/v1/spaces",
-        json={"name": "Approval Test Space", "business_type": "Gallery", "anchor_entities": ["Tate"]},
+        json={
+            "name": "Approval Test Space",
+            "business_type": "Gallery",
+            "anchor_entities": ["Tate"],
+        },
     )
     space_id = space_resp.json()["space_id"]
 
-    analyze_resp = tc.post(f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS, "auto_run": True})
+    analyze_resp = tc.post(
+        f"/api/v1/spaces/{space_id}/analyze",
+        json={"hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+    )
     session_id = analyze_resp.json()["session_id"]
 
     # Execute Approval Action: POST /api/v1/sessions/{session_id}/approve
@@ -220,24 +222,32 @@ def test_approve_session_action_and_state_refresh(client, mock_qloo_api):
     assert dup_resp.json()["current_state"] == "APPROVED"
 
 
-
 def test_reject_session_action_and_state_refresh(client, mock_qloo_api):
     """Verify POST /api/v1/sessions/{session_id}/reject transitions session to FAILED."""
     tc, db, service = client
 
     space_resp = tc.post(
         "/api/v1/spaces",
-        json={"name": "Rejection Test Space", "business_type": "Cafe", "anchor_entities": ["Aesop"]},
+        json={
+            "name": "Rejection Test Space",
+            "business_type": "Cafe",
+            "anchor_entities": ["Aesop"],
+        },
     )
     space_id = space_resp.json()["space_id"]
 
-    analyze_resp = tc.post(f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS, "auto_run": True})
+    analyze_resp = tc.post(
+        f"/api/v1/spaces/{space_id}/analyze",
+        json={"hints": MUMBAI_DEMO_HINTS, "auto_run": True},
+    )
     session_id = analyze_resp.json()["session_id"]
 
     # Reject session
     reject_resp = tc.post(
         f"/api/v1/sessions/{session_id}/reject",
-        json={"reason": "Acoustic soundscape decibel level violates venue lease limits."},
+        json={
+            "reason": "Acoustic soundscape decibel level violates venue lease limits."
+        },
     )
     assert reject_resp.status_code == 200
     rejected_data = reject_resp.json()

@@ -12,13 +12,11 @@ Validates:
 
 from __future__ import annotations
 
-import os
 import pytest
 from fastapi.testclient import TestClient
 
 from tasteops.api.app import create_app
 from tasteops.api.dependencies import (
-    get_api_settings,
     get_database,
     get_service,
     get_space_repository,
@@ -89,7 +87,9 @@ def test_cors_disallows_credentials_when_wildcard_origins_configured():
 
 def test_cors_allows_credentials_only_for_explicit_origins():
     """Verify that explicit origins permit allow_credentials=True."""
-    settings = APISettings(CORS_ORIGINS=["http://localhost:3000", "https://tasteops.ai"])
+    settings = APISettings(
+        CORS_ORIGINS=["http://localhost:3000", "https://tasteops.ai"]
+    )
     app = create_app(settings)
 
     cors_middleware = next(
@@ -250,7 +250,9 @@ def test_connector_listing_never_exposes_secrets(client):
     """Verify that GET /connectors returns capability telemetry but zero secret keys."""
     tc, _, _ = client
     # Create space & session
-    space_resp = tc.post("/api/v1/spaces", json={"name": "Sec Space", "business_type": "Gallery"})
+    space_resp = tc.post(
+        "/api/v1/spaces", json={"name": "Sec Space", "business_type": "Gallery"}
+    )
     s_id = space_resp.json()["space_id"]
     analyze_resp = tc.post(f"/api/v1/spaces/{s_id}/analyze")
     session_id = analyze_resp.json()["session_id"]

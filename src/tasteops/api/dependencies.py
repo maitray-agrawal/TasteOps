@@ -15,12 +15,16 @@ from tasteops.api.service import TasteOpsApplicationService
 from tasteops.api.settings import APISettings
 from tasteops.config import QlooSettings
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.persistence import BaseStateStore, InMemoryStateStore
+from tasteops.workflows.persistence import BaseStateStore
 
 
 def get_api_settings(request: Request = None) -> APISettings:  # type: ignore[assignment]
     """Provides APISettings instance, prioritizing app.state.settings when mounted."""
-    if request is not None and hasattr(request, "app") and hasattr(request.app.state, "settings"):
+    if (
+        request is not None
+        and hasattr(request, "app")
+        and hasattr(request.app.state, "settings")
+    ):
         return request.app.state.settings
     return APISettings()
 
@@ -28,7 +32,7 @@ def get_api_settings(request: Request = None) -> APISettings:  # type: ignore[as
 def get_qloo_settings() -> QlooSettings | None:
     """Attempts to read QlooSettings if environment variables are set."""
     try:
-        return QlooSettings()
+        return QlooSettings()  # type: ignore[call-arg]
     except Exception:
         return None
 
@@ -107,6 +111,7 @@ def verify_auth_boundary(
        Allows access with advisory actor 'dev-curator'.
     """
     from fastapi import HTTPException, status
+
     from tasteops.security import constant_time_compare
 
     configured_key = settings.api_key

@@ -82,8 +82,8 @@ class APISettings(BaseSettings):
                     parsed = json.loads(value)
                     if isinstance(parsed, list):
                         return [str(item).strip() for item in parsed]
-                except Exception:
-                    pass
+                except json.JSONDecodeError, ValueError:
+                    return [orig.strip() for orig in value.split(",") if orig.strip()]
             return [orig.strip() for orig in value.split(",") if orig.strip()]
         if isinstance(value, list):
             return [str(orig).strip() for orig in value]

@@ -20,7 +20,6 @@ Verifies:
 
 from __future__ import annotations
 
-from pathlib import Path
 import pytest
 import respx
 from fastapi.testclient import TestClient
@@ -30,25 +29,40 @@ from tasteops.api.dependencies import get_database, get_service, get_space_repos
 from tasteops.api.service import TasteOpsApplicationService
 from tasteops.api.settings import APISettings
 from tasteops.persistence.database import Database
-from tasteops.persistence.session_repository import SQLiteSessionRepository
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
-
 
 MUMBAI_SEARCH_MOCK_RESPONSE = {
     "entities": [
-        {"id": "ent_prateek_kuhad_01", "name": "Prateek Kuhad", "type": "artist", "popularity": 0.88},
-        {"id": "ent_raw_mango_01", "name": "Raw Mango", "type": "brand", "popularity": 0.85},
+        {
+            "id": "ent_prateek_kuhad_01",
+            "name": "Prateek Kuhad",
+            "type": "artist",
+            "popularity": 0.88,
+        },
+        {
+            "id": "ent_raw_mango_01",
+            "name": "Raw Mango",
+            "type": "brand",
+            "popularity": 0.85,
+        },
     ],
     "count": 2,
 }
 
 MUMBAI_TAGS_MOCK_RESPONSE = {
     "tags": [
-        {"id": "tag_listening_01", "name": "Intimate listening lounge", "category": "music"},
-        {"id": "tag_craft_01", "name": "Contemporary Indian design", "category": "design"},
+        {
+            "id": "tag_listening_01",
+            "name": "Intimate listening lounge",
+            "category": "music",
+        },
+        {
+            "id": "tag_craft_01",
+            "name": "Contemporary Indian design",
+            "category": "design",
+        },
     ]
 }
 
@@ -56,15 +70,40 @@ MUMBAI_INSIGHTS_MOCK_RESPONSE = {
     "query": {"category": "all"},
     "insights": {
         "artists": [
-            {"id": "qloo_art_01", "name": "Prateek Kuhad", "affinity": 0.94, "subgenres": ["Indie Folk"]},
-            {"id": "qloo_art_02", "name": "Anoushka Shankar", "affinity": 0.89, "subgenres": ["Classical Crossover"]},
+            {
+                "id": "qloo_art_01",
+                "name": "Prateek Kuhad",
+                "affinity": 0.94,
+                "subgenres": ["Indie Folk"],
+            },
+            {
+                "id": "qloo_art_02",
+                "name": "Anoushka Shankar",
+                "affinity": 0.89,
+                "subgenres": ["Classical Crossover"],
+            },
         ],
         "brands": [
-            {"id": "qloo_brd_01", "name": "Raw Mango", "affinity": 0.91, "categories": ["Fashion"]},
-            {"id": "qloo_brd_02", "name": "Subko Coffee", "affinity": 0.88, "categories": ["Specialty Coffee"]},
+            {
+                "id": "qloo_brd_01",
+                "name": "Raw Mango",
+                "affinity": 0.91,
+                "categories": ["Fashion"],
+            },
+            {
+                "id": "qloo_brd_02",
+                "name": "Subko Coffee",
+                "affinity": 0.88,
+                "categories": ["Specialty Coffee"],
+            },
         ],
         "places": [
-            {"id": "qloo_plc_01", "name": "Kala Ghoda Arts Precinct", "affinity": 0.92, "neighborhood": "Fort"},
+            {
+                "id": "qloo_plc_01",
+                "name": "Kala Ghoda Arts Precinct",
+                "affinity": 0.92,
+                "neighborhood": "Fort",
+            },
         ],
         "books": [],
         "movies": [],
@@ -85,10 +124,14 @@ MUMBAI_DEMO_HINTS = {
 @pytest.fixture
 def mock_qloo_api():
     """Sets up respx mock router for external Qloo HTTP endpoints."""
-    with respx.mock(base_url="https://hackathon.api.qloo.com", assert_all_called=False) as router:
+    with respx.mock(
+        base_url="https://hackathon.api.qloo.com", assert_all_called=False
+    ) as router:
         router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
         router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
-        router.get("/v2/insights").respond(status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE)
+        router.get("/v2/insights").respond(
+            status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
+        )
         yield router
 
 
@@ -233,16 +276,24 @@ def test_decision_ledger_includes_rejection_event(client, mock_qloo_api):
     tc, _, _ = client
     sp_resp = tc.post(
         "/api/v1/spaces",
-        json={"name": "Rejection Space", "business_type": "Gallery", "anchor_entities": ["Prateek Kuhad", "Raw Mango"]},
+        json={
+            "name": "Rejection Space",
+            "business_type": "Gallery",
+            "anchor_entities": ["Prateek Kuhad", "Raw Mango"],
+        },
     )
     space_id = sp_resp.json()["space_id"]
 
-    an_resp = tc.post(f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS})
+    an_resp = tc.post(
+        f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS}
+    )
     session_id = an_resp.json()["session_id"]
 
     rej_resp = tc.post(
         f"/api/v1/sessions/{session_id}/reject",
-        json={"reason": "Acoustic decibel limit exceeded for historic residential neighborhood."},
+        json={
+            "reason": "Acoustic decibel limit exceeded for historic residential neighborhood."
+        },
     )
     assert rej_resp.status_code == 200
 
@@ -250,7 +301,12 @@ def test_decision_ledger_includes_rejection_event(client, mock_qloo_api):
     assert events_resp.status_code == 200
     events = events_resp.json()["events"]
 
-    rej_events = [e for e in events if e["event_type"] == "REJECTION" or "decibel limit exceeded" in str(e.get("summary", "")).lower()]
+    rej_events = [
+        e
+        for e in events
+        if e["event_type"] == "REJECTION"
+        or "decibel limit exceeded" in str(e.get("summary", "")).lower()
+    ]
     assert len(rej_events) > 0
     assert "Acoustic decibel limit exceeded" in rej_events[0]["summary"]
 
@@ -324,7 +380,9 @@ def test_audit_history_cannot_be_deleted_or_edited_via_api(client, mock_qloo_api
     assert put_resp.status_code in {405, 404}
 
     # PATCH /events must be rejected (405 Method Not Allowed)
-    patch_resp = tc.patch(f"/api/v1/sessions/{session_id}/events", json={"tamper": True})
+    patch_resp = tc.patch(
+        f"/api/v1/sessions/{session_id}/events", json={"tamper": True}
+    )
     assert patch_resp.status_code in {405, 404}
 
 
@@ -386,4 +444,6 @@ def test_session_ledger_ui_asset_contains_required_capabilities(client):
         "btn-reverify-chain",
     ]
     for h in hash_verification_markers:
-        assert h in content, f"Missing hash-chain verification marker in sessionLedger.js: {h}"
+        assert h in content, (
+            f"Missing hash-chain verification marker in sessionLedger.js: {h}"
+        )

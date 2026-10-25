@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any
 
 import httpx
 
@@ -40,15 +39,26 @@ class EmailConnector(BaseConnector):
         from_email: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._api_key = api_key or os.getenv("SENDGRID_API_KEY") or os.getenv("EMAIL_API_KEY")
-        self._from_email = from_email or os.getenv("EMAIL_FROM_ADDRESS", "curator@tasteops.ai")
+        self._api_key = (
+            api_key or os.getenv("SENDGRID_API_KEY") or os.getenv("EMAIL_API_KEY")
+        )
+        self._from_email = from_email or os.getenv(
+            "EMAIL_FROM_ADDRESS", "curator@tasteops.ai"
+        )
         self._http_client = http_client
 
     @property
     def configuration_status(self) -> ConfigurationStatus:
         """Evaluates whether Email / Outreach API credentials are appropriately configured."""
-        key = (self._api_key or os.getenv("SENDGRID_API_KEY") or os.getenv("EMAIL_API_KEY") or "").strip()
-        from_addr = (self._from_email or os.getenv("EMAIL_FROM_ADDRESS") or "curator@tasteops.ai").strip()
+        key = (
+            self._api_key
+            or os.getenv("SENDGRID_API_KEY")
+            or os.getenv("EMAIL_API_KEY")
+            or ""
+        ).strip()
+        from_addr = (
+            self._from_email or os.getenv("EMAIL_FROM_ADDRESS") or "curator@tasteops.ai"
+        ).strip()
 
         if not key:
             return ConfigurationStatus.NOT_CONFIGURED
@@ -77,7 +87,11 @@ class EmailConnector(BaseConnector):
 
         if request is not None:
             payload = request.payload or {}
-            partner = payload.get("partner_name") or payload.get("recipient_email") or payload.get("partner_entity_id")
+            partner = (
+                payload.get("partner_name")
+                or payload.get("recipient_email")
+                or payload.get("partner_entity_id")
+            )
             if not partner and not request.metadata.get("action"):
                 raise ValueError(
                     f"Email execution task '{request.task_id}' requires 'partner_name' or 'recipient_email' in payload."
@@ -97,7 +111,9 @@ class EmailConnector(BaseConnector):
             or payload.get("partner_entity_id")
             or "Target Brand Partner"
         )
-        partner_id = payload.get("partner_entity_id") or f"partner_{request.task_id[:8]}"
+        partner_id = (
+            payload.get("partner_entity_id") or f"partner_{request.task_id[:8]}"
+        )
         activation_type = payload.get("activation_type", "tactile_residency")
 
         logger.info(
@@ -143,6 +159,7 @@ class EmailConnector(BaseConnector):
                 output_reference=output_uri,
                 payload={
                     **provider_data,
+                    "message_id": message_id,
                     "output_uri": output_uri,
                     "activation_type": activation_type,
                 },

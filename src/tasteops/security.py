@@ -21,21 +21,23 @@ SAFE_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # Denied IP ranges for SSRF prevention (cloud metadata, loopback, RFC 1918 private subnets)
 BLOCKED_IP_NETWORKS = [
-    ipaddress.ip_network("127.0.0.0/8"),          # Loopback
-    ipaddress.ip_network("10.0.0.0/8"),           # RFC 1918 Private
-    ipaddress.ip_network("172.16.0.0/12"),        # RFC 1918 Private
-    ipaddress.ip_network("192.168.0.0/16"),       # RFC 1918 Private
-    ipaddress.ip_network("169.254.0.0/16"),       # Link-Local / Cloud Metadata (AWS, GCP, Azure)
-    ipaddress.ip_network("100.64.0.0/10"),        # Carrier-Grade NAT
-    ipaddress.ip_network("192.0.0.0/24"),         # IETF Protocol Assignments
-    ipaddress.ip_network("192.0.2.0/24"),         # TEST-NET-1
-    ipaddress.ip_network("198.51.100.0/24"),      # TEST-NET-2
-    ipaddress.ip_network("203.0.113.0/24"),       # TEST-NET-3
-    ipaddress.ip_network("224.0.0.0/4"),          # Multicast
-    ipaddress.ip_network("240.0.0.0/4"),          # Reserved
-    ipaddress.ip_network("::1/128"),              # IPv6 Loopback
-    ipaddress.ip_network("fc00::/7"),             # IPv6 Unique Local
-    ipaddress.ip_network("fe80::/10"),            # IPv6 Link-Local
+    ipaddress.ip_network("127.0.0.0/8"),  # Loopback
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 Private
+    ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918 Private
+    ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918 Private
+    ipaddress.ip_network(
+        "169.254.0.0/16"
+    ),  # Link-Local / Cloud Metadata (AWS, GCP, Azure)
+    ipaddress.ip_network("100.64.0.0/10"),  # Carrier-Grade NAT
+    ipaddress.ip_network("192.0.0.0/24"),  # IETF Protocol Assignments
+    ipaddress.ip_network("192.0.2.0/24"),  # TEST-NET-1
+    ipaddress.ip_network("198.51.100.0/24"),  # TEST-NET-2
+    ipaddress.ip_network("203.0.113.0/24"),  # TEST-NET-3
+    ipaddress.ip_network("224.0.0.0/4"),  # Multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # Reserved
+    ipaddress.ip_network("::1/128"),  # IPv6 Loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 Unique Local
+    ipaddress.ip_network("fe80::/10"),  # IPv6 Link-Local
 ]
 
 
@@ -71,7 +73,9 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
     # Reject cloud metadata special hostnames directly
     lower_host = hostname.lower()
     if lower_host in ("metadata.google.internal", "instance-data", "169.254.169.254"):
-        raise ValueError(f"SSRF Protection: Access to cloud metadata endpoint '{hostname}' is blocked.")
+        raise ValueError(
+            f"SSRF Protection: Access to cloud metadata endpoint '{hostname}' is blocked."
+        )
 
     if allow_private:
         return True
@@ -84,7 +88,9 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
             ips = [ip]
         except ValueError:
             # Resolve DNS hostname
-            addr_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+            addr_info = socket.getaddrinfo(
+                hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
+            )
             ips = [ipaddress.ip_address(item[4][0]) for item in addr_info]
 
         for resolved_ip in ips:
@@ -94,10 +100,11 @@ def validate_safe_url(url: str, allow_private: bool = False) -> bool:
                         f"SSRF Protection: Hostname '{hostname}' resolves to restricted IP address {resolved_ip}."
                     )
     except socket.gaierror as exc:
-        logger.warning("DNS resolution failed during SSRF check for '%s': %s", hostname, exc)
+        logger.warning(
+            "DNS resolution failed during SSRF check for '%s': %s", hostname, exc
+        )
         # In isolated environments where external DNS is mocked, allow non-resolving synthetic hostnames
         # unless they explicitly match blocked IP patterns
-        pass
 
     return True
 

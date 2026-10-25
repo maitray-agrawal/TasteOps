@@ -69,7 +69,13 @@ def sanitize_payload(obj: Any, max_string_len: int = 500, max_items: int = 10) -
             k_lower = str(k).lower()
             if any(sub in k_lower for sub in SENSITIVE_KEY_SUBSTRINGS):
                 continue
-            if k_lower in ("thought", "chain_of_thought", "cot", "stacktrace", "traceback"):
+            if k_lower in (
+                "thought",
+                "chain_of_thought",
+                "cot",
+                "stacktrace",
+                "traceback",
+            ):
                 continue
             cleaned[str(k)] = sanitize_payload(v, max_string_len, max_items)
         return cleaned
@@ -92,9 +98,7 @@ class SSEEvent(BaseModel):
 
     event_id: str = Field(default_factory=lambda: f"evt_{uuid.uuid4().hex[:12]}")
     session_id: str
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     event_type: str
     data: dict[str, Any] = Field(default_factory=dict)
 
@@ -180,7 +184,11 @@ def map_audit_event_to_sse(
     elif to_state == WorkflowState.AGENTS_RUNNING:
         event_type = "agent.started"
         summary_data = {
-            "agents": ["cultural_strategist", "experience_architect", "partnership_agent"],
+            "agents": [
+                "cultural_strategist",
+                "experience_architect",
+                "partnership_agent",
+            ],
             "summary": "Domain agents activated for plan generation",
         }
     elif to_state == WorkflowState.PLAN_GENERATED:
@@ -225,7 +233,9 @@ def map_audit_event_to_sse(
         }
     elif to_state == WorkflowState.FAILED:
         event_type = "workflow.failed"
-        safe_error = audit_event.error or audit_event.reason or "Workflow execution failed"
+        safe_error = (
+            audit_event.error or audit_event.reason or "Workflow execution failed"
+        )
         # Ensure raw stack traces are never exposed
         if "\n" in safe_error:
             safe_error = safe_error.split("\n")[0]

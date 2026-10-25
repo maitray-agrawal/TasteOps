@@ -26,7 +26,6 @@ Validates:
 
 from __future__ import annotations
 
-import os
 import pytest
 import respx
 from fastapi.testclient import TestClient
@@ -39,7 +38,6 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
     MUMBAI_DEMO_HINTS,
     MUMBAI_INSIGHTS_MOCK_RESPONSE,
@@ -54,12 +52,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -173,11 +167,20 @@ def test_execution_tasks_display_all_10_required_fields(client, mock_qloo_api):
         "error",
     ]
 
-    valid_statuses = {"PENDING", "APPROVED", "RUNNING", "COMPLETED", "FAILED", "SKIPPED"}
+    valid_statuses = {
+        "PENDING",
+        "APPROVED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "SKIPPED",
+    }
 
     for task in tasks:
         for field in required_fields:
-            assert field in task, f"Task {task.get('task_id')} missing required field: {field}"
+            assert field in task, (
+                f"Task {task.get('task_id')} missing required field: {field}"
+            )
 
         assert task["status"] in valid_statuses, f"Invalid status: {task['status']}"
         assert task["approval_status"] == "APPROVED"
@@ -188,7 +191,9 @@ def test_execution_tasks_display_all_10_required_fields(client, mock_qloo_api):
 # =============================================================================
 # 2. Connector Availability & NOT_CONFIGURED Indicator
 # =============================================================================
-def test_connector_displays_not_configured_when_unconfigured(client, mock_qloo_api, monkeypatch):
+def test_connector_displays_not_configured_when_unconfigured(
+    client, mock_qloo_api, monkeypatch
+):
     """Verify that when connector environment credentials are absent, connector is NOT_CONFIGURED."""
     tc, db, service = client
     # Ensure Spotify credentials are NOT set
@@ -286,7 +291,9 @@ def test_execute_blocked_when_governance_validation_failed(client, mock_qloo_api
     # Invalidate governance in context
     ctx = service.get_session(session_id)
     ctx.plan.governance.is_valid = False
-    ctx.plan.governance.risk_flags = ["Noise threshold exceeded: 85dB violates local municipal code"]
+    ctx.plan.governance.risk_flags = [
+        "Noise threshold exceeded: 85dB violates local municipal code"
+    ]
 
     exec_resp = tc.post(f"/api/v1/sessions/{session_id}/execute")
     assert exec_resp.status_code == 403
@@ -447,6 +454,7 @@ def test_execute_task_connector_lifecycle(client, mock_qloo_api, monkeypatch):
 
     # Refresh connectors in registry with credentials
     from tasteops.connectors import create_default_registry
+
     service.connector_registry = create_default_registry()
 
     _, session_id = _create_approved_session(tc)
@@ -488,10 +496,15 @@ def test_execute_task_connector_lifecycle(client, mock_qloo_api, monkeypatch):
     )
     assert dup_resp.status_code == 409
     dup_data = dup_resp.json().get("error", dup_resp.json())
-    assert dup_data.get("code") == "DUPLICATE_IDEMPOTENCY_KEY" or "duplicate" in str(dup_data).lower()
+    assert (
+        dup_data.get("code") == "DUPLICATE_IDEMPOTENCY_KEY"
+        or "duplicate" in str(dup_data).lower()
+    )
 
 
-def test_execute_task_connector_missing_connector_fails_explicitly(client, mock_qloo_api):
+def test_execute_task_connector_missing_connector_fails_explicitly(
+    client, mock_qloo_api
+):
     """Verify that an execution task with an unknown capability fails explicitly with 422."""
     tc, _, _ = client
     _, session_id = _create_approved_session(tc)
@@ -517,7 +530,9 @@ def test_execute_task_connector_missing_connector_fails_explicitly(client, mock_
     assert data.get("code") == "MISSING_CONNECTOR" or "missing" in str(data).lower()
 
 
-def test_execute_task_connector_never_fakes_unconfigured_execution(client, mock_qloo_api, monkeypatch):
+def test_execute_task_connector_never_fakes_unconfigured_execution(
+    client, mock_qloo_api, monkeypatch
+):
     """Verify that execute on an unconfigured connector fails explicitly with 422 (never fakes execution)."""
     tc, _, service = client
     # Clear Spotify credentials
@@ -525,6 +540,7 @@ def test_execute_task_connector_never_fakes_unconfigured_execution(client, mock_
     monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
 
     from tasteops.connectors import create_default_registry
+
     service.connector_registry = create_default_registry()
 
     _, session_id = _create_approved_session(tc)

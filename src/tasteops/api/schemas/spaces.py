@@ -71,7 +71,12 @@ class SpaceCreateRequest(BaseModel):
     goals: list[str] | str | None = Field(
         default=None,
         description="Core operational, cultural, or activation goals",
-        examples=[["Bridge Franco-Japanese indie music with analog craft", "Foster listening community"]],
+        examples=[
+            [
+                "Bridge Franco-Japanese indie music with analog craft",
+                "Foster listening community",
+            ]
+        ],
     )
     cultural_preferences: list[str] | str | None = Field(
         default=None,

@@ -7,6 +7,7 @@ problem details envelopes. Guarantees that internal secret keys are never leaked
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -23,21 +24,19 @@ from tasteops.api.service import (
     SessionNotFoundError,
     SpaceNotFoundError,
 )
-from tasteops.exceptions import (
-    QlooAuthenticationError,
-    QlooException,
-    QlooNotFoundError,
-    QlooRateLimitError,
-    QlooServerError,
-    QlooTimeoutError,
-    QlooValidationError,
-)
 from tasteops.connectors import (
     ConnectorError,
     ConnectorNotConfiguredError,
     DuplicateExecutionError,
     InvalidConfigurationError,
     MissingConnectorError,
+)
+from tasteops.exceptions import (
+    QlooAuthenticationError,
+    QlooNotFoundError,
+    QlooRateLimitError,
+    QlooServerError,
+    QlooTimeoutError,
 )
 from tasteops.workflows.states import InvalidStateTransitionError
 
@@ -58,7 +57,7 @@ def _build_error_response(
     detail: str,
     code: str,
     errors: list[dict[str, Any]] | None = None,
-    headers: dict[str, str] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """Constructs a standard RFC 7807 JSON response."""
     correlation_id = _get_correlation_id(request)
@@ -74,7 +73,7 @@ def _build_error_response(
     )
     resp_headers = {"X-Correlation-ID": correlation_id}
     if headers:
-        resp_headers.update(headers)
+        resp_headers.update(dict(headers))
 
     return JSONResponse(
         status_code=status_code,
@@ -119,7 +118,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def qloo_not_found_handler(
         request: Request, exc: QlooNotFoundError
     ) -> JSONResponse:
-        logger.warning("[%s] Qloo entity not found: %s", _get_correlation_id(request), exc)
+        logger.warning(
+            "[%s] Qloo entity not found: %s", _get_correlation_id(request), exc
+        )
         return _build_error_response(
             request=request,
             status_code=status.HTTP_404_NOT_FOUND,

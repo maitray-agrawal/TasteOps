@@ -28,10 +28,9 @@ from fastapi.testclient import TestClient
 
 from tasteops.api.app import create_app
 from tasteops.api.dependencies import get_database, get_service, get_space_repository
-from tasteops.api.settings import APISettings
 from tasteops.api.service import TasteOpsApplicationService
+from tasteops.api.settings import APISettings
 from tasteops.persistence.database import Database
-from tasteops.persistence.session_repository import SQLiteSessionRepository
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
@@ -51,12 +50,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -171,18 +166,26 @@ def test_analyze_space_full_flow_stops_at_approval_gate(client, mock_qloo_api):
     cursor = conn.cursor()
 
     # (a) Workflow session & validation result persisted
-    cursor.execute("SELECT current_state, status, validation_result_json FROM workflow_sessions WHERE session_id = ?;", (session_id,))
+    cursor.execute(
+        "SELECT current_state, status, validation_result_json FROM workflow_sessions WHERE session_id = ?;",
+        (session_id,),
+    )
     sess_row = cursor.fetchone()
     assert sess_row["current_state"] == "AWAITING_APPROVAL"
     assert sess_row["status"] == "AWAITING_APPROVAL"
     assert sess_row["validation_result_json"] != "{}"
 
     # (b) State transitions persisted
-    cursor.execute("SELECT count(*) as count FROM session_state_transitions WHERE session_id = ?;", (session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM session_state_transitions WHERE session_id = ?;",
+        (session_id,),
+    )
     assert cursor.fetchone()["count"] >= 5
 
     # (c) Agent runs persisted
-    cursor.execute("SELECT agent_name, status FROM agent_runs WHERE session_id = ?;", (session_id,))
+    cursor.execute(
+        "SELECT agent_name, status FROM agent_runs WHERE session_id = ?;", (session_id,)
+    )
     agent_rows = cursor.fetchall()
     agent_names = {r["agent_name"] for r in agent_rows}
     assert "CulturalStrategist" in agent_names
@@ -191,11 +194,17 @@ def test_analyze_space_full_flow_stops_at_approval_gate(client, mock_qloo_api):
     assert "GovernanceAgent" in agent_names
 
     # (d) Evidence / Provenance persisted
-    cursor.execute("SELECT count(*) as count FROM cultural_evidence WHERE session_id = ?;", (session_id,))
+    cursor.execute(
+        "SELECT count(*) as count FROM cultural_evidence WHERE session_id = ?;",
+        (session_id,),
+    )
     assert cursor.fetchone()["count"] > 0
 
     # (e) Execution plan persisted with version and hash
-    cursor.execute("SELECT plan_id, version, plan_hash, estimated_cost FROM execution_plans WHERE session_id = ?;", (session_id,))
+    cursor.execute(
+        "SELECT plan_id, version, plan_hash, estimated_cost FROM execution_plans WHERE session_id = ?;",
+        (session_id,),
+    )
     plan_row = cursor.fetchone()
     assert plan_row is not None
     assert plan_row["version"] == 1
@@ -226,10 +235,15 @@ def test_get_session_exposes_all_12_safe_typed_components(client, mock_qloo_api)
     tc, db, service = client
 
     # Create space and analyze
-    s_resp = tc.post("/api/v1/spaces", json={"name": "Kala Ghoda Listening Lab", "business_type": "Listening Bar"})
+    s_resp = tc.post(
+        "/api/v1/spaces",
+        json={"name": "Kala Ghoda Listening Lab", "business_type": "Listening Bar"},
+    )
     space_id = s_resp.json()["space_id"]
 
-    a_resp = tc.post(f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS})
+    a_resp = tc.post(
+        f"/api/v1/spaces/{space_id}/analyze", json={"hints": MUMBAI_DEMO_HINTS}
+    )
     session_id = a_resp.json()["session_id"]
 
     # Query GET session
@@ -241,7 +255,11 @@ def test_get_session_exposes_all_12_safe_typed_components(client, mock_qloo_api)
     assert data["session_id"] == session_id
     assert data["space_id"] == space_id
     assert data["user_input"] is not None
-    assert "venue_name" in data["parsed_intent"] or "space" in data["parsed_intent"] or isinstance(data["parsed_intent"], dict)
+    assert (
+        "venue_name" in data["parsed_intent"]
+        or "space" in data["parsed_intent"]
+        or isinstance(data["parsed_intent"], dict)
+    )
 
     # 2. Current State
     assert data["current_state"] == "AWAITING_APPROVAL"
@@ -320,7 +338,9 @@ def test_get_session_exposes_all_12_safe_typed_components(client, mock_qloo_api)
 # ---------------------------------------------------------------------------
 # 3. Authoritative Human Approval Gate Lifecycle
 # ---------------------------------------------------------------------------
-def test_authoritative_approval_gate_blocks_and_permits_execution(client, mock_qloo_api):
+def test_authoritative_approval_gate_blocks_and_permits_execution(
+    client, mock_qloo_api
+):
     """Verify:
     1. Direct execution attempt while AWAITING_APPROVAL is blocked (HTTP 403 / 409).
     2. Human curator approval binds cryptographic plan hash and transitions to APPROVED.
@@ -329,8 +349,13 @@ def test_authoritative_approval_gate_blocks_and_permits_execution(client, mock_q
     tc, db, service = client
 
     # Setup session
-    s_resp = tc.post("/api/v1/spaces", json={"name": "Kala Ghoda Cafe", "business_type": "Cafe"})
-    a_resp = tc.post(f"/api/v1/spaces/{s_resp.json()['space_id']}/analyze", json={"hints": MUMBAI_DEMO_HINTS})
+    s_resp = tc.post(
+        "/api/v1/spaces", json={"name": "Kala Ghoda Cafe", "business_type": "Cafe"}
+    )
+    a_resp = tc.post(
+        f"/api/v1/spaces/{s_resp.json()['space_id']}/analyze",
+        json={"hints": MUMBAI_DEMO_HINTS},
+    )
     session_id = a_resp.json()["session_id"]
 
     # 1. Attempt unapproved execution -> Must be blocked
@@ -338,7 +363,10 @@ def test_authoritative_approval_gate_blocks_and_permits_execution(client, mock_q
     assert exec_unapproved.status_code in {403, 409}
     error_data = exec_unapproved.json()
     assert "error" in error_data
-    assert "APPROVAL" in error_data["error"]["detail"].upper() or "UNAPPROVED" in error_data["error"]["code"]
+    assert (
+        "APPROVAL" in error_data["error"]["detail"].upper()
+        or "UNAPPROVED" in error_data["error"]["code"]
+    )
 
     # Verify session remains in AWAITING_APPROVAL
     get_unapproved = tc.get(f"/api/v1/sessions/{session_id}")
@@ -359,7 +387,10 @@ def test_authoritative_approval_gate_blocks_and_permits_execution(client, mock_q
     assert approved_data["current_state"] == "APPROVED"
     assert approved_data["approval_state"]["is_approved"] is True
     assert approved_data["approval_state"]["status"] == "APPROVED"
-    assert approved_data["approval_state"]["approver"] == "Curator: Satwik Jaiswal (Head of Cultural Experience)"
+    assert (
+        approved_data["approval_state"]["approver"]
+        == "Curator: Satwik Jaiswal (Head of Cultural Experience)"
+    )
     assert approved_data["approval_state"]["plan_hash"] is not None
 
     # 3. Execution dispatched after approval
@@ -382,7 +413,9 @@ def test_authoritative_approval_gate_blocks_and_permits_execution(client, mock_q
 # ---------------------------------------------------------------------------
 # 4. Curator Rejection Flow & Sanitized Error Logging
 # ---------------------------------------------------------------------------
-def test_curator_rejection_flow_records_audit_and_sanitizes_errors(client, mock_qloo_api):
+def test_curator_rejection_flow_records_audit_and_sanitizes_errors(
+    client, mock_qloo_api
+):
     """Verify:
     1. Human curator can reject plan with rationale.
     2. Workflow transitions to FAILED.
@@ -391,14 +424,21 @@ def test_curator_rejection_flow_records_audit_and_sanitizes_errors(client, mock_
     """
     tc, db, service = client
 
-    s_resp = tc.post("/api/v1/spaces", json={"name": "Rejection Test Space", "business_type": "Bar"})
-    a_resp = tc.post(f"/api/v1/spaces/{s_resp.json()['space_id']}/analyze", json={"hints": MUMBAI_DEMO_HINTS})
+    s_resp = tc.post(
+        "/api/v1/spaces", json={"name": "Rejection Test Space", "business_type": "Bar"}
+    )
+    a_resp = tc.post(
+        f"/api/v1/spaces/{s_resp.json()['space_id']}/analyze",
+        json={"hints": MUMBAI_DEMO_HINTS},
+    )
     session_id = a_resp.json()["session_id"]
 
     # Reject session
     reject_resp = tc.post(
         f"/api/v1/sessions/{session_id}/reject",
-        json={"reason": "Acoustic volume specifications exceed municipal limits for residential district."},
+        json={
+            "reason": "Acoustic volume specifications exceed municipal limits for residential district."
+        },
     )
     assert reject_resp.status_code == 200
     rej_data = reject_resp.json()

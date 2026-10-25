@@ -18,7 +18,6 @@ import httpx
 import pytest
 
 from tasteops.connectors import (
-    BaseConnector,
     ConfigurationStatus,
     ConnectorExecutionFailedError,
     ConnectorExecutionRequest,
@@ -34,7 +33,6 @@ from tasteops.connectors import (
     create_default_registry,
 )
 from tasteops.workflows.schemas import ExecutionTask
-
 
 # =============================================================================
 # 1. Spotify Connector Tests
@@ -58,10 +56,17 @@ def test_spotify_connector_configuration_lifecycle(monkeypatch):
 
     # 2. INVALID_CONFIGURATION: One credential present or malformed
     conn_partial = SpotifyConnector(client_id="valid_client_id_123", client_secret=None)
-    assert conn_partial.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    assert (
+        conn_partial.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    )
 
-    conn_whitespace = SpotifyConnector(client_id="client id with spaces", client_secret="secret")
-    assert conn_whitespace.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    conn_whitespace = SpotifyConnector(
+        client_id="client id with spaces", client_secret="secret"
+    )
+    assert (
+        conn_whitespace.configuration_status
+        == ConfigurationStatus.INVALID_CONFIGURATION
+    )
 
     with pytest.raises(InvalidConfigurationError):
         conn_partial.validate()
@@ -98,6 +103,7 @@ async def test_spotify_connector_never_fakes_external_execution():
 @pytest.mark.asyncio
 async def test_spotify_connector_mocked_execution_success():
     """Verify successful Spotify audio seeding using a mocked HTTP transport."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://api.spotify.com/v1/audio-seed"
         return httpx.Response(
@@ -142,6 +148,7 @@ async def test_spotify_connector_mocked_execution_success():
 @pytest.mark.asyncio
 async def test_spotify_connector_mocked_execution_failure():
     """Verify provider 500 error raises ConnectorExecutionFailedError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(502, text="Bad Gateway from Spotify Cluster")
 
@@ -186,8 +193,12 @@ def test_email_connector_configuration_lifecycle(monkeypatch):
         conn.validate()
 
     # INVALID_CONFIGURATION: Invalid email format
-    conn_bad_email = EmailConnector(api_key="SG.validkey123456", from_email="invalid-email-address")
-    assert conn_bad_email.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    conn_bad_email = EmailConnector(
+        api_key="SG.validkey123456", from_email="invalid-email-address"
+    )
+    assert (
+        conn_bad_email.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    )
     with pytest.raises(InvalidConfigurationError):
         conn_bad_email.validate()
 
@@ -223,6 +234,7 @@ async def test_email_connector_never_fakes_external_execution():
 @pytest.mark.asyncio
 async def test_email_connector_mocked_execution_success():
     """Verify successful Email outreach dispatch using a mocked HTTP transport."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://api.sendgrid.com/v3/mail/send"
         return httpx.Response(
@@ -287,7 +299,9 @@ def test_procurement_connector_configuration_lifecycle(monkeypatch):
         api_key="valid_erp_key_12345",
         endpoint_url="ftp://invalid-protocol",
     )
-    assert conn_bad_url.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    assert (
+        conn_bad_url.configuration_status == ConfigurationStatus.INVALID_CONFIGURATION
+    )
     with pytest.raises(InvalidConfigurationError):
         conn_bad_url.validate()
 
@@ -323,6 +337,7 @@ async def test_procurement_connector_never_fakes_external_execution():
 @pytest.mark.asyncio
 async def test_procurement_connector_mocked_execution_success():
     """Verify successful purchase order submission using a mocked HTTP transport."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers.get("authorization") == "Bearer valid_erp_key_12345"
         return httpx.Response(

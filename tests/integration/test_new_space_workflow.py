@@ -55,7 +55,6 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
     MUMBAI_DEMO_HINTS,
     MUMBAI_INSIGHTS_MOCK_RESPONSE,
@@ -70,12 +69,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -137,12 +132,28 @@ def test_new_space_complete_workflow(client, mock_qloo_api):
         },
         "target_audience": "Design purists, vinyl collectors, ambient music lovers aged 25-45",
         "positioning": "Underground Franco-Japanese sound and coffee sanctuary",
-        "goals": ["Bridge Parisian indie music with Kyoto craftsmanship", "Foster intimate analog community"],
+        "goals": [
+            "Bridge Parisian indie music with Kyoto craftsmanship",
+            "Foster intimate analog community",
+        ],
         "budget": "$150,000 USD / High-end boutique allocation",
         "desired_mood": "Warm intimate acoustic warmth, wabi-sabi minimalism, golden-hour circadian lighting",
-        "cultural_preferences": ["Japanese jazz kissa culture", "Japanese ambient electronic music", "artisanal fermented teas"],
-        "constraints": ["Acoustic cap at 78 dB", "Timber-only resonance", "No digital screens in main listening lounge"],
-        "anchor_entities": ["Ryuichi Sakamoto", "Midori Takada", "Blue Bottle Coffee", "Aesop"],
+        "cultural_preferences": [
+            "Japanese jazz kissa culture",
+            "Japanese ambient electronic music",
+            "artisanal fermented teas",
+        ],
+        "constraints": [
+            "Acoustic cap at 78 dB",
+            "Timber-only resonance",
+            "No digital screens in main listening lounge",
+        ],
+        "anchor_entities": [
+            "Ryuichi Sakamoto",
+            "Midori Takada",
+            "Blue Bottle Coffee",
+            "Aesop",
+        ],
     }
 
     space_resp = tc.post("/api/v1/spaces", json=create_payload)
@@ -228,7 +239,10 @@ def test_new_space_complete_workflow(client, mock_qloo_api):
 
     # Verify Distinction:
     # 1. SOURCE EVIDENCE: anchor_entities, resolved_entities (with Qloo URN/ID and source), provenance
-    assert all("qloo" in p["source"].lower() or "search" in p["source"].lower() for p in ct["provenance"])
+    assert all(
+        "qloo" in p["source"].lower() or "search" in p["source"].lower()
+        for p in ct["provenance"]
+    )
 
     # 2. INFERENCE: audience_profile, mood_profile, cultural_themes, cultural_constraints, exclusions
     assert len(ct["cultural_themes"]) > 0
@@ -239,7 +253,7 @@ def test_new_space_complete_workflow(client, mock_qloo_api):
     assert mat_summary["total_entities"] > 0
     assert len(mat_summary["top_affinities"]) > 0
 
-    for cat, items in mat_summary["top_affinities"].items():
+    for items in mat_summary["top_affinities"].values():
         for item in items:
             assert item["id"] != ""
             assert item["name"] != ""
@@ -274,7 +288,12 @@ def test_missing_evidence_handling_in_cultural_twin(client, mock_qloo_api):
             "hints": {
                 "business_type": "Contemporary Art Gallery & Cafe",
                 "desired_mood": "Minimalist monochrome quietude",
-                "location": {"city": "New York", "country": "USA", "latitude": 40.7128, "longitude": -74.0060},
+                "location": {
+                    "city": "New York",
+                    "country": "USA",
+                    "latitude": 40.7128,
+                    "longitude": -74.0060,
+                },
             },
             "auto_run": True,
         },

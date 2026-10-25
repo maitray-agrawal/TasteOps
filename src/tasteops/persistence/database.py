@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
 
 from tasteops.persistence.schema import SCHEMA_DDL
 
@@ -66,10 +66,12 @@ class Database:
         with self._lock:
             conn = self.get_connection()
             conn.executescript(SCHEMA_DDL)
-            logger.info("Initialized TasteOps relational database schema (%s)", self.db_path)
+            logger.info(
+                "Initialized TasteOps relational database schema (%s)", self.db_path
+            )
 
     @contextmanager
-    def transaction(self) -> Generator[sqlite3.Cursor, None, None]:
+    def transaction(self) -> Generator[sqlite3.Cursor]:
         """Provides an atomic transaction boundary with automated rollback on error."""
         with self._lock:
             conn = self.get_connection()

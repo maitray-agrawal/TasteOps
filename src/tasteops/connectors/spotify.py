@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
 
 import httpx
 
@@ -77,7 +76,11 @@ class SpotifyConnector(BaseConnector):
 
         if request is not None:
             payload = request.payload or {}
-            artist = payload.get("artist_name") or payload.get("artist_id") or payload.get("lead_artist")
+            artist = (
+                payload.get("artist_name")
+                or payload.get("artist_id")
+                or payload.get("lead_artist")
+            )
             if not artist and not request.metadata.get("action"):
                 raise ValueError(
                     f"Spotify execution task '{request.task_id}' requires 'artist_name' or 'artist_id' in payload."

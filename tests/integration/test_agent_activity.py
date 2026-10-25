@@ -37,7 +37,6 @@ from tasteops.persistence.database import Database
 from tasteops.persistence.space_repository import SQLiteSpaceRepository
 from tasteops.persistence.store import SQLiteStateStore
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
-from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
     MUMBAI_DEMO_HINTS,
     MUMBAI_INSIGHTS_MOCK_RESPONSE,
@@ -68,12 +67,8 @@ def mock_qloo_api():
     with respx.mock(
         base_url="https://hackathon.api.qloo.com", assert_all_called=False
     ) as router:
-        router.get("/search").respond(
-            status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE
-        )
-        router.get("/v2/tags").respond(
-            status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE
-        )
+        router.get("/search").respond(status_code=200, json=MUMBAI_SEARCH_MOCK_RESPONSE)
+        router.get("/v2/tags").respond(status_code=200, json=MUMBAI_TAGS_MOCK_RESPONSE)
         router.get("/v2/insights").respond(
             status_code=200, json=MUMBAI_INSIGHTS_MOCK_RESPONSE
         )
@@ -247,7 +242,9 @@ def test_no_raw_chain_of_thought_leakage(client, mock_qloo_api):
         "system_prompt",
     ]
     for token in forbidden_tokens:
-        assert token not in raw_text, f"Forbidden chain-of-thought token detected: {token}"
+        assert token not in raw_text, (
+            f"Forbidden chain-of-thought token detected: {token}"
+        )
 
 
 def test_agent_activity_spa_route_served(client):

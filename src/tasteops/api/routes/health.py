@@ -44,9 +44,7 @@ async def health_check() -> HealthResponse:
         }
     },
 )
-async def readiness_check(
-    service: ServiceDep, response: Response
-) -> ReadyResponse:
+async def readiness_check(service: ServiceDep, response: Response) -> ReadyResponse:
     checks = service.check_readiness()
     all_healthy = all(v == "ok" for v in checks.values())
 
