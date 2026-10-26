@@ -47,6 +47,7 @@ from tasteops.workflows.schemas import (
     GovernanceValidationInput,
     GovernanceValidationOutput,
     PartnershipOutput,
+    TaskStatus,
 )
 from tasteops.workflows.states import WorkflowState
 from tests.fixtures.demo_mumbai_boutique_hotel import (
@@ -121,7 +122,7 @@ async def test_01_complete_workflow(mock_mcp_adapter, mock_mumbai_respx):
     assert ctx.current_state == WorkflowState.COMPLETED
     assert len(ctx.execution_tasks) >= 2
     for task in ctx.execution_tasks:
-        assert task.status == "EXECUTED"
+        assert task.status == TaskStatus.STAGED
         assert task.idempotency_key != ""
         assert task.provenance["session_id"] == ctx.session_id
 
@@ -355,7 +356,7 @@ async def test_08_execution(mock_mcp_adapter, mock_mumbai_respx):
     assert ctx.current_state == WorkflowState.COMPLETED
     assert len(ctx.execution_tasks) >= 2
     for t in ctx.execution_tasks:
-        assert t.status == "EXECUTED"
+        assert t.status == TaskStatus.STAGED
         assert t.provenance["plan_id"] == ctx.plan.plan_id
         assert t.provenance["source_id"]
 

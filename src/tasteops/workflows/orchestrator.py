@@ -16,7 +16,7 @@ cryptographic approval binding, and idempotency guarantees.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
 from tasteops.workflows.context import WorkflowContext
@@ -27,6 +27,10 @@ from tasteops.workflows.persistence import (
     InMemoryStateStore,
 )
 from tasteops.workflows.states import WorkflowState
+
+if TYPE_CHECKING:
+    from tasteops.connectors import ConnectorRegistry
+    from tasteops.workflows.idempotency import DurableIdempotencyStore
 
 logger = logging.getLogger("tasteops.workflows.orchestrator")
 
@@ -39,11 +43,17 @@ class TasteOpsOrchestrator:
         engine: WorkflowEngine | None = None,
         store: BaseStateStore | None = None,
         mcp_adapter: CulturalIntelligenceMCPAdapter | None = None,
+        connector_registry: ConnectorRegistry | None = None,
+        durable_idempotency_store: DurableIdempotencyStore | None = None,
     ) -> None:
         self.store = store or InMemoryStateStore()
         self.engine = engine or WorkflowEngine(
-            mcp_adapter=mcp_adapter, store=self.store
+            mcp_adapter=mcp_adapter,
+            store=self.store,
+            connector_registry=connector_registry,
+            durable_idempotency_store=durable_idempotency_store,
         )
+        self.connector_registry = self.engine.connector_registry
         self._active_sessions: dict[str, WorkflowContext] = {}
 
     def _resolve_context(

@@ -3,7 +3,17 @@
  * Section 5: Minimal premium opening screen, centered arch logo, brand messaging, botanical arch vignette.
  */
 
-export function renderSplash(rootElement, router) {
+export function renderSplash(rootElement, params, router) {
+  // Resolve router safely if passed as 3rd arg (canonical), 2nd arg (legacy), or via window.tasteopsRouter
+  const actualRouter =
+    router && typeof router.navigate === 'function'
+      ? router
+      : params && typeof params.navigate === 'function'
+        ? params
+        : typeof window !== 'undefined' && window.tasteopsRouter
+          ? window.tasteopsRouter
+          : null;
+
   rootElement.innerHTML = `
     <div class="splash-container">
       <!-- Minimalist Top Navigation Header -->
@@ -56,6 +66,10 @@ export function renderSplash(rootElement, router) {
   // Attach click listener for primary entrance
   document.getElementById('btn-enter-tasteops')?.addEventListener('click', (e) => {
     e.preventDefault();
-    router.navigate('/home');
+    if (actualRouter && typeof actualRouter.navigate === 'function') {
+      actualRouter.navigate('/home');
+    } else if (typeof window !== 'undefined') {
+      window.location.hash = '#/home';
+    }
   });
 }

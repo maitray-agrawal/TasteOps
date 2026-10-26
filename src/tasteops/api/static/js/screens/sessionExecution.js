@@ -612,7 +612,7 @@ export async function renderSessionExecution(rootElement, params, router) {
             const res = await apiClient.executeSession(sessionId);
 
             // ONLY show success AFTER backend confirms 200 OK
-            showToast(`Executed ${res.executed_tasks || totalTasks} activation tasks successfully!`, 'success');
+            showToast({ title: 'Execution Staged', text: `Processed ${res.executed_tasks || totalTasks} activation tasks. Operational orders staged.`, type: 'success' });
 
             // Refresh complete authoritative server state
             await loadData();

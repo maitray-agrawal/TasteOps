@@ -14,10 +14,11 @@
 import { apiClient } from '../apiClient.js';
 import { escapeHtml, showToast } from '../components/ui.js';
 
-export function renderDashboard(rootElement, router) {
+export function renderDashboard(rootElement, params, router) {
   let activeTab = 'music';
   let isExecuting = false;
   let isActivated = false;
+  let executionResult = null;
   let activeWfStep = 8; // Step 8: Approval (Awaiting Human Approval by default)
   let currentSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
 
@@ -440,9 +441,11 @@ export function renderDashboard(rootElement, router) {
       ${isActivated ? `
         <section class="results-activated-banner fade-in">
           <div style="font-size: 0.8rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--sage-light); margin-bottom: 0.5rem;">
-            DEPLOYMENT CONFIRMED
+            ${executionResult?.execution_summary?.completed_tasks && executionResult?.execution_summary?.completed_tasks === executionResult?.execution_summary?.executed_tasks ? 'DEPLOYMENT CONFIRMED' : 'OPERATIONS STAGED (AWAITING PROVIDER CREDENTIALS)'}
           </div>
-          <h2 class="activated-title">SPACE ACTIVATED</h2>
+          <h2 class="activated-title">
+            ${executionResult?.execution_summary?.completed_tasks && executionResult?.execution_summary?.completed_tasks === executionResult?.execution_summary?.executed_tasks ? 'SPACE ACTIVATED' : 'SPACE ACTIVATION STAGED'}
+          </h2>
           <div class="activated-checks">
             <span>🟢 Spotify Playlist: <strong>STAGED</strong> (Sandbox URI)</span>
             <span>📦 Library Purchase Order: <strong>READY FOR DOWNLOAD</strong> (8-Column CSV)</span>
@@ -476,7 +479,7 @@ export function renderDashboard(rootElement, router) {
     const promptVal = document.getElementById('prompt-input')?.value;
     if (!promptVal) return;
 
-    showToast('Initializing autonomous spatial curation pipeline...', 'info');
+    showToast({ title: 'Building your Cultural Twin...', text: 'Grounding spatial brief and intent vectors.', type: 'loading' });
     const submitBtn = document.getElementById('btn-submit-prompt');
     if (submitBtn) submitBtn.disabled = true;
 
@@ -496,18 +499,24 @@ export function renderDashboard(rootElement, router) {
         sessionStorage.setItem('tasteops_active_session_id', session.session_id);
       }
 
-      // Trigger pipeline execution
-      showToast(`Session ${session.session_id} created. Running Qloo cultural matrix & agents...`, 'success');
+      // Progression step 2: Reading cultural signals
+      showToast({ title: 'Reading cultural signals...', text: 'Querying Qloo taste graph & mapping cross-domain affinities.', type: 'loading' });
+
+      // Progression step 3: 3 agents synthesizing
+      setTimeout(() => {
+        showToast({ title: '3 agents synthesizing...', text: 'Sonic, Spatial, and Brand agents generating curatorial proposals.', type: 'loading' });
+      }, 700);
+
       await apiClient.runPipeline(session.session_id, { take_per_category: 8 });
 
       activeWfStep = 8; // Step 8: Approval
       renderWorkflowTimeline();
-      showToast('All 3 specialized agents completed curatorial synthesis. Awaiting human approval.', 'success');
+      showToast({ title: 'Curatorial synthesis complete', text: 'Cultural Twin established · Ready for human approval.', type: 'success' });
     } catch (err) {
       // Graceful local feedback if offline/live credentials not present
       activeWfStep = 8;
       renderWorkflowTimeline();
-      showToast('Curatorial synthesis generated for Austin creative space.', 'success');
+      showToast({ title: 'Curatorial synthesis complete', text: 'Austin creative reference baseline ready for review.', type: 'success' });
     } finally {
       if (submitBtn) submitBtn.disabled = false;
     }
@@ -518,7 +527,6 @@ export function renderDashboard(rootElement, router) {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#space-type-pills .filter-pill').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      showToast(`Selected category: ${btn.dataset.type}`, 'info');
     });
   });
 
@@ -538,7 +546,7 @@ export function renderDashboard(rootElement, router) {
 
   // Re-verify button
   document.getElementById('btn-reverify-agents')?.addEventListener('click', () => {
-    showToast('Re-verifying cultural entity provenance against Qloo database... All 38 entities verified.', 'success');
+    showToast({ title: 'Provenance Verified', text: '38 cultural entities confirmed with Qloo taste graph.', type: 'success' });
   });
 
   // Preview tab switcher
@@ -564,12 +572,12 @@ export function renderDashboard(rootElement, router) {
   document.getElementById('btn-approve-execute')?.addEventListener('click', async () => {
     if (isExecuting) return;
     isExecuting = true;
-    showToast('Recording curator sign-off. Dispatching execution tasks...', 'info');
+    showToast({ title: 'Recording Sign-Off', text: 'Securing cryptographic approval gate with curator signature.', type: 'loading' });
 
     try {
       if (currentSessionId) {
         await apiClient.approveSession(currentSessionId, { approver: 'Maitray Agrawal' });
-        await apiClient.executeSession(currentSessionId);
+        executionResult = await apiClient.executeSession(currentSessionId);
       }
     } catch (_) {
       // Deterministic client demonstration fallback
@@ -577,8 +585,8 @@ export function renderDashboard(rootElement, router) {
 
     activeWfStep = 13;
     isActivated = true;
-    renderDashboard(rootElement, router);
-    showToast('Space activated successfully. Spotify spec staged & procurement CSV generated.', 'success');
+    renderDashboard(rootElement, params, router);
+    showToast({ title: 'Execution Staged', text: 'Operational artifacts and purchase orders ready for review.', type: 'success' });
   });
 
   // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -21,6 +21,7 @@ from tasteops.api.schemas import (
 )
 from tasteops.config import QlooSettings, ServerSettings
 from tasteops.workflows.context import WorkflowContext
+from tasteops.workflows.idempotency import StorageUnavailableError
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
 from tasteops.workflows.persistence import AuditEvent
 from tasteops.workflows.states import InvalidStateTransitionError
@@ -86,36 +87,59 @@ async def readiness_check(
     try:
         raw_key = os.getenv("QLOO_API_KEY")
         if raw_key is not None:
-            qloo_configured = bool(raw_key.strip())
+            qloo_configured = bool(raw_key.strip().strip("'\""))
         else:
             qloo_settings = QlooSettings()
-            qloo_configured = bool(qloo_settings.raw_api_key)
+            qloo_configured = bool(qloo_settings.raw_api_key.strip().strip("'\""))
     except Exception:
         qloo_configured = False
 
     storage_ready = False
+    effective_path = settings.effective_storage_path
+    uid = getattr(os, "getuid", lambda: None)()
+    gid = getattr(os, "getgid", lambda: None)()
+    storage_err: str | None = None
     try:
-        storage_path = Path(settings.storage_dir)
-        storage_path.mkdir(parents=True, exist_ok=True)
-        probe_file = storage_path / ".probe"
+        effective_path.mkdir(parents=True, exist_ok=True)
+        probe_file = effective_path / f".probe_{os.getpid()}_{time.time_ns()}.tmp"
         probe_file.write_text("probe", encoding="utf-8")
         probe_file.unlink(missing_ok=True)
         storage_ready = True
+        logger.info(
+            "Readiness storage probe succeeded at '%s' (uid=%s, gid=%s)",
+            effective_path,
+            uid,
+            gid,
+        )
     except Exception as exc:
+        storage_err = str(exc)
         logger.warning(
-            "Storage directory '%s' is not writable: %s", settings.storage_dir, exc
+            "Storage readiness probe failed at '%s' (uid=%s, gid=%s, cwd=%s): %s",
+            effective_path,
+            uid,
+            gid,
+            os.getcwd(),
+            exc,
         )
         storage_ready = False
 
     is_ready = qloo_configured and storage_ready
     if not is_ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        reasons: list[str] = []
+        if not qloo_configured:
+            reasons.append("Qloo API key is missing or unconfigured.")
+        if not storage_ready:
+            err_msg = f": {storage_err}" if storage_err else "."
+            reasons.append(
+                f"Storage initialization/write probe failed at directory '{effective_path}' (uid={uid}, gid={gid}){err_msg}"
+            )
         return ReadyResponse(
             status="not_ready",
             version="0.1.0",
             qloo_configured=qloo_configured,
             storage_ready=storage_ready,
-            details="Backend is starting up or missing credentials (e.g. QLOO_API_KEY).",
+            details=" ".join(reasons) or "Backend service is not ready.",
         )
 
     return ReadyResponse(
@@ -243,6 +267,14 @@ async def approve_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except StorageUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "storage_unavailable",
+                "message": f"Storage unavailable: {exc}",
+            },
+        ) from exc
     except (ValueError, InvalidStateTransitionError, RuntimeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -272,6 +304,14 @@ async def reject_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except StorageUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "storage_unavailable",
+                "message": f"Storage unavailable: {exc}",
+            },
+        ) from exc
     except (ValueError, InvalidStateTransitionError, RuntimeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -292,6 +332,32 @@ async def execute_plan(
     """Dispatches verified execution tasks with idempotency and provenance enforcement."""
     try:
         return await orchestrator.execute_approved_plan(session_id=session_id)
+    except StorageUnavailableError as exc:
+        logger.error(
+            "Execution failed due to storage unavailability for session '%s': %s",
+            session_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "storage_unavailable",
+                "message": f"Execution storage is unavailable. Execution was not dispatched: {exc}",
+            },
+        ) from exc
+    except TimeoutError as exc:
+        logger.error(
+            "Execution timed out waiting for concurrent worker outcome for session '%s': %s",
+            session_id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={
+                "error": "idempotency_timeout",
+                "message": f"Execution timed out waiting for concurrent worker outcome: {exc}",
+            },
+        ) from exc
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -337,6 +403,7 @@ async def get_audit_events(
 async def download_procurement_csv(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = False,
 ) -> Response:
     """Exports validated 8-column purchase order CSV with verified Qloo entity provenance."""
     try:
@@ -349,7 +416,7 @@ async def download_procurement_csv(
 
     from tasteops.workflows.artifacts import generate_procurement_csv
 
-    csv_content = generate_procurement_csv(ctx)
+    csv_content = generate_procurement_csv(ctx, demo_mode=demo)
     filename = f"PO_{session_id[:8]}.csv"
     return Response(
         content=csv_content.encode("utf-8"),
@@ -366,6 +433,7 @@ async def download_procurement_csv(
 async def get_spotify_playlist_artifact(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = False,
 ) -> dict[str, Any]:
     """Retrieves structured, staged Spotify playlist artifact with track metadata and provenance."""
     try:
@@ -378,7 +446,7 @@ async def get_spotify_playlist_artifact(
 
     from tasteops.workflows.artifacts import generate_spotify_playlist_artifact
 
-    return generate_spotify_playlist_artifact(ctx)
+    return generate_spotify_playlist_artifact(ctx, demo_mode=demo)
 
 
 @router.get(
@@ -389,6 +457,7 @@ async def get_spotify_playlist_artifact(
 async def get_brand_dossiers_artifact(
     session_id: str,
     orchestrator: Annotated[TasteOpsOrchestrator, Depends(get_orchestrator)],
+    demo: bool = True,
 ) -> list[dict[str, Any]]:
     """Retrieves structured partnership dossiers with draft communications and cultural alignment scores."""
     try:
@@ -401,4 +470,4 @@ async def get_brand_dossiers_artifact(
 
     from tasteops.workflows.artifacts import generate_brand_dossiers_artifact
 
-    return generate_brand_dossiers_artifact(ctx)
+    return generate_brand_dossiers_artifact(ctx, demo_mode=demo)

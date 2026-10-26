@@ -208,6 +208,8 @@ class DuplicateExecutionError(ConnectorError):
             code="DUPLICATE_IDEMPOTENCY_KEY",
             details={"idempotency_key": idempotency_key, "task_id": task_id},
         )
+        self.idempotency_key = idempotency_key
+        self.task_id = task_id
 
 
 class ConnectorExecutionFailedError(ConnectorError):

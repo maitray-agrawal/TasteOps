@@ -242,7 +242,7 @@ export async function renderSpaceDetail(rootElement, params, router) {
             user_input: userIntent,
             auto_run: true,
           });
-          showToast(`Workflow Session '${session.session_id.slice(0, 8)}' reached Approval Gate!`, 'success');
+          showToast({ title: 'Approval Gate Reached', text: 'Curatorial synthesis complete. Opening session workspace...', type: 'success' });
           router.navigate(`/sessions/${session.session_id}`);
         } catch (err) {
           analyzeBtn.disabled = false;

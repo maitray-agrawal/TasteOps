@@ -26,6 +26,10 @@ from tasteops.api.schemas import ErrorResponse
 from tasteops.client import QlooClient
 from tasteops.config import QlooSettings, ServerSettings
 from tasteops.mcp import create_cultural_intelligence_mcp
+from tasteops.workflows.idempotency import (
+    DurableIdempotencyStore,
+    StorageUnavailableError,
+)
 from tasteops.workflows.orchestrator import TasteOpsOrchestrator
 from tasteops.workflows.persistence import FileStateStore
 
@@ -42,7 +46,9 @@ def build_default_orchestrator(
     settings: ServerSettings,
 ) -> TasteOpsOrchestrator:
     """Builds the default TasteOpsOrchestrator with persistence and Qloo adapter if configured."""
-    store = FileStateStore(base_dir=settings.storage_dir)
+    storage_path = settings.effective_storage_path
+    store = FileStateStore(base_dir=storage_path)
+    durable_store = DurableIdempotencyStore(base_dir=storage_path / ".idempotency")
 
     mcp_adapter: CulturalIntelligenceMCPAdapter | None = None
     try:
@@ -61,7 +67,11 @@ def build_default_orchestrator(
             exc,
         )
 
-    return TasteOpsOrchestrator(store=store, mcp_adapter=mcp_adapter)
+    return TasteOpsOrchestrator(
+        store=store,
+        mcp_adapter=mcp_adapter,
+        durable_idempotency_store=durable_store,
+    )
 
 
 def create_app(
@@ -102,22 +112,31 @@ def create_app(
     # ==========================================================================
     # CORS Configuration
     # ==========================================================================
-    cors_origins = cfg.cors_origins_list
-    allow_all = "*" in cors_origins
+    if cfg.cors_middleware_enabled:
+        cors_origins = cfg.cors_origins_list
+        allow_all = "*" in cors_origins
 
-    # In production, disallow credentials if wildcard origin is configured
-    allow_credentials = not allow_all
-    logger.info(
-        "Configured CORS origins: %s (credentials: %s)", cors_origins, allow_credentials
-    )
+        # Credentials enabled only if explicitly configured and wildcard is not used
+        allow_credentials = cfg.cors_allow_credentials and not allow_all
+        logger.info(
+            "Configured CORS origins: %s (regex: %s, credentials: %s)",
+            cors_origins,
+            cfg.cors_origin_regex,
+            allow_credentials,
+        )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins if not allow_all else ["*"],
-        allow_credentials=allow_credentials,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins if not allow_all else ["*"],
+            allow_origin_regex=cfg.cors_origin_regex if not allow_all else None,
+            allow_credentials=allow_credentials,
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
+            allow_headers=["*"],
+        )
+    else:
+        logger.info(
+            "CORS middleware disabled in application (delegated to platform reverse-proxy gateway)"
+        )
 
     # ==========================================================================
     # Request Correlation & Diagnostic Middleware
@@ -142,11 +161,37 @@ def create_app(
         request: Request, exc: HTTPException
     ) -> JSONResponse:
         req_id = getattr(request.state, "request_id", None)
+        if isinstance(exc.detail, dict) and "error" in exc.detail:
+            err_code = str(exc.detail["error"])
+            err_msg = str(exc.detail.get("message", exc.detail))
+        else:
+            err_code = f"http_{exc.status_code}"
+            err_msg = str(exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
             content=ErrorResponse(
-                error=f"http_{exc.status_code}",
-                message=str(exc.detail),
+                error=err_code,
+                message=err_msg,
+                request_id=req_id,
+            ).model_dump(),
+        )
+
+    @app.exception_handler(StorageUnavailableError)
+    async def storage_unavailable_handler(
+        request: Request, exc: StorageUnavailableError
+    ) -> JSONResponse:
+        req_id = getattr(request.state, "request_id", None)
+        logger.error(
+            "Storage unavailable on %s (request_id=%s): %s",
+            request.url.path,
+            req_id,
+            exc,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=ErrorResponse(
+                error="storage_unavailable",
+                message=f"Storage unavailable: {exc}",
                 request_id=req_id,
             ).model_dump(),
         )

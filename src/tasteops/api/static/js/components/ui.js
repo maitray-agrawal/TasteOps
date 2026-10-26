@@ -235,7 +235,119 @@ export function renderSubNav(sessionId, activeTab) {
   `;
 }
 
-export function showToast(message, type = 'info', duration = 4000) {
+// ---------------------------------------------------------------------------
+// Centralized Activity Capsule / Telemetry Notification System
+// Rule: Exactly ONE visible capsule. In-place smooth progression. Never stacks.
+// ---------------------------------------------------------------------------
+
+let activeCapsuleEl = null;
+let activeCapsuleTimer = null;
+
+/**
+ * Intelligent error and message translator.
+ * Maps raw backend technical strings into calm, editorial product telemetry.
+ */
+function translateToastMessage(input, defaultType = 'info') {
+  if (typeof input === 'object' && input !== null) {
+    return {
+      title: input.title || 'Telemetry',
+      text: input.text || input.message || '',
+      type: input.type || defaultType,
+      actionText: input.actionText || null,
+      onAction: input.onAction || null,
+    };
+  }
+
+  const raw = String(input || '').trim();
+  let title = '';
+  let text = '';
+  let type = defaultType;
+  let actionText = null;
+  let onAction = null;
+
+  // Pattern 1: Session not found / expired in cache/state store
+  if (/not found in active cache|not found in.*state store|session.*not found/i.test(raw)) {
+    title = 'Session Expired';
+    text = 'This workspace is no longer active. Reopen the space to continue.';
+    type = 'error';
+    actionText = 'Reopen workspace →';
+    onAction = () => {
+      if (window.tasteopsRouter) window.tasteopsRouter.navigate('/spaces/new');
+    };
+  }
+  // Pattern 2: Approval gate enforcement / invalid workflow transition
+  else if (/cannot transition from.*to|Invalid workflow transition/i.test(raw)) {
+    title = 'Approval Gate Required';
+    text = 'Curatorial sign-off must be recorded before physical execution can begin.';
+    type = 'warning';
+  }
+  // Pattern 3: Initializing pipeline
+  else if (/initializing autonomous spatial curation|building your cultural twin/i.test(raw)) {
+    title = 'Building Cultural Twin';
+    text = 'Synthesizing spatial brief and cultural context.';
+    type = 'loading';
+  }
+  // Pattern 4: Reading signals / running Qloo & agents
+  else if (/running qloo cultural matrix|reading cultural signals/i.test(raw)) {
+    title = 'Reading Cultural Signals';
+    text = 'Querying Qloo cross-domain taste graph & activating agents.';
+    type = 'loading';
+  }
+  // Pattern 5: 3 agents completed
+  else if (/all 3 specialized agents completed|3 agents synthesizing/i.test(raw)) {
+    title = 'Curatorial Synthesis Complete';
+    text = 'Spatial, sonic, and brand agents ready for human approval.';
+    type = 'success';
+  }
+  // Pattern 6: Recording curator sign-off / binding SHA-256
+  else if (/binding sha-256|recording curator sign-off/i.test(raw)) {
+    title = 'Recording Sign-Off';
+    text = 'Securing cryptographic approval gate with human signature.';
+    type = 'loading';
+  }
+  // Pattern 7: Execution staged
+  else if (/plan approved & physical execution|workflow execution completed/i.test(raw)) {
+    title = 'Execution Staged';
+    text = 'Artifacts and operational orders are ready for review.';
+    type = 'success';
+  }
+  // Pattern 8: Space registered and analyzed
+  else if (/space registered and pipeline analyzed/i.test(raw)) {
+    title = 'Cultural Twin Established';
+    text = 'Opening curatorial workspace...';
+    type = 'success';
+  }
+  // Pattern 9: Generic error with UUID or HTTP jargon
+  else if (type === 'error' || /failed|exception|error:/i.test(raw)) {
+    type = 'error';
+    const cleaned = raw
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, 'workspace')
+      .replace(/HTTP \d+[:\s]*/gi, '')
+      .replace(/^error:\s*/i, '')
+      .replace(/Approval\/Execution error:\s*/i, '');
+    title = 'Operation Notice';
+    text = cleaned.length > 90 ? cleaned.slice(0, 88) + '...' : cleaned;
+  }
+  // Normal messages
+  else {
+    if (raw.length <= 48 && !raw.includes('.')) {
+      title = raw;
+      text = '';
+    } else {
+      const parts = raw.split(/(?<=[.!?])\s+/);
+      title = parts[0] || 'Notice';
+      text = parts.slice(1).join(' ') || '';
+    }
+  }
+
+  // Strip any lingering raw UUIDs from title & text
+  title = title.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '').trim();
+  text = text.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '').trim();
+
+  return { title, text, type, actionText, onAction };
+}
+
+export function showToast(input, type = 'info', duration = null) {
   let container = document.getElementById('toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -244,20 +356,127 @@ export function showToast(message, type = 'info', duration = 4000) {
     document.body.appendChild(container);
   }
 
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span style="font-size: 1.1rem;">
-      ${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}
-    </span>
-    <span class="toast-message">${escapeHtml(message)}</span>
+  const { title, text, type: resolvedType, actionText, onAction } = translateToastMessage(input, type);
+
+  // Determine auto-dismiss timeout
+  let autoDismissMs = duration;
+  if (!autoDismissMs) {
+    if (resolvedType === 'loading') {
+      autoDismissMs = 12000; // loading safety timeout
+    } else if (resolvedType === 'error') {
+      autoDismissMs = actionText ? 9000 : 7000;
+    } else if (resolvedType === 'warning') {
+      autoDismissMs = 5500;
+    } else {
+      autoDismissMs = 3800; // compact info/success
+    }
+  }
+
+  // Clear any existing dismissal timer
+  if (activeCapsuleTimer) {
+    clearTimeout(activeCapsuleTimer);
+    activeCapsuleTimer = null;
+  }
+
+  // Icon markup based on resolved type
+  let iconHtml = '';
+  if (resolvedType === 'loading') {
+    iconHtml = '<div class="telemetry-spinner" aria-hidden="true"></div>';
+  } else if (resolvedType === 'success') {
+    iconHtml = '<span class="telemetry-dot dot-success" aria-hidden="true"></span>';
+  } else if (resolvedType === 'error') {
+    iconHtml = '<span class="telemetry-dot dot-error" aria-hidden="true"></span>';
+  } else if (resolvedType === 'warning') {
+    iconHtml = '<span class="telemetry-dot dot-warning" aria-hidden="true"></span>';
+  } else {
+    iconHtml = '<span class="telemetry-dot dot-info" aria-hidden="true"></span>';
+  }
+
+  // If capsule already exists, update in-place smoothly
+  if (activeCapsuleEl && activeCapsuleEl.parentNode) {
+    activeCapsuleEl.classList.remove('exiting');
+    const iconContainer = activeCapsuleEl.querySelector('.toast-capsule-icon');
+    const titleEl = activeCapsuleEl.querySelector('.toast-capsule-title');
+    const textEl = activeCapsuleEl.querySelector('.toast-capsule-text');
+    const actionSlot = activeCapsuleEl.querySelector('.toast-capsule-action-slot');
+
+    if (iconContainer) iconContainer.innerHTML = iconHtml;
+    if (titleEl) titleEl.textContent = title;
+    if (textEl) {
+      textEl.textContent = text;
+      textEl.style.display = text ? 'block' : 'none';
+    }
+    if (actionSlot) {
+      if (actionText && typeof onAction === 'function') {
+        actionSlot.innerHTML = `<a class="toast-capsule-action" href="#">${escapeHtml(actionText)}</a>`;
+        actionSlot.querySelector('a')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          dismissActiveToast();
+          onAction();
+        });
+      } else {
+        actionSlot.innerHTML = '';
+      }
+    }
+
+    // Set auto-dismiss timer
+    activeCapsuleTimer = setTimeout(dismissActiveToast, autoDismissMs);
+    return;
+  }
+
+  // Otherwise, create the single capsule element
+  const capsule = document.createElement('div');
+  capsule.className = 'toast-capsule entering';
+  capsule.setAttribute('role', resolvedType === 'error' ? 'alert' : 'status');
+  capsule.setAttribute('aria-live', 'polite');
+
+  capsule.innerHTML = `
+    <div class="toast-capsule-icon">${iconHtml}</div>
+    <div class="toast-capsule-body">
+      <div class="toast-capsule-title">${escapeHtml(title)}</div>
+      <div class="toast-capsule-text" style="${text ? '' : 'display: none;'}">${escapeHtml(text)}</div>
+      <div class="toast-capsule-action-slot">
+        ${actionText && typeof onAction === 'function' ? `<a class="toast-capsule-action" href="#">${escapeHtml(actionText)}</a>` : ''}
+      </div>
+    </div>
+    <button class="toast-capsule-close" type="button" aria-label="Dismiss notification">×</button>
   `;
 
-  container.appendChild(toast);
+  // Attach event handlers
+  capsule.querySelector('.toast-capsule-close')?.addEventListener('click', dismissActiveToast);
+  if (actionText && typeof onAction === 'function') {
+    capsule.querySelector('.toast-capsule-action')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      dismissActiveToast();
+      onAction();
+    });
+  }
 
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(10px)';
-    setTimeout(() => toast.remove(), 250);
-  }, duration);
+  container.appendChild(capsule);
+  activeCapsuleEl = capsule;
+
+  // Trigger enter transition
+  requestAnimationFrame(() => {
+    capsule.classList.remove('entering');
+  });
+
+  // Schedule auto-dismiss
+  activeCapsuleTimer = setTimeout(dismissActiveToast, autoDismissMs);
 }
+
+function dismissActiveToast() {
+  if (activeCapsuleTimer) {
+    clearTimeout(activeCapsuleTimer);
+    activeCapsuleTimer = null;
+  }
+  if (!activeCapsuleEl) return;
+
+  const el = activeCapsuleEl;
+  activeCapsuleEl = null;
+
+  el.classList.add('exiting');
+  setTimeout(() => {
+    if (el.parentNode) el.parentNode.removeChild(el);
+  }, 280);
+}
+

@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from tasteops.agents.mcp_adapter import CulturalIntelligenceMCPAdapter
     from tasteops.agents.partnership import PartnershipAgent
     from tasteops.agents.strategist import CulturalStrategist
+    from tasteops.connectors import ConnectorRegistry
+    from tasteops.workflows.idempotency import DurableIdempotencyStore
 
 logger = logging.getLogger("tasteops.workflows.engine")
 
@@ -71,6 +73,8 @@ class WorkflowEngine:
         max_qloo_retries: int = 2,
         max_agent_retries: int = 2,
         max_validation_cycles: int = 2,
+        connector_registry: ConnectorRegistry | None = None,
+        durable_idempotency_store: DurableIdempotencyStore | None = None,
     ) -> None:
         from tasteops.agents.architect import ExperienceArchitect
         from tasteops.agents.governance import GovernanceAgent
@@ -82,7 +86,11 @@ class WorkflowEngine:
         self.strategist = strategist or CulturalStrategist(mcp_adapter=self.mcp)
         self.architect = architect or ExperienceArchitect()
         self.partnership = partnership or PartnershipAgent()
-        self.governance = governance or GovernanceAgent()
+        self.governance = governance or GovernanceAgent(
+            connector_registry=connector_registry,
+            durable_store=durable_idempotency_store,
+        )
+        self.connector_registry = self.governance.connector_registry
         self.store = store or InMemoryStateStore()
 
         # Guardrail bounds against infinite loops
@@ -106,6 +114,7 @@ class WorkflowEngine:
         error: str | None = None,
     ) -> AuditEvent:
         """Records transition in context history and persists audit event to store."""
+        prev_state = ctx.current_state
         event = ctx.record_transition(
             to_state=to_state,
             reason=reason,
@@ -116,11 +125,25 @@ class WorkflowEngine:
             try:
                 self.store.save_transition(event, ctx)
             except Exception as exc:
-                logger.warning(
-                    "StateStore persistence failed for session %s: %s",
-                    ctx.session_id,
-                    exc,
-                )
+                if to_state == WorkflowState.FAILED:
+                    logger.warning(
+                        "StateStore persistence failed for FAILED state in session %s: %s",
+                        ctx.session_id,
+                        exc,
+                    )
+                else:
+                    logger.error(
+                        "StateStore persistence failed for session %s: %s",
+                        ctx.session_id,
+                        exc,
+                    )
+                    # Revert in-memory transition since durable persistence failed
+                    ctx.current_state = prev_state
+                    if ctx.history and ctx.history[-1].to_state == to_state:
+                        ctx.history.pop()
+                    if ctx.audit_events and ctx.audit_events[-1].to_state == to_state:
+                        ctx.audit_events.pop()
+                    raise
         return event
 
     # -------------------------------------------------------------------------
@@ -756,6 +779,36 @@ class WorkflowEngine:
                 )
                 return ctx
 
+            # If not in APPROVED and not a valid EXECUTING resumption, validate state transition first
+            is_valid_resumption = (
+                ctx.current_state == WorkflowState.EXECUTING
+                and ctx.plan is not None
+                and (
+                    ctx.approval is not None
+                    or any(r.to_state == WorkflowState.APPROVED for r in ctx.history)
+                )
+            )
+            if ctx.current_state != WorkflowState.APPROVED and not is_valid_resumption:
+                validate_transition(ctx.current_state, WorkflowState.EXECUTING)
+
+            if not ctx.plan:
+                raise RuntimeError("Cannot execute: Plan is missing.")
+
+            # Verify explicit approval record is present
+            if not ctx.approval and not any(
+                record.to_state == WorkflowState.APPROVED for record in ctx.history
+            ):
+                raise UnapprovedExecutionError(
+                    "Execution blocked: Plan has not been approved (approval record is absent)."
+                )
+
+            # Reservation/dispatch preparation: verify execution storage readiness before marking EXECUTING
+            if (
+                hasattr(self.governance, "durable_store")
+                and self.governance.durable_store
+            ):
+                self.governance.durable_store.check_storage_ready()
+
             # Handle process restart or resumption
             if ctx.current_state == WorkflowState.APPROVED:
                 validate_transition(ctx.current_state, WorkflowState.EXECUTING)
@@ -779,17 +832,6 @@ class WorkflowEngine:
             else:
                 validate_transition(ctx.current_state, WorkflowState.EXECUTING)
 
-            if not ctx.plan:
-                raise RuntimeError("Cannot execute: Plan is missing.")
-
-            # Verify explicit approval record is present
-            if not ctx.approval and not any(
-                record.to_state == WorkflowState.APPROVED for record in ctx.history
-            ):
-                raise UnapprovedExecutionError(
-                    "Execution blocked: Plan has not been approved (approval record is absent)."
-                )
-
             # Identify approver from approval record or audit history
             last_approver = ctx.approval.approver if ctx.approval else "curator"
             if not ctx.approval:
@@ -801,28 +843,54 @@ class WorkflowEngine:
                         last_approver = record.metadata["approver"]
                         break
 
-            execution_summary = await self.governance.execute_plan(
-                ctx.plan,
-                is_approved=True,
-                approved_by=last_approver,
-                approval=ctx.approval,
-                session_id=ctx.session_id,
-            )
-            ctx.plan.execution_summary = execution_summary
-            ctx.execution_tasks = execution_summary.tasks
-            ctx.sync_outputs()
+            try:
+                execution_summary = await self.governance.execute_plan(
+                    ctx.plan,
+                    is_approved=True,
+                    approved_by=last_approver,
+                    approval=ctx.approval,
+                    session_id=ctx.session_id,
+                )
+                ctx.plan.execution_summary = execution_summary
+                ctx.execution_tasks = execution_summary.tasks
+                ctx.sync_outputs()
 
-            validate_transition(ctx.current_state, WorkflowState.COMPLETED)
-            self._record_and_persist(
-                ctx,
-                WorkflowState.COMPLETED,
-                reason="All downstream activation tasks confirmed with provenance",
-                metadata={
-                    "total_tasks": execution_summary.total_tasks,
-                    "executed_tasks": execution_summary.executed_tasks,
-                },
-            )
-            return ctx
+                validate_transition(ctx.current_state, WorkflowState.COMPLETED)
+                self._record_and_persist(
+                    ctx,
+                    WorkflowState.COMPLETED,
+                    reason="All downstream activation tasks confirmed with provenance",
+                    metadata={
+                        "total_tasks": execution_summary.total_tasks,
+                        "executed_tasks": execution_summary.executed_tasks,
+                    },
+                )
+                return ctx
+            except Exception as exc:
+                logger.error(
+                    "Execution failure for session '%s' while in EXECUTING state: %s",
+                    ctx.session_id,
+                    exc,
+                )
+                ctx.error_message = str(exc)
+                try:
+                    validate_transition(ctx.current_state, WorkflowState.FAILED)
+                    self._record_and_persist(
+                        ctx,
+                        WorkflowState.FAILED,
+                        reason=f"Execution dispatch failed: {exc}",
+                        metadata={
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                except Exception as inner_exc:
+                    logger.error(
+                        "Failed to persist FAILED state transition for session '%s': %s",
+                        ctx.session_id,
+                        inner_exc,
+                    )
+                raise
 
     # -------------------------------------------------------------------------
     # Full Pipeline Helper: Up to Human Gate

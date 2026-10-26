@@ -58,7 +58,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
       window.tasteopsInspectProvenance = (entityKey) => {
         const item = provMap[entityKey];
         if (!item) {
-          showToast(`Provenance record for "${entityKey}" not found in current session cache.`, 'warning');
+          showToast({ title: 'Provenance Record Unavailable', text: `Telemetry record for "${entityKey}" not cached in active session.`, type: 'warning' });
           return;
         }
         renderProvenanceModal(item);

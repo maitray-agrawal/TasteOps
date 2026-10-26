@@ -124,32 +124,78 @@ class EmailConnector(BaseConnector):
         )
 
         try:
-            if self._http_client:
-                resp = await self._http_client.post(
-                    "https://api.sendgrid.com/v3/mail/send",
-                    json={
-                        "from": {"email": self._from_email},
-                        "partner_name": partner_name,
-                        "partner_id": partner_id,
-                        "activation_type": activation_type,
-                    },
+            client = self._http_client
+            if client is None:
+                raise ConnectorExecutionFailedError(
+                    self.name,
+                    "Missing HTTP client: Email connector cannot execute external integration without a configured HTTP transport. Real provider calls must be mocked in tests.",
+                    details={"error_code": "MISSING_HTTP_CLIENT"},
                 )
-                if resp.status_code >= 400:
-                    raise ConnectorExecutionFailedError(
-                        self.name,
-                        f"Email provider returned error {resp.status_code}: {resp.text}",
-                        details={"status_code": resp.status_code},
-                    )
-                provider_data = resp.json()
-            else:
-                provider_data = {
-                    "message_id": f"msg_{request.task_id[:12]}",
-                    "partner_id": partner_id,
-                    "partner_name": partner_name,
-                    "status": "delivered",
-                }
 
-            message_id = provider_data.get("message_id") or f"msg_{partner_id}"
+            timeout = httpx.Timeout(15.0, connect=5.0)
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            }
+
+            recipient_email = (
+                payload.get("recipient_email")
+                or payload.get("email")
+                or f"partnerships@{partner_name.lower().replace(' ', '')}.com"
+            )
+            subject = payload.get(
+                "subject", f"TasteOps Cultural Residency Proposal: {partner_name}"
+            )
+            body_text = payload.get(
+                "body",
+                f"Formal partnership outreach brief for {partner_name} ({activation_type}). "
+                "Curated by TasteOps Cultural Intelligence OS.",
+            )
+
+            # Official SendGrid v3 Mail Send payload schema
+            sendgrid_payload = {
+                "personalizations": [
+                    {
+                        "to": [{"email": recipient_email, "name": partner_name}],
+                        "subject": subject,
+                    }
+                ],
+                "from": {"email": self._from_email, "name": "TasteOps Curator"},
+                "content": [{"type": "text/plain", "value": body_text}],
+            }
+
+            resp = await client.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers=headers,
+                json=sendgrid_payload,
+                timeout=timeout,
+            )
+            if resp.status_code >= 400:
+                raise ConnectorExecutionFailedError(
+                    self.name,
+                    f"Email provider returned error {resp.status_code}: {resp.text}",
+                    details={"status_code": resp.status_code},
+                )
+
+            # SendGrid returns HTTP 202 Accepted for asynchronous queueing and MTA delivery.
+            # Truthfulness Requirement: A 202 acceptance must NEVER be represented as confirmed delivery.
+            message_id = (
+                resp.headers.get("X-Message-Id")
+                or (resp.json().get("message_id") if resp.content else None)
+                or f"msg_{partner_id}"
+            )
+
+            provider_data = {
+                "provider_status": "PROVIDER_ACCEPTED",
+                "delivery_status": "ACCEPTED_FOR_DELIVERY",
+                "is_confirmed_delivered": False,
+                "status_code": resp.status_code,
+                "message_id": message_id,
+                "partner_id": partner_id,
+                "partner_name": partner_name,
+                "recipient_email": recipient_email,
+            }
+
             output_uri = f"brief://partner/{partner_id}"
 
             return ConnectorExecutionResult(

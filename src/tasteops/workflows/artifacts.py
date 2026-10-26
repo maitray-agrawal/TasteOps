@@ -6,7 +6,11 @@ Generates validated, deterministic downstream curatorial artifacts:
 3. Brand Partnership Dossiers (Structured partnership alignment memos and draft outreach communications)
 
 Strict Integrity Guarantees:
-- Every entity originates from verified Qloo signals.
+- Every production entity originates strictly from verified Qloo signals.
+- Fabricated ISBNs, guessed authors, hardcoded prices/quantities, and synthetic catalog fallbacks are eliminated.
+- Unknown fields remain explicitly UNAVAILABLE rather than plausible guesses.
+- If demo fixtures are requested, an explicit demo_mode flag is required and all entities are labeled as illustrative sample data.
+- Playlist track counts and total runtime are mathematically reconciled with actual track records.
 - Distinguishes STAGED artifacts from live external provider mutations.
 - Stable column and field ordering for cryptographic reproducibility.
 """
@@ -20,7 +24,7 @@ from typing import Any
 from tasteops.workflows.context import WorkflowContext
 
 
-def generate_procurement_csv(ctx: WorkflowContext) -> str:
+def generate_procurement_csv(ctx: WorkflowContext, demo_mode: bool = False) -> str:
     """Generates a validated, deterministic CSV purchase order for the Procurement Agent.
 
     Required schema (strict column order):
@@ -32,6 +36,11 @@ def generate_procurement_csv(ctx: WorkflowContext) -> str:
     6. Unit Price
     7. Affinity Score
     8. Qloo Entity ID
+
+    Production Integrity Rules:
+    - Never fabricates fake ISBNs, authors, publishers, prices, or quantities.
+    - Missing/unknown fields remain 'UNAVAILABLE' rather than guessed.
+    - If books are not present in session, empty CSV is returned unless demo_mode is True.
     """
     output = io.StringIO()
     fieldnames = [
@@ -47,89 +56,60 @@ def generate_procurement_csv(ctx: WorkflowContext) -> str:
     writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
 
-    # Sourced publications from Cultural Matrix and Experience Design
+    # Sourced publications from Cultural Matrix
     books = ctx.cultural_matrix.books if ctx.cultural_matrix else []
 
-    # Curated publication catalog cataloged to Austin / venue typology
-    default_catalog = [
-        {
-            "isbn": "978-3899559385",
-            "title": "The Monocle Guide to Better Living",
-            "author": "Monocle Editorial",
-            "publisher": "Gestalten",
-            "qty": 3,
-            "price": "$60.00",
-            "affinity": 0.88,
-            "qloo_id": "ent_book_gestalten_01",
-        },
-        {
-            "isbn": "978-0988624993",
-            "title": "Wabi-Sabi for Artists, Designers, Poets & Philosophers",
-            "author": "Leonard Koren",
-            "publisher": "Imperfect Publishing",
-            "qty": 4,
-            "price": "$24.50",
-            "affinity": 0.86,
-            "qloo_id": "ent_book_wabisabi_02",
-        },
-        {
-            "isbn": "978-0714873183",
-            "title": "Alvar Aalto: Designer of Nature",
-            "author": "Mateo Kries",
-            "publisher": "Phaidon",
-            "qty": 2,
-            "price": "$75.00",
-            "affinity": 0.84,
-            "qloo_id": "ent_book_aalto_03",
-        },
-        {
-            "isbn": "978-1579658519",
-            "title": "Kinfolk: The Nature of Interior Design",
-            "author": "Nathan Williams",
-            "publisher": "Artisan Books",
-            "qty": 3,
-            "price": "$40.00",
-            "affinity": 0.89,
-            "qloo_id": "ent_book_kinfolk_04",
-        },
-        {
-            "isbn": "978-1944860356",
-            "title": "The Lighthouse: The Screenplay Book",
-            "author": "Robert Eggers & Max Eggers",
-            "publisher": "A24",
-            "qty": 2,
-            "price": "$65.00",
-            "affinity": 0.94,
-            "qloo_id": "ent_book_a24_05",
-        },
-        {
-            "isbn": "978-3775743877",
-            "title": "Bauhaus: 1919-1933 Workshops for Modernity",
-            "author": "Barry Bergdoll",
-            "publisher": "Hatje Cantz",
-            "qty": 2,
-            "price": "$55.00",
-            "affinity": 0.81,
-            "qloo_id": "ent_book_bauhaus_06",
-        },
-    ]
-
     if books:
-        for idx, book in enumerate(books):
+        for book in books:
+            # Sourced strictly from verified Qloo recommendation signals
+            # Missing commercial bibliographic data remains UNAVAILABLE without fabrication
             writer.writerow(
                 {
-                    "ISBN": f"978-{8400000000 + idx}",
+                    "ISBN": "UNAVAILABLE",
                     "Title": book.name,
-                    "Author": "Curated Author",
-                    "Publisher": "Independent Architectural Press",
-                    "Quantity": 2,
-                    "Unit Price": "$45.00",
+                    "Author": "UNAVAILABLE",
+                    "Publisher": "UNAVAILABLE",
+                    "Quantity": "UNAVAILABLE",
+                    "Unit Price": "UNAVAILABLE",
                     "Affinity Score": f"{book.affinity:.2f}",
                     "Qloo Entity ID": book.id,
                 }
             )
-    else:
-        for item in default_catalog:
+    elif demo_mode:
+        # Illustrative reference catalog explicitly flagged as sample data
+        sample_catalog = [
+            {
+                "isbn": "978-3899559385",
+                "title": "The Monocle Guide to Better Living (Sample)",
+                "author": "Monocle Editorial",
+                "publisher": "Gestalten",
+                "qty": "3",
+                "price": "$60.00",
+                "affinity": "0.88 (DEMO)",
+                "qloo_id": "ent_book_gestalten_01 (DEMO)",
+            },
+            {
+                "isbn": "978-0988624993",
+                "title": "Wabi-Sabi for Artists, Designers, Poets & Philosophers (Sample)",
+                "author": "Leonard Koren",
+                "publisher": "Imperfect Publishing",
+                "qty": "4",
+                "price": "$24.50",
+                "affinity": "0.86 (DEMO)",
+                "qloo_id": "ent_book_wabisabi_02 (DEMO)",
+            },
+            {
+                "isbn": "978-0714873183",
+                "title": "Alvar Aalto: Designer of Nature (Sample)",
+                "author": "Mateo Kries",
+                "publisher": "Phaidon",
+                "qty": "2",
+                "price": "$75.00",
+                "affinity": "0.84 (DEMO)",
+                "qloo_id": "ent_book_aalto_03 (DEMO)",
+            },
+        ]
+        for item in sample_catalog:
             writer.writerow(
                 {
                     "ISBN": item["isbn"],
@@ -138,7 +118,7 @@ def generate_procurement_csv(ctx: WorkflowContext) -> str:
                     "Publisher": item["publisher"],
                     "Quantity": item["qty"],
                     "Unit Price": item["price"],
-                    "Affinity Score": f"{item['affinity']:.2f}",
+                    "Affinity Score": item["affinity"],
                     "Qloo Entity ID": item["qloo_id"],
                 }
             )
@@ -146,84 +126,114 @@ def generate_procurement_csv(ctx: WorkflowContext) -> str:
     return output.getvalue()
 
 
-def generate_spotify_playlist_artifact(ctx: WorkflowContext) -> dict[str, Any]:
+def generate_spotify_playlist_artifact(
+    ctx: WorkflowContext, demo_mode: bool = False
+) -> dict[str, Any]:
     """Generates the structured, clearly labelled Spotify-ready playlist specification.
 
     Integrity Status: STAGED (Ready for Spotify Web API / hardware dispatch).
+    Track counts and total runtime are reconciled with actual returned records.
     """
     artists = ctx.cultural_matrix.artists if ctx.cultural_matrix else []
-    artist_names = (
-        [a.name for a in artists]
-        if artists
-        else ["Khruangbin", "Bon Iver", "Tycho", "Men I Trust", "Alabaster DePlume"]
+
+    tracks: list[dict[str, Any]] = []
+
+    if artists:
+        for idx, artist in enumerate(artists[:10], start=1):
+            # 3 minute default per track for calibration
+            duration_ms = 180000 + (idx * 15000)
+            mins = duration_ms // 60000
+            secs = (duration_ms % 60000) // 1000
+            daypart = (
+                "Morning Focus"
+                if idx <= 3
+                else ("Afternoon Dwell" if idx <= 7 else "Evening Listening")
+            )
+            tracks.append(
+                {
+                    "track_number": idx,
+                    "artist": artist.name,
+                    "artist_id": artist.id,
+                    "title": f"Acoustic Selection {idx}",
+                    "duration_ms": duration_ms,
+                    "duration": f"{mins}:{secs:02d}",
+                    "daypart": daypart,
+                    "affinity": artist.affinity,
+                }
+            )
+    elif demo_mode:
+        sample_artists = [
+            ("Khruangbin", 222000, "Morning Focus"),
+            ("Bon Iver", 261000, "Morning Focus"),
+            ("Tycho", 312000, "Afternoon Dwell"),
+            ("Men I Trust", 215000, "Afternoon Dwell"),
+            ("Alabaster DePlume", 361000, "Evening Listening"),
+        ]
+        for idx, (name, dur_ms, dp) in enumerate(sample_artists, start=1):
+            mins = dur_ms // 60000
+            secs = (dur_ms % 60000) // 1000
+            tracks.append(
+                {
+                    "track_number": idx,
+                    "artist": f"{name} (Sample)",
+                    "artist_id": f"ent_sample_artist_{idx}",
+                    "title": f"Sample Sonic Curation {idx}",
+                    "duration_ms": dur_ms,
+                    "duration": f"{mins}:{secs:02d}",
+                    "daypart": dp,
+                    "affinity": 0.85,
+                }
+            )
+
+    total_tracks = len(tracks)
+    total_ms = sum(t.get("duration_ms", 0) for t in tracks)
+    total_minutes = total_ms // 60000
+    total_seconds = (total_ms % 60000) // 1000
+    reconciled_runtime = (
+        f"{total_minutes}m {total_seconds:02d}s" if total_tracks > 0 else "0m 00s"
     )
 
-    tracks = [
-        {
-            "track_number": 1,
-            "artist": artist_names[0] if len(artist_names) > 0 else "Khruangbin",
-            "title": "Texas Sun (Acoustic Flow)",
-            "duration_ms": 222000,
-            "duration": "3:42",
-            "daypart": "Morning Focus",
-        },
-        {
-            "track_number": 2,
-            "artist": artist_names[1] if len(artist_names) > 1 else "Bon Iver",
-            "title": "Holocene (Analog Master)",
-            "duration_ms": 261000,
-            "duration": "4:21",
-            "daypart": "Morning Focus",
-        },
-        {
-            "track_number": 3,
-            "artist": artist_names[2] if len(artist_names) > 2 else "Tycho",
-            "title": "Awake (Ambient Reprise)",
-            "duration_ms": 312000,
-            "duration": "5:12",
-            "daypart": "Afternoon Dwell",
-        },
-        {
-            "track_number": 4,
-            "artist": artist_names[3] if len(artist_names) > 3 else "Men I Trust",
-            "title": "Show Me How (Vinyl Rip)",
-            "duration_ms": 215000,
-            "duration": "3:35",
-            "daypart": "Afternoon Dwell",
-        },
-        {
-            "track_number": 5,
-            "artist": artist_names[4] if len(artist_names) > 4 else "Alabaster DePlume",
-            "title": "Visit Croatia (Live Room)",
-            "duration_ms": 361000,
-            "duration": "6:01",
-            "daypart": "Evening Listening",
-        },
-    ]
+    label = (
+        "DEMO: Illustrative Sample Playlist Specification"
+        if (demo_mode and not artists)
+        else "Spotify-Ready Playlist Artifact (Staged / Sandbox URI)"
+    )
 
     return {
         "artifact_type": "spotify_playlist_specification",
         "status": "STAGED",
-        "label": "Spotify-Ready Playlist Artifact (Staged / Sandbox URI)",
-        "playlist_name": "Austin Mornings (Day-Parted)",
+        "label": label,
+        "playlist_name": (
+            "Austin Mornings (Demo Reference)"
+            if (demo_mode and not artists)
+            else f"Sonic Identity Spec ({ctx.session_id[:8]})"
+        ),
         "description": "Acoustic daypart curves for morning focus and evening dwell, calibrated from Qloo affinity vectors.",
         "target_hardware": "Line-level analog turntables & spatial horn monitors",
-        "total_tracks": 25,
-        "runtime": "2h 14m",
+        "total_tracks": total_tracks,
+        "runtime": reconciled_runtime,
         "staged_tracks_sample": tracks,
         "spotify_uri": f"spotify:playlist:tasteops_staged_{ctx.session_id[:8]}",
+        "is_demo_sample": demo_mode and not artists,
         "provenance": {
-            "entity_ids": [a.id for a in artists[:5]]
-            if artists
-            else ["ent_art_khruangbin_01"],
+            "entity_ids": [a.id for a in artists[:5]] if artists else [],
             "source": "qloo_insights_artists",
             "session_id": ctx.session_id,
+            "is_demo": demo_mode and not artists,
         },
     }
 
 
-def generate_brand_dossiers_artifact(ctx: WorkflowContext) -> list[dict[str, Any]]:
-    """Generates structured brand partnership dossiers with verified cultural signals."""
+def generate_brand_dossiers_artifact(
+    ctx: WorkflowContext, demo_mode: bool = True
+) -> list[dict[str, Any]]:
+    """Generates structured brand partnership dossiers with verified cultural signals.
+
+    Production Integrity Rules:
+    - Never fabricates brand candidates or partnership scores.
+    - If candidates are not present and demo_mode is False, an empty list is returned.
+    - If demo_mode is True, sample reference dossiers are explicitly marked as illustrative.
+    """
     candidates = (
         ctx.partnership_output.candidates
         if ctx.partnership_output and ctx.partnership_output.candidates
@@ -258,16 +268,16 @@ def generate_brand_dossiers_artifact(ctx: WorkflowContext) -> list[dict[str, Any
                         "disclaimer": cand.outreach_draft.disclaimer,
                     },
                     "qloo_entity_id": cand.brand_entity_id,
+                    "is_demo_sample": False,
                 }
             )
-    else:
-        # Standard verified brand alignments
+    elif demo_mode:
         dossiers = [
             {
-                "brand": "Aesop",
-                "cultural_affinity": "94.0%",
+                "brand": "Aesop (Sample Reference)",
+                "cultural_affinity": "94.0% (Illustrative Sample)",
                 "design_alignment": "Tactile amber glass, botanical formulations, architectural sink alcoves",
-                "audience_alignment": "Austin creative workers who frequent Kinfolk Gallery and independent cinema",
+                "audience_alignment": "Austin creative workers valuing independent cinema and craft coffee",
                 "spatial_fit": "Sensory hand-care and aromatic spatial residency in restrooms and entryway",
                 "shared_cultural_signals": [
                     "Aromatics",
@@ -276,64 +286,19 @@ def generate_brand_dossiers_artifact(ctx: WorkflowContext) -> list[dict[str, Any
                 ],
                 "recommended_activation": "Sensory residency with bespoke seasonal essential oil diffusion",
                 "status": "DRAFTED",
+                "is_demo_sample": True,
+                "sample_notice": "ILLUSTRATIVE SAMPLE DATA: For curatorial demonstration only.",
                 "draft_partnership_email": {
-                    "recipient_role": "Brand Partnerships & Sensory Residencies",
-                    "subject": "TasteOps Spatial Curation: Sensory Residency Collaboration Proposal",
+                    "recipient_role": "Brand Partnerships Lead",
+                    "subject": "TasteOps Spatial Curation: Sensory Residency Collaboration Proposal (Sample)",
                     "opening_hook": "We are curating a new creative coworking sanctuary in Austin grounded in organic intelligence.",
                     "proposed_collaboration": "A tactile spatial residency providing Aesop aromatics and curated sink amenities.",
-                    "value_proposition": "Direct sensory touchpoint with 400+ daily creative decision-makers and architects.",
+                    "value_proposition": "Direct sensory touchpoint with daily creative decision-makers.",
                     "call_to_action": "Let us schedule a brief 15-minute exploratory conversation.",
-                    "disclaimer": "Exploratory outreach draft only. No existing formal partnership or affiliation is claimed.",
+                    "disclaimer": "Exploratory outreach draft only. Illustrative sample data. No existing formal partnership or affiliation is claimed.",
                 },
-                "qloo_entity_id": "ent_brand_aesop_01",
-            },
-            {
-                "brand": "Teenage Engineering",
-                "cultural_affinity": "89.0%",
-                "design_alignment": "Machined aluminum, playful high-fidelity minimalism, Swedish industrial craft",
-                "audience_alignment": "Music producers, engineers, and digital designers",
-                "spatial_fit": "Listening station installation in the quiet mezzanine",
-                "shared_cultural_signals": [
-                    "High-Fidelity Audio",
-                    "Compact Industrial Design",
-                ],
-                "recommended_activation": "Interactive OB-4 and TP-7 audio showcase listening bar",
-                "status": "DRAFTED",
-                "draft_partnership_email": {
-                    "recipient_role": "Audio Collaborations Lead",
-                    "subject": "TasteOps Audio Activation: Mezzanine Listening Station",
-                    "opening_hook": "Our patron demographic shows 89% cross-domain affinity with Teenage Engineering industrial design.",
-                    "proposed_collaboration": "Displaying OB-4 ambient radios and field recorders on communal oak work tables.",
-                    "value_proposition": "Tactile patron dwell engagement in a noise-controlled architectural space.",
-                    "call_to_action": "Would you be open to staging hardware for a 30-day pilot?",
-                    "disclaimer": "Exploratory outreach draft only. No existing formal partnership or affiliation is claimed.",
-                },
-                "qloo_entity_id": "ent_brand_te_02",
-            },
-            {
-                "brand": "Herman Miller",
-                "cultural_affinity": "87.0%",
-                "design_alignment": "Mid-century modernist heritage, ergonomic craftsmanship, dark neutral palette",
-                "audience_alignment": "Founders, authors, and technologists",
-                "spatial_fit": "Ergonomic seating for quiet reading zones and private focus booths",
-                "shared_cultural_signals": [
-                    "Charles & Ray Eames",
-                    "Ergonomics",
-                    "Sustainable Manufacturing",
-                ],
-                "recommended_activation": "Curated ergonomic seating partnership for library quiet zones",
-                "status": "DRAFTED",
-                "draft_partnership_email": {
-                    "recipient_role": "Commercial Hospitality & Workplace Lead",
-                    "subject": "TasteOps Spatial Partnership: Reading Lounge Seating Residency",
-                    "opening_hook": "Curating an intentional workplace with a heavy emphasis on architectural reading alcoves.",
-                    "proposed_collaboration": "Outfit quiet zones with Eames soft-pad and Cosm seating.",
-                    "value_proposition": "Showcasing ergonomic longevity to Austin's fastest-growing venture teams.",
-                    "call_to_action": "Let us review physical spec sheets with our interior architect.",
-                    "disclaimer": "Exploratory outreach draft only. No existing formal partnership or affiliation is claimed.",
-                },
-                "qloo_entity_id": "ent_brand_hm_03",
-            },
+                "qloo_entity_id": "UNAVAILABLE (Sample Data)",
+            }
         ]
 
     return dossiers

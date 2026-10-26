@@ -7,41 +7,40 @@
 import { apiClient } from '../apiClient.js';
 import { showToast } from '../components/ui.js';
 
-export async function renderExecutionPlan(rootElement, params, router) {
+export function renderExecutionPlan(rootElement, params, router) {
   const activeSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
-  let liveSession = null;
-  if (activeSessionId) {
-    try {
-      liveSession = await apiClient.getSession(activeSessionId);
-    } catch (_) {
-      // Fallback to baseline
-    }
-  }
 
-  const rawHash = liveSession?.approval?.plan_hash || liveSession?.plan?.plan_hash || null;
-  const planHashDisplay = rawHash
-    ? `SHA-256: ${rawHash.slice(0, 10)}...${rawHash.slice(-6)}`
-    : (liveSession ? 'SHA-256: Computed on Plan Synthesis' : 'SHA-256: 7f8a9e2d...410b (Austin Demo Hash)');
+  const renderContent = (liveSession, isColdStarting = false) => {
+    const rawHash = liveSession?.approval?.plan_hash || liveSession?.plan?.plan_hash || null;
+    const planHashDisplay = rawHash
+      ? `SHA-256: ${rawHash.slice(0, 10)}...${rawHash.slice(-6)}`
+      : (liveSession ? 'SHA-256: Computed on Plan Synthesis' : 'SHA-256: 7f8a9e2d...410b (Austin Demo Hash)');
 
-  const csvUrl = activeSessionId ? apiClient.getProcurementCsvUrl(activeSessionId) : '#';
+    const csvUrl = activeSessionId ? apiClient.getProcurementCsvUrl(activeSessionId) : '#';
 
-  rootElement.innerHTML = `
-    <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
-      <!-- Header -->
-      <div style="margin-bottom: 2.25rem;">
-        <div class="hero-eyebrow">GOVERNANCE & VALIDATION</div>
-        <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Execution Plan</h1>
-        <p class="hero-desc" style="max-width: 780px;">
-          ${liveSession ? `Review and audit synthesized spatial artifacts for session: ${activeSessionId}.` : 'Review and audit all synthesized spatial artifacts before committing physical execution (Austin Reference Baseline).'}
-        </p>
-      </div>
-
-      <!-- 4 Artifact Cards -->
-      <div style="margin-bottom: 2.5rem;">
-        <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted-sage); margin-bottom: 1rem;">
-          Synthesized Spatial Artifacts (4)
+    rootElement.innerHTML = `
+      <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+        ${isColdStarting ? `
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #92400e;">
+            <span>⚡ <strong>Render Backend Waking Up:</strong> The backend is starting from idle. Displaying offline plan baseline.</span>
+            <button id="btn-retry-plan-hydration" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #fff;">Retry Fetch</button>
+          </div>
+        ` : ''}
+        <!-- Header -->
+        <div style="margin-bottom: 2.25rem;">
+          <div class="hero-eyebrow">GOVERNANCE & VALIDATION</div>
+          <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Execution Plan</h1>
+          <p class="hero-desc" style="max-width: 780px;">
+            ${liveSession ? `Review and audit synthesized spatial artifacts for session: ${activeSessionId}.` : 'Review and audit all synthesized spatial artifacts before committing physical execution (Austin Reference Baseline).'}
+          </p>
         </div>
-        <div class="artifacts-grid">
+
+        <!-- 4 Artifact Cards -->
+        <div style="margin-bottom: 2.5rem;">
+          <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted-sage); margin-bottom: 1rem;">
+            Synthesized Spatial Artifacts (4)
+          </div>
+          <div class="artifacts-grid">
           
           <!-- Moodboard Artifact -->
           <div class="artifact-card">
@@ -168,21 +167,44 @@ export async function renderExecutionPlan(rootElement, params, router) {
   `;
 
   // Attach real execution trigger
-  document.getElementById('btn-approve-execute')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-approve-execute');
-    if (btn) btn.disabled = true;
-    showToast('Binding SHA-256 plan hash and recording curator sign-off...', 'info');
+    // Attach real execution trigger
+    document.getElementById('btn-approve-execute')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-approve-execute');
+      if (!activeSessionId || !liveSession) {
+        showToast('Cannot execute: active session plan data is not loaded. Please curate a space from Home.', 'warning');
+        return;
+      }
+      if (btn) btn.disabled = true;
+      showToast({ title: 'Recording Sign-Off', text: 'Securing cryptographic approval gate with curator signature.', type: 'loading' });
 
-    try {
-      if (activeSessionId) {
+      try {
         await apiClient.approveSession(activeSessionId, { approver: 'Maitray Agrawal (Venue Manager)' });
         await apiClient.executeSession(activeSessionId);
-        showToast('Plan approved & physical execution dispatched.', 'success');
+        showToast({ title: 'Execution Staged', text: 'Physical activation tasks staged for human review.', type: 'success' });
+        router.navigate('/results');
+      } catch (err) {
+        showToast(err.message || 'Operation failed', 'error');
+        if (btn) btn.disabled = false;
       }
-    } catch (err) {
-      showToast(`Approval status: ${err.message || 'Plan confirmed'}`, 'info');
-    } finally {
-      router.navigate('/results');
-    }
-  });
+    });
+  };
+
+  // 1. Immediate synchronous render (0ms blocking delay)
+  renderContent(null, false);
+
+  // 2. Asynchronous non-blocking session hydration
+  const hydrate = () => {
+    if (!activeSessionId) return;
+    apiClient.getSession(activeSessionId).then((liveSession) => {
+      if (window.tasteopsRouter?.currentRoute !== '/execution-plan') return;
+      renderContent(liveSession, false);
+    }).catch((err) => {
+      if (window.tasteopsRouter?.currentRoute !== '/execution-plan') return;
+      const isColdStart = err.code === 'BACKEND_COLD_START_TIMEOUT' || err.isNetworkError;
+      renderContent(null, isColdStart);
+      document.getElementById('btn-retry-plan-hydration')?.addEventListener('click', hydrate);
+    });
+  };
+
+  hydrate();
 }

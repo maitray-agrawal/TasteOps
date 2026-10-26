@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
@@ -16,12 +18,17 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from tasteops.workflows.idempotency import StorageUnavailableError
 from tasteops.workflows.states import WorkflowState
 
 if TYPE_CHECKING:
     from tasteops.workflows.context import WorkflowContext
 
 logger = logging.getLogger("tasteops.workflows.persistence")
+
+
+class PersistenceStorageError(StorageUnavailableError):
+    """Raised when workflow state snapshots or audit ledger entries cannot be durably written to disk."""
 
 
 class AuditEvent(BaseModel):
@@ -84,8 +91,22 @@ class FileStateStore(BaseStateStore):
     """Persistent filesystem store writing JSON snapshots and audit event logs."""
 
     def __init__(self, base_dir: Path | str = "storage/workflows") -> None:
-        self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        raw = str(base_dir).strip().strip("'\"")
+        p = Path(raw)
+        if not p.is_absolute():
+            if Path("/app").is_dir():
+                p = Path("/app") / p
+            else:
+                p = Path.cwd() / p
+        self.base_dir = p.resolve()
+        try:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.warning(
+                "Could not create storage directory %s: %s",
+                self.base_dir,
+                exc,
+            )
         self._in_memory_fallback = InMemoryStateStore()
 
     def _get_session_dir(self, session_id: str) -> Path:
@@ -94,7 +115,6 @@ class FileStateStore(BaseStateStore):
         return session_dir
 
     def save_transition(self, event: AuditEvent, ctx: WorkflowContext) -> None:
-        self._in_memory_fallback.save_transition(event, ctx)
         try:
             s_dir = self._get_session_dir(ctx.session_id)
             events_file = s_dir / "audit_events.jsonl"
@@ -102,26 +122,55 @@ class FileStateStore(BaseStateStore):
                 f.write(event.model_dump_json() + "\n")
 
             self.save_context(ctx)
-        except Exception as exc:
-            logger.warning(
-                "Failed to persist state to disk for session %s: %s",
+            # Only update in-memory cache once durable disk persistence succeeds
+            self._in_memory_fallback.save_transition(event, ctx)
+        except (PermissionError, FileNotFoundError, OSError) as exc:
+            logger.error(
+                "Durable audit/state write failed for session %s: %s",
                 ctx.session_id,
                 exc,
             )
+            raise PersistenceStorageError(
+                f"Failed to persist state transition to disk for session '{ctx.session_id}': {exc}"
+            ) from exc
+        except Exception as exc:
+            logger.error(
+                "Unexpected failure persisting transition for session %s: %s",
+                ctx.session_id,
+                exc,
+            )
+            raise PersistenceStorageError(
+                f"Failed to persist state transition to disk for session '{ctx.session_id}': {exc}"
+            ) from exc
 
     def save_context(self, ctx: WorkflowContext) -> None:
-        self._in_memory_fallback.save_context(ctx)
         try:
             s_dir = self._get_session_dir(ctx.session_id)
             state_file = s_dir / "workflow_state.json"
-            with open(state_file, "w", encoding="utf-8") as f:
+            temp_file = s_dir / f".workflow_state_{time.time_ns()}.tmp"
+            with open(temp_file, "w", encoding="utf-8") as f:
                 f.write(ctx.model_dump_json(indent=2))
-        except Exception as exc:
-            logger.warning(
-                "Failed to write workflow snapshot for session %s: %s",
+            os.replace(str(temp_file), str(state_file))
+            # Only update in-memory cache once durable disk persistence succeeds
+            self._in_memory_fallback.save_context(ctx)
+        except (PermissionError, FileNotFoundError, OSError) as exc:
+            logger.error(
+                "Durable workflow snapshot write failed for session %s: %s",
                 ctx.session_id,
                 exc,
             )
+            raise PersistenceStorageError(
+                f"Failed to write workflow snapshot to disk for session '{ctx.session_id}': {exc}"
+            ) from exc
+        except Exception as exc:
+            logger.error(
+                "Unexpected failure writing workflow snapshot for session %s: %s",
+                ctx.session_id,
+                exc,
+            )
+            raise PersistenceStorageError(
+                f"Failed to write workflow snapshot to disk for session '{ctx.session_id}': {exc}"
+            ) from exc
 
     def load_context(self, session_id: str) -> WorkflowContext | None:
         # Check in-memory first

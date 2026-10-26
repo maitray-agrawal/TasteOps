@@ -6,39 +6,38 @@
 
 import { apiClient } from '../apiClient.js';
 
-export async function renderAgents(rootElement, params, router) {
+export function renderAgents(rootElement, params, router) {
   const activeSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
-  let liveSession = null;
-  if (activeSessionId) {
-    try {
-      liveSession = await apiClient.getSession(activeSessionId);
-    } catch (_) {
-      // Fallback to baseline
-    }
-  }
 
-  const tel = liveSession?.agent_telemetry || {};
-  const sonicDur = tel.sonic?.duration_s ? `${tel.sonic.duration_s.toFixed(2)}s` : '4.82s';
-  const procDur = tel.procurement?.duration_s ? `${tel.procurement.duration_s.toFixed(2)}s` : '3.11s';
-  const brandDur = tel.brand?.duration_s ? `${tel.brand.duration_s.toFixed(2)}s` : '5.73s';
+  const renderContent = (liveSession, isColdStarting = false) => {
+    const tel = liveSession?.agent_telemetry || {};
+    const sonicDur = tel.sonic?.duration_s ? `${tel.sonic.duration_s.toFixed(2)}s` : '4.82s';
+    const procDur = tel.procurement?.duration_s ? `${tel.procurement.duration_s.toFixed(2)}s` : '3.11s';
+    const brandDur = tel.brand?.duration_s ? `${tel.brand.duration_s.toFixed(2)}s` : '5.73s';
 
-  rootElement.innerHTML = `
-    <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
-      <!-- Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
-        <div>
-          <div class="hero-eyebrow">AGENT COMMAND CENTER</div>
-          <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Specialized Agents</h1>
-          <p class="hero-desc" style="max-width: 720px;">
-            ${liveSession ? `Autonomous worker agents operating concurrently for session: ${activeSessionId}.` : 'Autonomous worker agents operating in parallel to transform cultural intelligence into verifiable physical spatial assets (Austin Reference Baseline).'}
-          </p>
+    rootElement.innerHTML = `
+      <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+        ${isColdStarting ? `
+          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #92400e;">
+            <span>⚡ <strong>Render Backend Waking Up:</strong> The backend is starting from idle. Displaying offline telemetry baseline.</span>
+            <button id="btn-retry-agents-hydration" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #fff;">Retry Fetch</button>
+          </div>
+        ` : ''}
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
+          <div>
+            <div class="hero-eyebrow">AGENT COMMAND CENTER</div>
+            <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Specialized Agents</h1>
+            <p class="hero-desc" style="max-width: 720px;">
+              ${liveSession ? `Autonomous worker agents operating concurrently for session: ${activeSessionId}.` : 'Autonomous worker agents operating in parallel to transform cultural intelligence into verifiable physical spatial assets (Austin Reference Baseline).'}
+            </p>
+          </div>
+          <div>
+            <span class="status-badge ${liveSession ? 'status-completed' : 'status-waiting'}" style="font-size: 0.85rem; padding: 0.45rem 1rem;">
+              ${liveSession ? `● Live Session: ${activeSessionId.slice(0, 10)}...` : '● Austin Demo Telemetry'}
+            </span>
+          </div>
         </div>
-        <div>
-          <span class="status-badge ${liveSession ? 'status-completed' : 'status-waiting'}" style="font-size: 0.85rem; padding: 0.45rem 1rem;">
-            ${liveSession ? `● Live Session: ${activeSessionId.slice(0, 10)}...` : '● Austin Demo Telemetry'}
-          </span>
-        </div>
-      </div>
 
       <!-- 3 Primary Parallel Agent Cards -->
       <div class="agents-grid" style="margin-bottom: 2.5rem;">
@@ -245,4 +244,24 @@ export async function renderAgents(rootElement, params, router) {
       </div>
     </div>
   `;
+  };
+
+  // 1. Immediate synchronous render (0ms blocking delay)
+  renderContent(null, false);
+
+  // 2. Asynchronous non-blocking session hydration
+  const hydrate = () => {
+    if (!activeSessionId) return;
+    apiClient.getSession(activeSessionId).then((liveSession) => {
+      if (window.tasteopsRouter?.currentRoute !== '/agents') return;
+      renderContent(liveSession, false);
+    }).catch((err) => {
+      if (window.tasteopsRouter?.currentRoute !== '/agents') return;
+      const isColdStart = err.code === 'BACKEND_COLD_START_TIMEOUT' || err.isNetworkError;
+      renderContent(null, isColdStart);
+      document.getElementById('btn-retry-agents-hydration')?.addEventListener('click', hydrate);
+    });
+  };
+
+  hydrate();
 }

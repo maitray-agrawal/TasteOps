@@ -1,6 +1,9 @@
 import os
+import re
+from pathlib import Path
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,17 +102,47 @@ class ServerSettings(BaseSettings):
     )
     port: int = Field(
         default=8000,
-        alias="PORT",
-        description="Port for server binding (supplied by Render via $PORT).",
+        validation_alias=AliasChoices("PORT", "X_ZOHO_CATALYST_LISTEN_PORT"),
+        description="Port for server binding (supplied by Render via $PORT or Catalyst via $X_ZOHO_CATALYST_LISTEN_PORT).",
+    )
+    cors_middleware_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "CORS_MIDDLEWARE_ENABLED", "ENABLE_CORS_MIDDLEWARE"
+        ),
+        description=(
+            "Whether FastAPI CORSMiddleware is attached. When running behind reverse-proxy gateways "
+            "(such as Catalyst AppSail / ZGS) that manage CORS at the platform level, this can be set to false "
+            "to prevent duplicate Access-Control-Allow-Origin headers."
+        ),
+    )
+    cors_allow_credentials: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "CORS_ALLOW_CREDENTIALS", "TASTEOPS_CORS_ALLOW_CREDENTIALS"
+        ),
+        description=(
+            "Whether to allow credentials (cookies, authorization headers) in CORS. Disabled by default "
+            "since TasteOps API is a stateless token/header-based API."
+        ),
     )
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
-        alias="CORS_ORIGINS",
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://localhost:8000,https://tasteops.vercel.app",
+        validation_alias=AliasChoices("CORS_ORIGINS", "TASTEOPS_CORS_ORIGINS"),
         description="Comma-separated list of allowed CORS origins.",
+    )
+    cors_origin_regex: str | None = Field(
+        default=r"^https:\/\/tasteops(-[a-zA-Z0-9_-]+)*\.vercel\.app$",
+        validation_alias=AliasChoices(
+            "CORS_ORIGIN_REGEX", "TASTEOPS_CORS_ORIGIN_REGEX"
+        ),
+        description="Optional regex pattern for allowed CORS origins (e.g. for Vercel preview deployments). Catalyst origins must be explicitly specified in CORS_ORIGINS.",
     )
     storage_dir: str = Field(
         default="storage/workflows",
-        alias="TASTEOPS_STORAGE_DIR",
+        validation_alias=AliasChoices(
+            "TASTEOPS_STORAGE_DIR", "STORAGE_DIR", "TASTEOPS_STORAGE_PATH"
+        ),
         description="Filesystem path for persistent session snapshots and audit logs.",
     )
     log_level: str = Field(
@@ -119,8 +152,53 @@ class ServerSettings(BaseSettings):
     )
 
     @property
+    def effective_storage_path(self) -> Path:
+        """Resolves storage_dir safely, stripping surrounding quotes/whitespace and ensuring absolute path."""
+        raw = (self.storage_dir or "storage/workflows").strip().strip("'\"")
+        path = Path(raw)
+        if not path.is_absolute():
+            # If in container environment (/app is a directory), anchor relative path to /app
+            if Path("/app").is_dir():
+                path = Path("/app") / path
+            else:
+                path = Path.cwd() / path
+        return path.resolve()
+
+    @property
     def cors_origins_list(self) -> list[str]:
-        """Parses comma-separated cors_origins string into a list of trimmed origins."""
+        """Parses comma-separated cors_origins string into a list of normalized origins.
+
+        Strips paths, query strings, and trailing slashes so origins match browser Origin headers exactly.
+        When running in a Catalyst AppSail container (indicated by X_ZOHO_CATALYST_LISTEN_PORT),
+        the Catalyst platform gateway (ZGS) automatically injects CORS headers for Catalyst domains.
+        To prevent duplicate Access-Control-Allow-Origin headers, Catalyst domains are excluded from
+        FastAPI's application-level allowed origins.
+        """
         if not self.cors_origins:
             return []
-        return [orig.strip() for orig in self.cors_origins.split(",") if orig.strip()]
+
+        def _clean_origin(raw: str) -> str:
+            item = raw.strip()
+            if not item:
+                return ""
+            if item == "*":
+                return "*"
+            parsed = urlsplit(item)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}"
+            return item.rstrip("/")
+
+        origins: list[str] = []
+        for raw in self.cors_origins.split(","):
+            cleaned = _clean_origin(raw)
+            if cleaned and cleaned not in origins:
+                origins.append(cleaned)
+
+        if os.getenv("X_ZOHO_CATALYST_LISTEN_PORT"):
+            catalyst_domain_pattern = re.compile(
+                r"^https?://[a-zA-Z0-9.-]+\.(catalystserverless|catalystappsail|zohocatalyst)\.(in|com|eu|com\.au|ca|sa|jp|ae)$",
+                re.IGNORECASE,
+            )
+            origins = [o for o in origins if not catalyst_domain_pattern.match(o)]
+
+        return origins

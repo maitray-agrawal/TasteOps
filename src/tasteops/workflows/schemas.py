@@ -4,7 +4,10 @@ Strict schemas ensuring all agent operations produce structured JSON,
 maintain immutable provenance, and never invent entity IDs.
 """
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -633,7 +636,7 @@ class TaskProvenance(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Authorizing approval timestamp",
     )
-    execution_status: str = Field(default="EXECUTED", description="Execution status")
+    execution_status: str = Field(default="PENDING", description="Execution status")
 
 
 class ApprovalRecord(BaseModel):
@@ -657,6 +660,16 @@ class ApprovalRecord(BaseModel):
     )
 
 
+class TaskStatus(str, Enum):
+    """Authoritative execution task status contract."""
+
+    PENDING = "PENDING"
+    STAGED = "STAGED"
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class ExecutionTask(BaseModel):
     """Single concrete action item executed upon plan approval."""
 
@@ -670,9 +683,9 @@ class ExecutionTask(BaseModel):
     input: dict[str, Any] = Field(
         default_factory=dict, description="Input parameters and configuration"
     )
-    status: str = Field(
-        default="PENDING",
-        description="Task execution status (e.g. PENDING, APPROVED, EXECUTED, FAILED)",
+    status: TaskStatus = Field(
+        default=TaskStatus.PENDING,
+        description="Task execution status (PENDING, STAGED, NOT_CONFIGURED, COMPLETED, FAILED)",
     )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -742,9 +755,27 @@ class AuditReport(BaseModel):
 class ExecutionSummary(BaseModel):
     """Summary of executed activations."""
 
-    total_tasks: int
-    executed_tasks: int
-    failed_tasks: int
+    total_tasks: int = Field(..., description="Total tasks in execution plan")
+    executed_tasks: int = Field(
+        ...,
+        description="Total non-failed tasks (staged or completed)",
+    )
+    completed_tasks: int = Field(
+        default=0,
+        description="Authoritative count of successfully completed external provider operations",
+    )
+    staged_tasks: int = Field(
+        default=0,
+        description="Count of tasks staged awaiting external provider configuration",
+    )
+    not_configured_tasks: int = Field(
+        default=0,
+        description="Count of tasks with no registered connector capability",
+    )
+    failed_tasks: int = Field(
+        default=0,
+        description="Count of tasks whose provider execution failed",
+    )
     tasks: list[ExecutionTask]
     completed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     audit_report: AuditReport | None = Field(
