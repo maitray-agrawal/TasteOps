@@ -6,7 +6,14 @@
 import { apiClient } from '../apiClient.js';
 
 export function renderNavbar(container, router) {
-  const currentPath = window.location.pathname;
+  let currentPath = window.location.pathname;
+  if (window.location.hash && window.location.hash.startsWith('#/')) {
+    currentPath = window.location.hash.slice(1);
+  } else if (currentPath.startsWith('/app')) {
+    currentPath = currentPath.slice(4).replace(/^\/index\.html/, '') || '/';
+  } else if (currentPath === '/index.html') {
+    currentPath = '/';
+  }
 
   // On opening screen '/', hide the left sidebar completely
   if (currentPath === '/') {

@@ -13,6 +13,7 @@ Validates:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import pytest
 import respx
@@ -33,7 +34,7 @@ def api_test_context(mock_mcp_adapter, tmp_path):
     orchestrator = TasteOpsOrchestrator(store=store, mcp_adapter=adapter)
     settings = ServerSettings(
         ENVIRONMENT="test",
-        CORS_ORIGINS="http://localhost:3000,https://tasteops.vercel.app",
+        CORS_ORIGINS="http://localhost:3000,http://localhost:5173,https://tasteops.vercel.app",
         TASTEOPS_STORAGE_DIR=str(tmp_path),
     )
     app = create_app(server_settings=settings, orchestrator=orchestrator)
@@ -104,7 +105,7 @@ def test_get_public_config_never_leaks_secrets(client):
 
 
 def test_cors_headers_allowed_origin(client):
-    """CORS middleware returns allow-origin for configured origin."""
+    """CORS middleware returns allow-origin for configured origin with exactly one value."""
     response = client.options(
         "/health",
         headers={
@@ -113,13 +114,41 @@ def test_cors_headers_allowed_origin(client):
         },
     )
     assert response.status_code == 200
-    assert (
-        response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "http://localhost:3000"
+
+
+def test_cors_get_health_raw_header_values(client):
+    """GET /health with Origin returns exactly one access-control-allow-origin header value."""
+    response = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    assert response.status_code == 200
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "http://localhost:3000"
+    # Credentials header must not be sent when not required/configured
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_cors_options_sessions_raw_header_values(client):
+    """OPTIONS /api/v1/sessions returns exactly one access-control-allow-origin header value."""
+    response = client.options(
+        "/api/v1/sessions",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
     )
+    assert response.status_code == 200
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "http://localhost:3000"
+    assert "POST" in response.headers.get("access-control-allow-methods", "")
 
 
-def test_cors_headers_allowed_vercel_origin(client):
-    """CORS middleware returns allow-origin for configured Vercel production origin."""
+def test_cors_headers_allowed_production_origin(client):
+    """CORS middleware returns allow-origin for configured production origin."""
     response = client.options(
         "/health",
         headers={
@@ -128,24 +157,97 @@ def test_cors_headers_allowed_vercel_origin(client):
         },
     )
     assert response.status_code == 200
-    assert (
-        response.headers.get("access-control-allow-origin")
-        == "https://tasteops.vercel.app"
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "https://tasteops.vercel.app"
+
+
+def test_cors_headers_allowed_development_origin(client):
+    """CORS middleware returns allow-origin for configured local development origin."""
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
     )
-    assert response.headers.get("access-control-allow-credentials") == "true"
+    assert response.status_code == 200
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "http://localhost:5173"
+
+
+def test_cors_headers_allowed_configured_catalyst_origin():
+    """CORS middleware returns allow-origin when Catalyst origin is explicitly configured outside AppSail."""
+    catalyst_origin = "https://tasteops-60093332190.development.catalystserverless.in"
+    custom_settings = ServerSettings(
+        ENVIRONMENT="test",
+        CORS_ORIGINS=f"http://localhost:8000,{catalyst_origin}",
+    )
+    app = create_app(server_settings=custom_settings)
+    with TestClient(app) as custom_client:
+        response = custom_client.options(
+            "/health",
+            headers={
+                "Origin": catalyst_origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 200
+        raw_origins = response.headers.get_list("access-control-allow-origin")
+        assert len(raw_origins) == 1
+        assert raw_origins[0] == catalyst_origin
+
+
+def test_catalyst_port_env_binding(monkeypatch):
+    """ServerSettings binds to X_ZOHO_CATALYST_LISTEN_PORT when provided by AppSail."""
+    monkeypatch.setenv("X_ZOHO_CATALYST_LISTEN_PORT", "9050")
+    monkeypatch.delenv("PORT", raising=False)
+    settings = ServerSettings()
+    assert settings.port == 9050
+
+
+def test_catalyst_appsail_delegates_cors_to_gateway(monkeypatch):
+    """In Catalyst AppSail runtime (X_ZOHO_CATALYST_LISTEN_PORT present), Catalyst domains are excluded from application CORS to prevent duplicate headers with ZGS."""
+    monkeypatch.setenv("X_ZOHO_CATALYST_LISTEN_PORT", "8000")
+    catalyst_origin = "https://tasteops-60093332190.development.catalystserverless.in"
+    settings = ServerSettings(
+        ENVIRONMENT="production",
+        CORS_ORIGINS=f"http://localhost:3000,{catalyst_origin}",
+    )
+    # The Catalyst origin must be excluded from application CORS origins to avoid duplicate headers with ZGS
+    assert catalyst_origin not in settings.cors_origins_list
+    assert "http://localhost:3000" in settings.cors_origins_list
+
+    app = create_app(server_settings=settings)
+    with TestClient(app) as test_client:
+        # GET /health from Catalyst origin should NOT receive application-level CORS header (handled by ZGS)
+        response = test_client.get("/health", headers={"Origin": catalyst_origin})
+        assert "access-control-allow-origin" not in response.headers
+
+        # Local development origin still receives application-level CORS header
+        dev_response = test_client.get(
+            "/health", headers={"Origin": "http://localhost:3000"}
+        )
+        raw_origins = dev_response.headers.get_list("access-control-allow-origin")
+        assert len(raw_origins) == 1
+        assert raw_origins[0] == "http://localhost:3000"
 
 
 def test_cors_unapproved_origin_rejected(client):
     """CORS middleware does NOT grant access-control-allow-origin to unapproved origins."""
-    response = client.options(
-        "/health",
-        headers={
-            "Origin": "https://malicious-external-origin.com",
-            "Access-Control-Request-Method": "GET",
-        },
-    )
-    # FastApi CORSMiddleware does not set access-control-allow-origin for unauthorized origins
-    assert "access-control-allow-origin" not in response.headers
+    for unapproved in [
+        "https://malicious-external-origin.com",
+        "https://arbitrary-tenant.catalystserverless.com",
+    ]:
+        for method, endpoint in [("get", "/health"), ("options", "/api/v1/sessions")]:
+            kwargs: dict[str, Any] = {"headers": {"Origin": unapproved}}
+            if method == "options":
+                kwargs["headers"]["Access-Control-Request-Method"] = "POST"
+            fn = getattr(client, method)
+            response = fn(endpoint, **kwargs)
+            # FastAPI CORSMiddleware does not set access-control-allow-origin for unauthorized origins
+            assert "access-control-allow-origin" not in response.headers
 
 
 def test_cors_preflight_post_options(client):
@@ -159,37 +261,81 @@ def test_cors_preflight_post_options(client):
         },
     )
     assert response.status_code == 200
-    assert (
-        response.headers.get("access-control-allow-origin")
-        == "https://tasteops.vercel.app"
-    )
+    raw_origins = response.headers.get_list("access-control-allow-origin")
+    assert len(raw_origins) == 1
+    assert raw_origins[0] == "https://tasteops.vercel.app"
     assert "POST" in response.headers.get("access-control-allow-methods", "")
 
 
-def test_cors_trailing_slash_normalization():
-    """Origins configured with trailing slashes match browser requests without trailing slashes."""
+def test_cors_trailing_slash_and_path_normalization():
+    """Origins configured with trailing slashes or subpaths match exact origin headers."""
     settings = ServerSettings(
         ENVIRONMENT="test",
-        CORS_ORIGINS="https://tasteops.vercel.app/,http://localhost:3000/",
+        CORS_ORIGINS=(
+            "https://tasteops.vercel.app/,"
+            "https://tasteops-60093332190.development.catalystserverless.in/app/index.html,"
+            "http://localhost:3000/"
+        ),
     )
     assert settings.cors_origins_list == [
         "https://tasteops.vercel.app",
+        "https://tasteops-60093332190.development.catalystserverless.in",
         "http://localhost:3000",
     ]
     app = create_app(server_settings=settings)
     with TestClient(app) as test_client:
-        response = test_client.options(
+        response = test_client.get(
             "/health",
             headers={
-                "Origin": "https://tasteops.vercel.app",
-                "Access-Control-Request-Method": "GET",
+                "Origin": "https://tasteops-60093332190.development.catalystserverless.in",
             },
         )
         assert response.status_code == 200
+        raw_origins = response.headers.get_list("access-control-allow-origin")
+        assert len(raw_origins) == 1
         assert (
-            response.headers.get("access-control-allow-origin")
-            == "https://tasteops.vercel.app"
+            raw_origins[0]
+            == "https://tasteops-60093332190.development.catalystserverless.in"
         )
+
+
+def test_cors_credentials_only_when_configured():
+    """Credentials header is omitted by default and included only when CORS_ALLOW_CREDENTIALS=true."""
+    # Default (disabled)
+    default_settings = ServerSettings(
+        ENVIRONMENT="test",
+        CORS_ORIGINS="http://localhost:3000",
+    )
+    app_default = create_app(server_settings=default_settings)
+    with TestClient(app_default) as tc:
+        res = tc.get("/health", headers={"Origin": "http://localhost:3000"})
+        assert "access-control-allow-credentials" not in res.headers
+
+    # Explicitly enabled
+    cred_settings = ServerSettings(
+        ENVIRONMENT="test",
+        CORS_ORIGINS="http://localhost:3000",
+        CORS_ALLOW_CREDENTIALS=True,
+    )
+    app_cred = create_app(server_settings=cred_settings)
+    with TestClient(app_cred) as tc:
+        res = tc.get("/health", headers={"Origin": "http://localhost:3000"})
+        assert res.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_middleware_disabled_flag():
+    """When CORS_MIDDLEWARE_ENABLED=false, FastAPI attaches no CORSMiddleware."""
+    settings = ServerSettings(
+        ENVIRONMENT="production",
+        CORS_MIDDLEWARE_ENABLED=False,
+        CORS_ORIGINS="http://localhost:3000",
+    )
+    app = create_app(server_settings=settings)
+    with TestClient(app) as test_client:
+        response = test_client.get(
+            "/health", headers={"Origin": "http://localhost:3000"}
+        )
+        assert "access-control-allow-origin" not in response.headers
 
 
 def test_request_id_propagation(client):

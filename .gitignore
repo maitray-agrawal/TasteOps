@@ -46,3 +46,8 @@ node_modules/
 
 .vercel
 .env*
+
+deploy/
+production_smoke_test_results.json
+.agents/
+skills-lock.json

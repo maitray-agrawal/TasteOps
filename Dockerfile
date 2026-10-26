@@ -30,7 +30,8 @@ FROM python:3.12-slim-bookworm AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     PORT=8000 \
-    ENVIRONMENT=production
+    ENVIRONMENT=production \
+    TASTEOPS_STORAGE_DIR=/app/storage/workflows
 
 # Install curl for container healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,8 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Run as dedicated non-root user
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/storage/workflows && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/storage/workflows /home/appuser/storage/workflows && \
+    chown -R appuser:appuser /app /home/appuser && \
+    chmod -R 777 /app/storage /home/appuser/storage
 
 WORKDIR /app
 
@@ -52,8 +54,7 @@ USER appuser
 
 # Healthcheck targeting fast liveness endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://127.0.0.1:${PORT:-8000}/health || exit 1
+    CMD curl -f http://127.0.0.1:${X_ZOHO_CATALYST_LISTEN_PORT:-${PORT:-8000}}/health || exit 1
 
-# Render dynamically injects $PORT at container start.
-# sh -c expansion ensures ${PORT:-8000} binds to Render's allocated port.
-CMD ["sh", "-c", "exec uvicorn tasteops.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
+# Supports Render ($PORT), Zoho Catalyst AppSail ($X_ZOHO_CATALYST_LISTEN_PORT), or default (8000).
+CMD ["sh", "-c", "cd /app && exec uvicorn tasteops.api.main:app --host 0.0.0.0 --port ${X_ZOHO_CATALYST_LISTEN_PORT:-${PORT:-8000}} --workers 1"]

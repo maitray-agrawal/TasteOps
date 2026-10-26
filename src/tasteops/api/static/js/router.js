@@ -13,6 +13,7 @@ export class Router {
     this.params = {};
 
     window.addEventListener('popstate', () => this.resolve());
+    window.addEventListener('hashchange', () => this.resolve());
   }
 
   addRoute(pattern, handler) {
@@ -21,12 +22,38 @@ export class Router {
   }
 
   navigate(path) {
+    const cleanPath = path.startsWith('/') ? path : '/' + path;
+    const isCatalyst = typeof window !== 'undefined' && window.location.pathname.startsWith('/app');
+    const isHashMode = typeof window !== 'undefined' && window.location.hash && window.location.hash.startsWith('#/');
+
+    if (isCatalyst || isHashMode) {
+      const targetHash = '#' + cleanPath;
+      if (window.location.hash === targetHash) {
+        this.resolve();
+      } else {
+        window.location.hash = targetHash;
+      }
+      return;
+    }
     if (window.location.pathname === path) return;
     window.history.pushState({}, '', path);
     this.resolve();
   }
 
   replace(path) {
+    const cleanPath = path.startsWith('/') ? path : '/' + path;
+    const isCatalyst = typeof window !== 'undefined' && window.location.pathname.startsWith('/app');
+    const isHashMode = typeof window !== 'undefined' && window.location.hash && window.location.hash.startsWith('#/');
+
+    if (isCatalyst || isHashMode) {
+      const targetHash = '#' + cleanPath;
+      if (window.location.hash === targetHash) {
+        this.resolve();
+      } else {
+        window.location.hash = targetHash;
+      }
+      return;
+    }
     window.history.replaceState({}, '', path);
     this.resolve();
   }
@@ -36,13 +63,26 @@ export class Router {
   }
 
   /**
-   * Matches current window.location.pathname against registered route patterns.
+   * Matches current window.location.pathname (or hash) against registered route patterns.
    */
   resolve() {
     let pathname = window.location.pathname;
 
+    // Support Catalyst Web Client Hosting hash-based fallback navigation
+    if (window.location.hash && window.location.hash.startsWith('#/')) {
+      pathname = window.location.hash.slice(1);
+    } else if (pathname.startsWith('/app')) {
+      // Strip Catalyst /app base path if present
+      pathname = pathname.slice(4);
+      if (pathname.startsWith('/index.html')) {
+        pathname = pathname.slice(11);
+      }
+    } else if (pathname === '/index.html') {
+      pathname = '/';
+    }
+
     // Normalize empty path to root
-    if (pathname === '') {
+    if (pathname === '' || pathname === '/') {
       pathname = '/';
     }
 

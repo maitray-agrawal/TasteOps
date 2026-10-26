@@ -175,15 +175,15 @@ export function renderExecutionPlan(rootElement, params, router) {
         return;
       }
       if (btn) btn.disabled = true;
-      showToast('Binding SHA-256 plan hash and recording curator sign-off...', 'info');
+      showToast({ title: 'Recording Sign-Off', text: 'Securing cryptographic approval gate with curator signature.', type: 'loading' });
 
       try {
         await apiClient.approveSession(activeSessionId, { approver: 'Maitray Agrawal (Venue Manager)' });
         await apiClient.executeSession(activeSessionId);
-        showToast('Plan approved & physical execution dispatched.', 'success');
+        showToast({ title: 'Execution Staged', text: 'Physical activation tasks staged for human review.', type: 'success' });
         router.navigate('/results');
       } catch (err) {
-        showToast(`Approval/Execution error: ${err.message || 'Operation failed'}`, 'error');
+        showToast(err.message || 'Operation failed', 'error');
         if (btn) btn.disabled = false;
       }
     });

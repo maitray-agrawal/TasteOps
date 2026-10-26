@@ -34,6 +34,10 @@ logger = logging.getLogger("tasteops.workflows.idempotency")
 SAFE_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
+class StorageUnavailableError(RuntimeError):
+    """Raised when atomic execution reservations or durable records cannot be accessed due to storage unavailability."""
+
+
 class DurableIdempotencyStore:
     """Filesystem-backed atomic reservation and durable task outcome store."""
 
@@ -45,9 +49,17 @@ class DurableIdempotencyStore:
                 or os.getenv("STORAGE_DIR")
                 or "storage/workflows"
             )
-            self.base_dir = Path(storage_root) / ".idempotency"
+            raw = storage_root.strip().strip("'\"")
+            p = Path(raw)
+            if not p.is_absolute():
+                if Path("/app").is_dir():
+                    p = Path("/app") / p
+                else:
+                    p = Path.cwd() / p
+            self.base_dir = (p / ".idempotency").resolve()
         else:
-            self.base_dir = Path(base_dir)
+            raw = str(base_dir).strip().strip("'\"")
+            self.base_dir = Path(raw).resolve()
 
         try:
             self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +69,23 @@ class DurableIdempotencyStore:
                 self.base_dir,
                 exc,
             )
+
+    def check_storage_ready(self) -> None:
+        """Verifies that the idempotency storage directory exists and is writable."""
+        try:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+            probe_file = (
+                self.base_dir / f".probe_check_{os.getpid()}_{time.time_ns()}.tmp"
+            )
+            probe_file.write_text("probe", encoding="utf-8")
+            probe_file.unlink(missing_ok=True)
+        except (PermissionError, FileNotFoundError, OSError) as exc:
+            logger.error(
+                "Execution storage is unavailable at '%s': %s", self.base_dir, exc
+            )
+            raise StorageUnavailableError(
+                f"Execution storage is unavailable at '{self.base_dir}': {exc}"
+            ) from exc
 
     def _sanitize_key(self, idempotency_key: str) -> str:
         """Sanitizes idempotency key to prevent path traversal."""
@@ -76,13 +105,22 @@ class DurableIdempotencyStore:
 
         sanitized = self._sanitize_key(idempotency_key)
         path = self._get_outcome_path(sanitized)
-        if not path.exists():
-            return None
+        try:
+            if not path.exists():
+                return None
+        except (PermissionError, OSError) as exc:
+            raise StorageUnavailableError(
+                f"Cannot inspect idempotency outcome at '{path}': {exc}"
+            ) from exc
 
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             return ExecutionTask.model_validate(data)
+        except (PermissionError, OSError) as exc:
+            raise StorageUnavailableError(
+                f"Cannot read idempotency outcome at '{path}': {exc}"
+            ) from exc
         except Exception as exc:
             logger.error("Error reading durable idempotency record %s: %s", path, exc)
             return None
@@ -97,14 +135,35 @@ class DurableIdempotencyStore:
 
         Returns:
             True if reservation was acquired; False if already completed or actively in-flight.
+
+        Raises:
+            StorageUnavailableError: if the storage directory cannot be accessed, written, or created.
         """
         if not idempotency_key:
             return True
 
+        # Ensure base directory exists
+        try:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError) as exc:
+            logger.error(
+                "Cannot access idempotency directory '%s': %s",
+                self.base_dir,
+                exc,
+            )
+            raise StorageUnavailableError(
+                f"Idempotency storage unavailable at '{self.base_dir}': {exc}"
+            ) from exc
+
         sanitized = self._sanitize_key(idempotency_key)
         outcome_path = self._get_outcome_path(sanitized)
-        if outcome_path.exists():
-            return False
+        try:
+            if outcome_path.exists():
+                return False
+        except (PermissionError, OSError) as exc:
+            raise StorageUnavailableError(
+                f"Cannot inspect outcome path '{outcome_path}': {exc}"
+            ) from exc
 
         lock_path = self._get_lock_path(sanitized)
         worker_ident = worker_id or f"worker_pid_{os.getpid()}"
@@ -147,16 +206,46 @@ class DurableIdempotencyStore:
                             f,
                         )
                     return True
+            except FileExistsError:
+                return False
+            except FileNotFoundError:
+                # Concurrency race: previous worker finished and unlinked the lock
+                # before or during stat(). Do NOT raise StorageUnavailableError.
+                try:
+                    if outcome_path.exists():
+                        return False
+                except (PermissionError, OSError) as exc:
+                    raise StorageUnavailableError(
+                        f"Cannot inspect outcome path '{outcome_path}': {exc}"
+                    ) from exc
+                return False
+            except (PermissionError, OSError) as exc:
+                raise StorageUnavailableError(
+                    f"Error managing reservation lock file '{lock_path}': {exc}"
+                ) from exc
             except Exception as exc:
                 logger.debug("Failed breaking stale lock: %s", exc)
+                return False
             return False
+        except (PermissionError, FileNotFoundError, OSError) as exc:
+            logger.error(
+                "Storage failure while acquiring reservation lock for '%s' at %s: %s",
+                idempotency_key,
+                lock_path,
+                exc,
+            )
+            raise StorageUnavailableError(
+                f"Storage unavailable for idempotency lock '{idempotency_key}': {exc}"
+            ) from exc
         except Exception as exc:
-            logger.warning(
-                "Error acquiring atomic reservation lock for %s: %s",
+            logger.error(
+                "Unexpected failure acquiring atomic reservation lock for %s: %s",
                 idempotency_key,
                 exc,
             )
-            return False
+            raise StorageUnavailableError(
+                f"Failed acquiring reservation lock for '{idempotency_key}': {exc}"
+            ) from exc
 
     async def async_reserve_or_wait(
         self,
@@ -171,6 +260,7 @@ class DurableIdempotencyStore:
             (False, task) if the outcome is already available (or completed while waiting).
 
         Raises:
+            StorageUnavailableError: if storage is inaccessible or lock cannot be written.
             TimeoutError: if reservation remains locked by another worker and no outcome is produced within timeout_sec.
         """
         import asyncio
@@ -216,12 +306,24 @@ class DurableIdempotencyStore:
                 tmp_name = tmp.name
 
             os.replace(tmp_name, str(outcome_path))
+        except (PermissionError, FileNotFoundError, OSError) as exc:
+            logger.error(
+                "Storage failure while persisting durable idempotency outcome for %s: %s",
+                idempotency_key,
+                exc,
+            )
+            raise StorageUnavailableError(
+                f"Failed to persist durable idempotency outcome for '{idempotency_key}': {exc}"
+            ) from exc
         except Exception as exc:
             logger.error(
                 "Failed to persist durable idempotency outcome for %s: %s",
                 idempotency_key,
                 exc,
             )
+            raise StorageUnavailableError(
+                f"Failed to persist durable idempotency outcome for '{idempotency_key}': {exc}"
+            ) from exc
         finally:
             try:
                 lock_path.unlink(missing_ok=True)

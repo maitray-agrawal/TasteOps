@@ -1,0 +1,22 @@
+# Vercel Deployment Ignore Rules
+# TasteOps frontend is purely static in src/tasteops/api/static
+
+.git
+.github
+.agents
+.venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+deploy/
+storage/
+tests/
+scripts/
+docs/
+*.log
+*.tar
+production_smoke_test_results.json
+Dockerfile
+render.yaml
+pyproject.toml
+uv.lock

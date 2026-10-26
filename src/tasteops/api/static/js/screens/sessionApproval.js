@@ -577,7 +577,7 @@ export async function renderSessionApproval(rootElement, params, router) {
 
         // UI never bypasses backend check
         if (isApprovalDisabled) {
-          showToast('Approval is blocked by governance rules.', 'error');
+          showToast({ title: 'Approval Blocked', text: 'All governance checks must pass before curator sign-off.', type: 'warning' });
           await loadData();
           return;
         }
@@ -588,7 +588,7 @@ export async function renderSessionApproval(rootElement, params, router) {
         const submitBtn = document.getElementById('btn-submit-approval');
 
         if (!approver) {
-          showToast('Approver full name is required for authoritative audit.', 'warning');
+          showToast({ title: 'Approver Name Required', text: 'Please provide full name for authoritative governance audit.', type: 'warning' });
           return;
         }
 
@@ -606,7 +606,7 @@ export async function renderSessionApproval(rootElement, params, router) {
             planVersion,
           });
 
-          showToast('Plan Authoritatively Approved! Re-fetching server state...', 'success');
+          showToast({ title: 'Plan Approved', text: 'Authoritative sign-off recorded. Ready for execution.', type: 'success' });
 
           // NEVER ASSUME ACTION SUCCEEDED: Always refresh server state
           await loadData();
@@ -632,7 +632,7 @@ export async function renderSessionApproval(rootElement, params, router) {
         const rejectBtn = document.getElementById('btn-submit-rejection');
 
         if (!reason) {
-          showToast('Please state a rejection rationale.', 'warning');
+          showToast({ title: 'Rationale Required', text: 'Please provide a clear rejection rationale.', type: 'warning' });
           return;
         }
 
@@ -645,7 +645,7 @@ export async function renderSessionApproval(rootElement, params, router) {
           // POST /api/v1/sessions/{session_id}/reject
           await apiClient.rejectSession(sessionId, { reason });
 
-          showToast('Plan Rejected. Workflow transitioned to FAILED. Re-fetching server state...', 'error');
+          showToast({ title: 'Plan Rejected', text: 'Workflow transitioned to FAILED.', type: 'warning' });
 
           // NEVER ASSUME ACTION SUCCEEDED: Always refresh server state
           await loadData();

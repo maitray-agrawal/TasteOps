@@ -318,14 +318,28 @@ export class TasteOpsAPIClient {
     const space = await this.getSpace(spaceId);
 
     // Formulate natural language raw_intent
-    const intentParts = [
-      `Venue concept: ${space.name}`,
-      `Typology: ${space.business_type}`,
-    ];
+    const narrative = space.brief?.cultural_preferences?.[0] || '';
+    const intentParts = [];
+    if (narrative) {
+      intentParts.push(narrative);
+    } else {
+      intentParts.push(`Venue concept: ${space.name}`);
+      intentParts.push(`Typology: ${space.business_type}`);
+    }
+    if (space.location?.city) {
+      intentParts.push(`Location: ${space.location.city}${space.location.country ? ', ' + space.location.country : ''}`);
+    }
     if (space.brief?.desired_mood) intentParts.push(`Atmosphere: ${space.brief.desired_mood}`);
     if (space.brief?.target_audience) intentParts.push(`Target audience: ${space.brief.target_audience}`);
     if (space.brief?.anchor_entities?.length) intentParts.push(`Anchor affinities: ${space.brief.anchor_entities.join(', ')}`);
-    const rawIntent = intentParts.join('. ') + '.';
+    const rawIntent = intentParts.filter(Boolean).join('. ').replace(/\.\.+/g, '.') + '.';
+
+    const vibeKeywords = [];
+    if (space.brief?.desired_mood) vibeKeywords.push(space.brief.desired_mood.toLowerCase());
+    if (space.brief?.positioning) vibeKeywords.push(space.brief.positioning.toLowerCase());
+
+    const audienceTribes = [];
+    if (space.brief?.target_audience) audienceTribes.push(space.brief.target_audience);
 
     // 1. Create session
     const session = await this.createSession({
@@ -334,9 +348,11 @@ export class TasteOpsAPIClient {
       hints: {
         desired_mood: space.brief?.desired_mood,
         target_audience: space.brief?.target_audience,
-        anchor_entities: space.brief?.anchor_entities,
+        anchor_entities: space.brief?.anchor_entities || [],
         business_type: space.business_type,
         location: space.location,
+        vibe_keywords: vibeKeywords,
+        audience_tribes: audienceTribes,
       },
     });
 
