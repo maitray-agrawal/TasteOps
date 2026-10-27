@@ -8,97 +8,89 @@
 [![Type Checked: Mypy](https://img.shields.io/badge/Type%20Checked-Mypy-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An AI operations system that transforms Qloo cultural intelligence into explainable, governed, venue-ready decisions.
+An operations system that transforms Qloo cultural intelligence into explainable, governed, venue-ready decisions.
 
 <p align="center">
-  <img src="docs/project-gallery/00-devpost-thumbnail-3x2.jpg" alt="TasteOps Autonomous Spatial Curation Showcase" width="100%" />
+  <img src="docs/project-gallery/00-devpost-thumbnail-3x2.jpg" alt="TasteOps Showcase" width="100%" />
 </p>
 
-TasteOps turns creative venue briefs and spatial context into mathematically grounded, governed physical activations. By combining Qloo's 250M+ entity cultural graph with a deterministic multi-agent mesh, TasteOps curates acoustics, literary catalogs, and brand partnerships with cryptographic human approval and truthful operational staging.
+TasteOps turns creative venue briefs and spatial context into mathematically grounded physical activations. By combining Qloo's cultural taste graph with a deterministic multi-agent mesh, TasteOps curates acoustics, literary catalogs, and brand partnerships with human approval and truthful operational staging.
 
 ---
 
 ## Live Deployments
 
-| Component | Direct Link | Purpose |
+| Component | Target URL | Description |
 | :--- | :--- | :--- |
-| **Production Frontend (Primary)** | [https://tasteops.vercel.app](https://tasteops.vercel.app) | **Canonical judge-facing application** on Vercel Edge CDN |
-| **Production Backend API** | [https://tasteops-backend.onrender.com](https://tasteops-backend.onrender.com) | FastAPI cloud service executing the 13-state engine |
-| **Interactive API Documentation** | [https://tasteops-backend.onrender.com/docs](https://tasteops-backend.onrender.com/docs) | Interactive Swagger/OpenAPI contracts for all endpoints |
-| **Standby Catalyst Deployment** | [https://tasteops-60093332190.development.catalystserverless.in/app/index.html#/home](https://tasteops-60093332190.development.catalystserverless.in/app/index.html#/home) | Secondary standby serverless deployment on Zoho Catalyst |
-| **Source Code Repository** | [https://github.com/maitray-agrawal/TasteOps](https://github.com/maitray-agrawal/TasteOps) | Verified public GitHub repository with 322 passing tests |
+| **Frontend Application** | [https://tasteops.vercel.app](https://tasteops.vercel.app) | Single-page application hosted on Vercel Edge CDN |
+| **Backend API** | [https://tasteops-backend.onrender.com](https://tasteops-backend.onrender.com) | FastAPI service executing the workflow engine |
+| **Interactive API Documentation** | [https://tasteops-backend.onrender.com/docs](https://tasteops-backend.onrender.com/docs) | Interactive OpenAPI/Swagger documentation |
+| **Standby Catalyst Deployment** | [https://tasteops-60093332190.development.catalystserverless.in/app/index.html#/home](https://tasteops-60093332190.development.catalystserverless.in/app/index.html#/home) | Standby deployment on Zoho Catalyst Web Client |
+| **Source Code Repository** | [https://github.com/maitray-agrawal/TasteOps](https://github.com/maitray-agrawal/TasteOps) | Verified GitHub repository with 322 passing tests |
 
-> **Judge Latency Note:** Render web services spin down during inactivity. Warm requests complete in under 50ms. If the backend is waking from idle, initial spin-up takes ~30 seconds. The frontend features an active health probe that displays a live reconnection notice.
+> **Note on Service Latency:** The production API runs as a web service on Render. Warm requests complete in under 50ms. When waking from an idle state, initial startup takes approximately 30 seconds. The frontend includes an automated health probe that indicates when the backend is connecting.
 
 ---
 
 ## The Problem
 
-Designing and operating physical spaces—listening lounges, boutique hotels, specialty cafes, and cultural retail pop-ups—demands dozens of interconnected decisions across **sound, literature, tableware, retail, and brand partnerships**.
+Designing and operating physical spaces—listening lounges, boutique hotels, specialty cafes, and cultural retail pop-ups—demands dozens of interconnected decisions across sound, literature, tableware, retail, and brand partnerships.
 
-Today, this process suffers from four critical failures:
-1. **Subjective Guesswork:** Venue curators rely on personal intuition or fragmented Spotify playlists, producing disconnected guest experiences.
+In practice, this process faces four core challenges:
+1. **Subjective Curation:** Venue operators frequently rely on personal intuition or disconnected playlists, leading to inconsistent patron experiences.
 2. **Category Silos:** A venue's audio profile rarely shares a coherent lineage with its design library, tableware, or commercial partnerships.
-3. **LLM Hallucinations:** Generic generative AI invents plausible-sounding cultural recommendations that have zero empirical correlation with real audience tastes.
-4. **Unchecked Automation:** Automatically dispatching purchase orders and partner outreach without signed human review risks brand reputation and budget waste.
+3. **Plausibility vs. Affinity:** Existing generative AI can produce plausible recommendations, but plausibility is not the same as culturally grounded affinity. Generic models cannot compute true cross-category correlation.
+4. **Unchecked Automation:** Automatically dispatching purchase orders or partner outreach without human review creates operational and brand risks.
 
 ---
 
 ## The Solution
 
-TasteOps is an autonomous cultural operations system that bridges high-dimensional audience taste data with physical venue operations through a governed pipeline:
+TasteOps bridges high-dimensional audience taste data with physical venue operations through a governed pipeline:
 
 ```
-Venue Brief ──▶ Qloo Cultural AI ──▶ Cultural Twin ──▶ Multi-Agent Mesh ──▶ Cryptographic Gate ──▶ Governed Staging
+Venue Brief ──▶ Qloo Cultural Signals ──▶ Entity Resolution ──▶ Multi-Agent Reasoning ──▶ Cultural Twin ──▶ Execution Plan ──▶ Human Approval ──▶ Operational Artifacts
 ```
 
-- **Spatial Ingestion:** Captures venue typology, geographic coordinates, cultural district, vibe keywords, and brand identity.
+The fundamental distinction: **Qloo provides cultural and taste evidence; TasteOps orchestrates multi-agent reasoning and converts that evidence into operational decisions.**
+
+- **Spatial Ingestion:** Ingests venue typology, geographic coordinates, cultural district, vibe keywords, and brand identity.
 - **Empirical Grounding:** Resolves taste anchors against Qloo's knowledge graph, discarding ungrounded entities.
-- **Cross-Domain Synthesis:** Evaluates 6 raw cultural matrix categories (`artists`, `books`, `brands`, `places`, `movies`, `destinations`) mapped into 5 spatial curation verticals.
+- **Cross-Domain Synthesis:** Evaluates 6 cultural matrix categories (`artists`, `books`, `brands`, `places`, `movies`, `destinations`) mapped into 5 spatial curation verticals.
 - **Specialized Multi-Agent Mesh:** Sonic, Procurement, and Brand agents synthesize acoustic curves, purchase orders, and partner outreach in parallel.
 - **Cryptographic Gate:** Locks execution behind a mandatory SHA-256 plan fingerprint requiring signed human curator approval.
-- **Truthful Staged Execution:** Connectors without production credentials remain transparently `STAGED`, producing verified operational artifacts.
+- **Truthful Staged Execution:** Connectors without production credentials remain transparently staged, producing verified operational artifacts.
 
 ---
 
-## Why Qloo
+## Why Qloo Matters
 
-TasteOps is fundamentally impossible without Qloo. Generic LLMs generate text based on next-token probability; they cannot compute cross-category cultural correlation.
+TasteOps relies on Qloo's cultural intelligence API to provide empirical affinity data across disparate cultural domains:
 
-Qloo provides the mathematical foundation:
-- **Empirical Affinity Vectors:** Quantifies mathematical affinities between music, literature, fashion, and culinary tastes without demographic stereotyping.
-- **Authoritative Entity Grounding:** Resolves every cultural anchor to canonical Qloo entity URNs (`ent_...`) and taxonomy tags (`tag_...`).
-- **Spatial Anchoring:** Grounds curation in physical coordinates and radial boundaries (`POINT(lon lat)` with radial meters).
-- **Explainable Curation:** Supplies quantitative affinity scores that explain *why* specific artists, books, or brands align with the venue's audience.
+| Generic LLM | TasteOps + Qloo |
+| :--- | :--- |
+| Generates plausible recommendations | Grounds recommendations in cultural affinity |
+| Primarily text-driven | Entity and taste graph driven |
+| Can hallucinate cultural relationships | Uses retrieved cultural signals as evidence |
+| Produces suggestions | Converts evidence into operational decisions |
+| Weak provenance | Explicit evidence $\rightarrow$ inference $\rightarrow$ decision chain |
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                          Why Qloo is Essential                         │
-├────────────────────────────────┬───────────────────────────────────────┤
-│ Without Qloo (Generic AI)      │ With TasteOps (Qloo Taste AI™)        │
-├────────────────────────────────┼───────────────────────────────────────┤
-│ ❌ Subjective vibe guesswork   │ ✅ Real mathematical affinity vectors  │
-│ ❌ Hallucinated entity names   │ ✅ Verified Qloo entity & tag URNs    │
-│ ❌ Siloed category assumptions │ ✅ 6-domain cross-cultural matrices   │
-│ ❌ Unchecked automated actions │ ✅ Mandatory SHA-256 human approval   │
-│ ❌ Fake external side effects  │ ✅ Truthful staged execution status   │
-└────────────────────────────────┴───────────────────────────────────────┘
-```
+### Implemented Endpoints & Integration
+TasteOps interacts with Qloo via the following verified endpoints:
+- `GET /v2/insights`: Retrieves cross-domain affinity scores and entity rankings based on input signals and radial geographic coordinates (`POINT(lon lat)`).
+- `GET /v2/tags`: Queries hierarchical cultural taxonomy tags for categorization.
+
+Per developer guidelines, legacy `/recs` endpoints are explicitly avoided. When running offline or without an active API key, representative reference data is clearly labeled as sample data in the UI.
 
 ---
 
 ## How TasteOps Works
 
-### System Architecture
-
-The following diagram illustrates the complete end-to-end architecture from client applications to the Qloo API gateway:
-
 ```mermaid
 graph TD
-    User["Venue Operator / Judge"] --> Frontend["TasteOps Frontend<br/>(Vercel Edge SPA)"]
+    User["Curator / Operator"] --> Frontend["TasteOps Frontend<br/>(Vercel SPA)"]
     Frontend --> API["FastAPI API Backend<br/>(Render Service)"]
-    API --> Orchestrator["Workflow Orchestrator"]
-    Orchestrator --> Engine["Deterministic State Engine<br/>(13 Validated States)"]
+    API --> Engine["Workflow Orchestrator<br/>(13-State Engine)"]
     
     subgraph Agents ["Specialized Multi-Agent Mesh"]
         A1["Sonic Agent"]
@@ -108,231 +100,152 @@ graph TD
     end
     
     Engine --> Agents
-    Agents --> Matrix["Cultural Matrix & State Store"]
-    Matrix --> Qloo["Qloo Cultural AI API<br/>(250M+ Entity Taste Graph)"]
-    
-    Qloo --> Evidence["1. Source Evidence<br/>(Entities & Radial Affinities)"]
-    Evidence --> Inference["2. Agent Inference<br/>(Acoustics, Reading, Brands)"]
-    Inference --> Decisions["3. Venue Decisions<br/>(Day-Parting, PO, Outreach)"]
-    Decisions --> Approval["4. Human Approval Gate<br/>(Mandatory SHA-256 Sign-off)"]
-    Approval --> Execution["5. Governed Staging<br/>(STAGED / NOT_CONFIGURED)"]
-    Execution --> Artifacts["6. Operational Artifacts<br/>(procurement.csv, playlist.json)"]
+    Agents --> Qloo["Qloo Cultural API<br/>(/v2/insights, /v2/tags)"]
+    Engine --> State["Session State Store<br/>(FileStateStore)"]
+    Agents --> Plan["Execution Plan<br/>(SHA-256 Fingerprint)"]
+    Plan --> Approval["Human Approval Gate"]
+    Approval --> Execution["Governed Staging<br/>(STAGED / NOT_CONFIGURED)"]
+    Execution --> Artifacts["Operational Artifacts<br/>(procurement.csv, playlist.json)"]
 ```
 
----
+### Workflow Lifecycle
+The workflow progresses through 13 validated states:
+`CREATED` $\rightarrow$ `INTENT_PARSED` $\rightarrow$ `CULTURAL_TWIN_CREATED` $\rightarrow$ `QLOO_RESOLVED` $\rightarrow$ `CULTURAL_MATRIX_READY` $\rightarrow$ `AGENTS_RUNNING` $\rightarrow$ `PLAN_GENERATED` $\rightarrow$ `VALIDATED` $\rightarrow$ `AWAITING_APPROVAL` $\rightarrow$ `APPROVED` $\rightarrow$ `EXECUTING` $\rightarrow$ `COMPLETED` (or terminal `FAILED`).
 
-## Product Flow
-
-TasteOps moves systematically from raw intent to tangible operational artifacts:
-
-1. **Define the Space:** Ingest venue typology, geographic coordinates, vibe keywords, and brand identity via the quick-start scenario presets.
-2. **Resolve Cultural Taste:** Ground anchors in Qloo's entity graph and query radial taste signals to build the Cultural Twin.
-3. **Run Specialized Agents:** The Sonic, Procurement, and Brand agents operate concurrently via typed Model Context Protocol (FastMCP) tools.
-4. **Generate Execution Plan:** Synthesize unified spatial tasks, budget estimates, and zone specifications bound to a SHA-256 plan hash.
-5. **Human Approval:** An authorized curator reviews the plan and cryptographically signs sign-off. Unapproved execution is strictly rejected with HTTP 400.
-6. **Produce Operational Artifacts:** Generates production-ready CSV purchase orders, JSON day-parting playlists, brand outreach dossiers, and an immutable 12-transition audit ledger.
-
----
-
-## Qloo Integration
-
-TasteOps integrates with Qloo's Hackathon API across four specialized services:
-
-- **Entity Resolution (`EntityResolver`):** Resolves freeform cultural concepts to canonical entities (e.g., `ent_09c3a1b4...` for *Leon Vynehall*). Entities with confidence below 0.50 are automatically rejected.
-- **Tag Resolution (`TagResolver`):** Maps vibe descriptions into Qloo's hierarchical taxonomy (`tag_...`).
-- **Radial Insights (`InsightsService`):** Queries local cultural taste density around the venue's exact coordinates (`POINT(72.8311 18.9272)`).
-- **Cultural Matrix (`CulturalMatrixService`):** Constructs cross-domain affinity vectors spanning artists, books, brands, places, movies, and destinations.
-
-### Caching & Reliability
-All Qloo requests pass through a hardened `QlooClient` featuring:
-- In-memory TTL cache (3600 seconds) to prevent redundant queries and respect rate limits.
-- Exponential backoff with jitter across transient upstream errors.
-- Strict Pydantic v2 secret masking (`SecretStr`) ensuring Qloo API keys are never leaked in logs, exceptions, or client payloads.
-
----
-
-## Multi-Agent Architecture
-
-TasteOps coordinates four domain-specialist agents executing against typed FastMCP tools:
-
-### 1. Sonic Agent (`SonicAgent`)
-- **Role:** Translates musical affinities into calibrated day-part acoustic curves and spatial sound requirements.
-- **Output:** 3-phase listening schedule (Morning Focus 90 BPM $\rightarrow$ Afternoon Warmth 105 BPM $\rightarrow$ Evening Audiophile 118 BPM), decibel targets, track selections, and acoustic booth specs.
-
-### 2. Procurement Agent (`ProcurementAgent`)
-- **Role:** Converts literary, visual, and architectural affinities into validated physical inventory.
-- **Output:** 8-column purchase order (`procurement.csv`) with verified ISBNs, titles, authors, publishers, quantities, and wholesale pricing.
-
-### 3. Brand Agent (`BrandAgent`)
-- **Role:** Evaluates brand affinity vectors to identify co-marketing and spatial sponsorship partners.
-- **Output:** Comprehensive partnership dossiers (`brand_dossiers.json`) with affinity fit scores, commercial tiering, and outreach briefs.
-
-### 4. Governance Agent (`GovernanceAgent`)
-- **Role:** Audits budget allocations, verifies precondition rules, and seals the cryptographic SHA-256 plan digest.
+Standard execution records 12 sequential transitions in the append-only session audit log.
 
 ---
 
 ## Cultural Twin: Evidence to Decision
 
-The Cultural Twin separates facts from reasoning across three distinct epistemic tiers:
+The Cultural Twin screen makes the reasoning process inspectable by separating facts from derived recommendations across three epistemic tiers:
 
 ```
-Source Evidence (Qloo) ──▶ Agent Inference ──▶ Venue Decision ──▶ Human Approval ──▶ Operational Output
+SOURCE EVIDENCE ──▶ AGENT INFERENCE ──▶ RECOMMENDATION ──▶ GOVERNED EXECUTION
 ```
 
-1. **Source Evidence:** Ground-truth entities and quantitative affinity scores retrieved directly from Qloo (e.g., *Leon Vynehall*, *Apartamento Magazine*, *Technics* with affinity $> 0.88$).
-2. **Agent Inference:** Domain-specialist models deduce spatial requirements (e.g., acoustic decibel thresholds, reading room lighting, co-branding synergy).
-3. **Venue Decision:** Concrete physical parameters chosen (e.g., 3-phase day-parting playlist, 8-title curated library PO, dual-turntable audio booth).
-4. **Human Approval:** Mandatory curator sign-off cryptographically bound to the SHA-256 fingerprint of the operational plan.
-5. **Operational Artifacts:** Downloadable files generated for distributor fulfillment, sound engineering, and partner outreach.
+- **SOURCE EVIDENCE:** Ground-truth entities and quantitative affinity scores retrieved from Qloo (e.g., entity URNs with affinity $> 0.85$).
+- **AGENT INFERENCE:** Domain-specialist models deducing spatial requirements (e.g., decibel thresholds, reading room lighting, brand alignment index).
+- **RECOMMENDATION:** Concrete operational specifications chosen for the venue (e.g., 3-phase day-part curve, 8-title curated library, acoustic booth specs).
+- **GOVERNED EXECUTION:** Operational dispatch held at the curator sign-off gate before staging.
 
 ---
 
-## Execution Truthfulness & Governance
+## Multi-Agent Architecture
 
-A core architectural principle of TasteOps is **absolute execution truthfulness**. In hackathon evaluations and enterprise deployments, AI prototypes frequently fabricate external side effects—claiming an email was sent, a purchase order placed, or a playlist published to Spotify when no actual API mutation occurred.
+Rather than relying on a single general-purpose prompt, TasteOps assigns distinct responsibilities to four specialized agents operating over typed FastMCP tools:
 
-TasteOps strictly rejects simulated execution:
-1. **Deterministic `STAGED` Execution State:** When external credentials (Spotify OAuth, Distributor EDI, SendGrid Outbound SMTP) are not provisioned, operational tasks are explicitly tagged as `STAGED` or `NOT_CONFIGURED`.
-2. **Zero Fake Delivery Claims:** The application never displays `SENT` or `DELIVERED` unless a downstream third-party service returned a verified HTTP 200/201 mutation response.
-3. **Cryptographic SHA-256 Plan Binding:** The approval record binds the cryptographic digest of the plan payload (`plan_hash`). If the plan is modified post-review, the approval is invalidated.
-4. **Visual Provenance Distinction:** The user interface explicitly distinguishes live API responses (`QLOO · LIVE CULTURAL SIGNALS`) from offline demo baselines (`REFERENCE SCENARIO · Austin Tech + Creative`).
+### 1. Sonic Agent (`SonicAgent`)
+- **Responsibility:** Translates musical affinities into calibrated day-part acoustic curves and spatial sound requirements.
+- **Output:** 3-phase listening schedule (Morning Focus 90 BPM $\rightarrow$ Afternoon Warmth 105 BPM $\rightarrow$ Evening Audiophile 118 BPM), target decibels, track selections, and equipment specifications.
 
----
+### 2. Procurement Agent (`ProcurementAgent`)
+- **Responsibility:** Converts literary, visual, and architectural affinities into validated physical inventory.
+- **Output:** 8-column purchase order (`procurement.csv`) containing ISBNs, titles, authors, publishers, quantities, and wholesale pricing.
 
-## Demo Walkthrough & Product Gallery
+### 3. Brand Agent (`BrandAgent`)
+- **Responsibility:** Identifies aligned retail, lifestyle, and audio brands for co-marketing and spatial sponsorship.
+- **Output:** Partnership dossiers (`brand_dossiers.json`) detailing partner fit scores, commercial tiers, and outreach briefs.
 
-All screenshots represent the verified live application deployed at [https://tasteops.vercel.app](https://tasteops.vercel.app).
-
-### Primary Product Journey
-
-#### 1. Home Dashboard & Telemetry
-![TasteOps Home](docs/project-gallery/01-home-dashboard.png)
-*Product overview displaying curatorial scenario presets, live backend health telemetry, and the 13-state deterministic workflow engine.*
-
-#### 2. Create Space Brief
-![Create Space](docs/project-gallery/02-create-space.png)
-*Pre-populated curatorial space brief for **Kitsuné Musique Lab** in Kala Ghoda, Mumbai—grounding curation in real-world spatial parameters and vibe tags.*
-
-#### 3. Cultural Twin & Evidence-to-Decision Matrix
-![Cultural Twin](docs/project-gallery/03-cultural-twin.png)
-*Quantitative Cultural Twin projection resolving multi-category entities grounded in Qloo's 250M+ entity graph with explicit Source Evidence, Agent Inference, and Recommendations.*
-
-#### 4. Specialized Multi-Agent Orchestration
-![Agent Orchestration](docs/project-gallery/04-agents.png)
-*Domain specialist agents (Sonic Agent, Procurement Agent, Brand Agent) operating concurrently with live execution telemetry, duration metrics, and dynamic signal tags.*
-
-#### 5. Governed Operational Planning & Approval Gate
-![Execution Plan](docs/project-gallery/05-execution-plan.png)
-*Synthesized spatial artifacts held at the mandatory SHA-256 Human Approval Gate before any operational tasks can be dispatched.*
-
-#### 6. Qloo-Powered Results & Execution Truthfulness
-![Qloo Results](docs/project-gallery/06-results-qloo-signals.png)
-*Truthful execution results highlighting live Qloo signals vs. reference baselines, with verified `STAGED` operational status for external connectors.*
+### 4. Governance Agent (`GovernanceAgent`)
+- **Responsibility:** Audits budget allocations, verifies precondition rules, and computes the cryptographic SHA-256 plan hash binding the approval.
 
 ---
 
-### Supporting Governance & Operational Verification
+## Governance & Truthful Execution
 
-#### 7. Session Workspace & Epistemic Architecture
-![Session Workspace](docs/project-gallery/07-session-workspace.png)
-*Complete session lifecycle detail displaying the strict distinction between Source Evidence (ground-truth facts), Agent Inference, and Recommendations.*
+TasteOps enforces truthful operational staging. It strictly rejects simulated execution:
 
-#### 8. Cryptographic Audit Ledger & Provenance Chain
-![Audit Ledger](docs/project-gallery/08-audit-ledger.png)
-*Append-only immutable decision ledger recording all 12 persisted state transitions, curator sign-offs, and provenance verifications with chronological filtering.*
+```
+Recommendation ──▶ Execution Plan ──▶ Human Approval ──▶ Precondition Checks ──▶ Execution / Staging
+```
 
-#### 9. Operational Execution Preconditions & Artifacts
-![Operational Artifacts](docs/project-gallery/09-artifacts.png)
-*Backend execution gate enforcing the 5-point precondition check and safe connector guarantees—never simulating external mutations when third-party APIs are not configured.*
+The system uses three explicit execution statuses:
+- **`STAGED`:** An action has been generated and validated, but cannot be externally dispatched because live third-party API credentials are not provisioned in the current environment.
+- **`NOT_CONFIGURED`:** The connector adapter is present, but lacks active production credentials (e.g., Spotify OAuth, SendGrid SMTP).
+- **`READY`:** An operational artifact satisfies all schema validation rules and is ready for inspection or manual fulfillment.
 
-#### 10. End-to-End Architectural & Sensory Blueprint
-![End-to-End Workflow](docs/project-gallery/10-end-to-end-flow.png)
-*Final sealed blueprint featuring 100% model confidence score, estimated budget breakdown, epistemic architecture tiers, and strategic cultural positioning narrative.*
+TasteOps never claims an external mutation succeeded (`SENT`, `PUBLISHED`, `ORDERED`) unless a verified HTTP 200/201 response was received from that external provider.
 
 ---
 
-## Example Scenario: Kitsuné Musique Lab
+## Demo Walkthrough
 
-- **Location:** Kala Ghoda Arts Precinct, Mumbai, India (`72.8311° E, 18.9272° N`)
-- **Typology:** Analog Vinyl Listening Bar & Specialty Cafe
-- **Parent Brand:** Maison Kitsuné
-- **Curatorial Intent:** An intimate audiophile listening salon blending Franco-Japanese minimalism with contemporary indie-electronic and deep jazz music curation, third-wave pour-overs, and natural wines.
-- **Generated Outcomes:**
-  - **Sonic Atmosphere:** Day-parted acoustic profile transitioning from morning focus to low-lit evening jazz listening.
-  - **Procurement PO:** Validated 8-column purchase order for architectural monographs and indie art periodicals.
-  - **Brand Outreach:** Co-marketing memos for aligned audio hardware and lifestyle brands.
-  - **Governance Ledger:** 12 immutable transitions signed by the curator and permanently recorded.
+Judges can explore the complete workflow using the pre-configured **Kitsuné Musique Lab** scenario:
+
+1. **Open Application:** Navigate to [https://tasteops.vercel.app](https://tasteops.vercel.app).
+2. **Select Scenario Preset:** On the Home or Create Space screen, click **Kitsuné Musique Lab — Mumbai** to populate coordinates (`72.8311, 18.9272`), typology, and vibe tags.
+3. **Review Curatorial Space Brief:** Confirm spatial context and parameters.
+4. **Run Analysis:** Click **Analyze Space & Generate →** to trigger Qloo resolution and the multi-agent mesh.
+5. **Inspect Cultural Twin:** View the 4-part causal matrix with `SOURCE EVIDENCE`, `AGENT INFERENCE`, and `RECOMMENDATION` badges.
+6. **Inspect Specialized Agents:** Review concurrent execution metrics and active signal pills.
+7. **Review Execution Plan:** Examine tasks, budget allocations, and the SHA-256 plan fingerprint.
+8. **Approve as Curator:** Click **Sign & Approve Plan** to record the curator sign-off.
+9. **Inspect Results:** Review final venue decisions and truthful connector execution states (`STAGED`).
+10. **Inspect Generated Artifacts:** Download or view the generated CSV purchase order and JSON dossiers.
 
 ---
 
-## Generated Operational Artifacts
+## Product Gallery
 
-During execution, TasteOps compiles concrete, downloadable operational artifacts:
+All assets are located in [docs/project-gallery/](docs/project-gallery/) and reflect the live application:
 
-| Artifact | Format | Description |
-| :--- | :---: | :--- |
-| **`procurement.csv`** | CSV (8 columns) | Validated purchase order containing Title, Author/Creator, Publisher, ISBN, Quantity, Unit Price, Affinity Score, and Qloo Entity ID. Ready for distributor fulfillment. |
-| **`spotify_playlist.json`** | JSON | Calibrated acoustic day-part curve specifying tracks, artists, BPM ranges, energy dynamics, and output destination specs. |
-| **`brand_dossiers.json`** | JSON | Curated brand alignment profiles, partner compatibility indices, commercial tiering, and personalized outreach proposals. |
+| Preview | Screen & Description |
+| :--- | :--- |
+| ![Home](docs/project-gallery/01-home-dashboard.png) | **01 — Home Dashboard:** System telemetry, curatorial scenario presets, and pipeline status. |
+| ![Create Space](docs/project-gallery/02-create-space.png) | **02 — Create Space:** Curatorial brief configuration with spatial coordinates and vibe tags. |
+| ![Cultural Twin](docs/project-gallery/03-cultural-twin.png) | **03 — Cultural Twin:** 3-tier epistemic architecture with Qloo evidence and causal reasoning. |
+| ![Agents](docs/project-gallery/04-agents.png) | **04 — Specialized Agents:** Sonic, Procurement, and Brand agents with live telemetry and signal pills. |
+| ![Execution Plan](docs/project-gallery/05-execution-plan.png) | **05 — Execution Plan:** Operational tasks bound to the SHA-256 plan fingerprint. |
+| ![Results](docs/project-gallery/06-results-qloo-signals.png) | **06 — Results:** Venue decisions with truthful `STAGED` execution status. |
+| ![Session Workspace](docs/project-gallery/07-session-workspace.png) | **07 — Session Workspace:** Full session lifecycle detail and provenance inspector. |
+| ![Audit Ledger](docs/project-gallery/08-audit-ledger.png) | **08 — Audit Ledger:** Append-only log recording 12 persisted transitions and curator sign-offs. |
+| ![Artifacts](docs/project-gallery/09-artifacts.png) | **09 — Operational Preconditions:** 5-point precondition check preventing simulated execution. |
+| ![Blueprint](docs/project-gallery/10-end-to-end-flow.png) | **10 — Experience Blueprint:** Final sealed spatial activation blueprint and budget breakdown. |
 
-All artifacts are directly inspectable via `/api/v1/sessions/{session_id}/artifacts/{artifact_name}` or through the frontend UI.
+---
+
+## Operational Artifacts
+
+During execution, TasteOps generates concrete, downloadable operational artifacts:
+
+| Artifact | Format | Description | Execution Status |
+| :--- | :---: | :--- | :--- |
+| **`procurement.csv`** | CSV (8 cols) | Purchase order with Title, Author, Publisher, ISBN, Quantity, Unit Price, Affinity, and Qloo Entity ID. | `READY` (Draft for fulfillment) |
+| **`spotify_playlist.json`** | JSON | Calibrated acoustic day-part curve specifying tracks, artists, BPM ranges, and acoustic targets. | `STAGED` (Requires Spotify OAuth) |
+| **`brand_dossiers.json`** | JSON | Partnership dossiers detailing partner compatibility indices, commercial tiering, and outreach briefs. | `STAGED` (Requires Outreach SMTP) |
+
+Artifacts can be inspected directly through the UI or via `/api/v1/sessions/{session_id}/artifacts/{artifact_name}`.
 
 ---
 
 ## Technical Stack
 
-| Layer | Technology | Host / Deployment | Role |
-| :--- | :--- | :--- | :--- |
-| **Frontend CDN** | Vanilla ES Modules + CSS | **Vercel Edge Network** | Zero-build single-page application with declarative routing and sub-second load times. |
-| **Backend API** | FastAPI + Uvicorn | **Render Web Service** | High-performance async ASGI application running in a hardened non-root container. |
-| **Cultural Engine** | Qloo Taste AI™ API | **Qloo Gateway** | High-dimensional cultural affinity vectors, entity resolution, and taxonomy tags. |
-| **Agent Protocol** | FastMCP Server | **Internal Process** | Model Context Protocol exposing 10 typed cultural intelligence tools. |
-| **Persistence** | FileStateStore | **Persistent Disk** | JSON snapshot storage and append-only audit trail logging. |
-| **Standby Fallback** | Zoho Catalyst | **Catalyst Web Client** | Secondary standby serverless deployment. |
+- **Backend:** Python 3.12+, FastAPI 0.115+, Pydantic v2, Uvicorn
+- **Package Management:** Astral uv
+- **Code Quality:** Ruff (linter & formatter), Mypy (strict type checking), Pytest
+- **Agent Protocol:** FastMCP (exposing 10 typed tools)
+- **Frontend:** Vanilla JavaScript (ES Modules), CSS custom properties, zero client-side build step
+- **Hosting:** Vercel (Frontend CDN), Render (Backend Web Service), Zoho Catalyst (Standby)
+- **Cultural AI:** Qloo Cultural Intelligence API (`/v2/insights`, `/v2/tags`)
 
 ---
 
-## Local Development
+## Quality Gates & Verification
 
-### Prerequisites
-- [Astral uv](https://github.com/astral-sh/uv) (recommended) or Python 3.12+
-- A valid **Qloo Hackathon API Key**
+TasteOps enforces continuous integration quality standards across linting, formatting, type checking, and automated tests:
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/maitray-agrawal/TasteOps.git
-cd TasteOps
-
-# 2. Install dependencies
-uv sync --frozen
-
-# 3. Configure environment
-cp .env.example .env
-# Edit .env and supply your QLOO_API_KEY
-
-# 4. Start local development server
-uv run uvicorn tasteops.api.main:app --host 0.0.0.0 --port 8000 --reload
-# Access UI at http://localhost:8000/home
-```
-
----
-
-## Testing & Quality Gates
-
-TasteOps enforces strict continuous integration quality standards across linting, formatting, static type analysis, and automated test execution:
-
-```bash
-# 1. Lint checking (Ruff)
+# Lint checking
 uv run ruff check src tests scripts
 
-# 2. Format checking (Ruff format)
+# Format checking
 uv run ruff format --check src tests scripts
 
-# 3. Static type analysis (Mypy)
+# Static type analysis
 uv run mypy src
 
-# 4. Full test suite (pytest)
+# Test execution
 uv run pytest -q
 ```
 
@@ -341,23 +254,22 @@ uv run pytest -q
 - **Ruff Formatter:** `PASS` (78 files checked, 100% compliant)
 - **Mypy Static Typing:** `PASS` (47 source files checked, 0 errors)
 - **Pytest Suite:** `PASS` (**322 passed**)
-- **Live Smoke Test:** `PASS` (Full E2E session creation, pipeline, approval, execution, artifact export, and zero secret leakage verified against `https://tasteops-backend.onrender.com`)
+- **Live Smoke Test:** `PASS` (Session creation, pipeline execution, approval gate, staged execution, and artifact generation verified against Render backend)
 
 ---
 
 ## Known Limitations
 
-In the spirit of complete architectural honesty, we document the following operational boundaries:
-1. **Render Free-Tier Cold-Start Latency:** The production API backend is deployed on Render. If the service has been idle, an initial cold start takes approximately 30 seconds to spin up. Warm requests execute in under 50ms. The frontend features an active health monitor that alerts the user during spin-up.
-2. **Staged External Connectors:** Live API mutations to third-party production systems (Spotify Developer API, SendGrid Outbound Email, Square POS) require external enterprise API credentials. When those credentials are not provisioned in the environment, TasteOps marks the operations as `STAGED` or `NOT_CONFIGURED`. It never falsifies successful external mutations.
-3. **Qloo Rate Limiting:** The Qloo Hackathon tier enforces concurrency limits. TasteOps incorporates client-side caching (TTL 3600s), exponential backoff, and retry handling to ensure resilience.
+- **Render Cold-Start Latency:** The backend is hosted on Render's web tier. When resuming from idle, initial spin-up takes approximately 30 seconds. Warm requests execute in under 50ms.
+- **Staged External Connectors:** Dispatching live third-party mutations (e.g., Spotify playlist publishing, SendGrid mail delivery) requires production enterprise API keys. In demo and test environments, these remain safely in `STAGED` status.
+- **Rate Limits & Caching:** The Qloo Hackathon tier enforces concurrency limits. TasteOps implements an in-memory TTL cache (3600 seconds) and exponential retry logic to avoid redundant upstream calls.
 
 ---
 
 ## Contributors
 
-- **Maitray Agrawal** — Lead Backend Architecture, Qloo Integration, DevOps & Release Engineering ([maitrayagrawal1705@gmail.com](mailto:maitrayagrawal1705@gmail.com))
-- **Satwik Jaiswal** — Domain Agent Architecture & Frontend Client Implementation ([satwikj9@gmail.com](mailto:satwikj9@gmail.com))
+- **Maitray Agrawal** — Lead Backend Architecture, Qloo Integration, DevOps ([maitrayagrawal1705@gmail.com](mailto:maitrayagrawal1705@gmail.com))
+- **Satwik Jaiswal** — Domain Agent Architecture & Frontend Client ([satwikj9@gmail.com](mailto:satwikj9@gmail.com))
 - **TasteOps Team** — Autonomous Spatial Curation Research
 
 ---
