@@ -443,6 +443,16 @@ export class TasteOpsAPIClient {
     return `${this.baseUrl}${ENDPOINTS.SESSION_ARTIFACT_CSV(sessionId)}`;
   }
 
+  getSpotifyPlaylistUrl(sessionId) {
+    if (!sessionId) return `${this.baseUrl}/sessions/default/artifacts/spotify_playlist.json`;
+    return `${this.baseUrl}${ENDPOINTS.SESSION_ARTIFACT_SPOTIFY(sessionId)}`;
+  }
+
+  getBrandDossiersUrl(sessionId) {
+    if (!sessionId) return `${this.baseUrl}/sessions/default/artifacts/brand_dossiers.json`;
+    return `${this.baseUrl}${ENDPOINTS.SESSION_ARTIFACT_BRANDS(sessionId)}`;
+  }
+
   async getSpotifyArtifact(sessionId) {
     if (!sessionId) throw new Error('Session ID is required');
     return this._fetch(ENDPOINTS.SESSION_ARTIFACT_SPOTIFY(sessionId), { method: 'GET' });

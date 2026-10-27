@@ -12,6 +12,10 @@
 
 > **TasteOps turns creative venue briefs and spatial context into mathematically grounded, governed physical space activations using Qloo's Taste AI™, multi-agent orchestration, cryptographic human approval, and truthful execution staging.**
 
+<p align="center">
+  <img src="docs/project-gallery/00-devpost-thumbnail-3x2.jpg" alt="TasteOps Autonomous Spatial Curation Showcase" width="100%" />
+</p>
+
 ---
 
 ## Live Deployments & Submission Links

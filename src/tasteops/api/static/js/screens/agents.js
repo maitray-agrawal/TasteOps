@@ -5,6 +5,7 @@
  */
 
 import { apiClient } from '../apiClient.js';
+import { escapeHtml } from '../components/ui.js';
 
 export function renderAgents(rootElement, params, router) {
   const activeSessionId = window.currentSessionId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('tasteops_active_session_id') : null);
@@ -14,6 +15,11 @@ export function renderAgents(rootElement, params, router) {
     const sonicDur = tel.sonic?.duration_s ? `${tel.sonic.duration_s.toFixed(2)}s` : '4.82s';
     const procDur = tel.procurement?.duration_s ? `${tel.procurement.duration_s.toFixed(2)}s` : '3.11s';
     const brandDur = tel.brand?.duration_s ? `${tel.brand.duration_s.toFixed(2)}s` : '5.73s';
+
+    const matrix = liveSession?.cultural_matrix;
+    const sonicArtists = matrix?.artists?.length ? matrix.artists.slice(0, 3).map(a => a.name) : ['Khruangbin', 'Bon Iver', 'Tycho'];
+    const procBooks = matrix?.books?.length ? matrix.books.slice(0, 3).map(b => b.name) : ['Gestalten Works', 'Kinfolk Issues', 'A24 Monograph'];
+    const brandPartners = matrix?.brands?.length ? matrix.brands.slice(0, 3).map(br => br.name) : ['Aesop', 'Teenage Eng.', 'Herman Miller'];
 
     rootElement.innerHTML = `
       <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
@@ -88,10 +94,8 @@ export function renderAgents(rootElement, params, router) {
           <!-- Thumbnails & Spotify Indicator -->
           <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; gap: 0.4rem;">
-                <span class="entity-pill">Khruangbin</span>
-                <span class="entity-pill">Bon Iver</span>
-                <span class="entity-pill">Tycho</span>
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                ${sonicArtists.map(name => `<span class="entity-pill">${escapeHtml(name)}</span>`).join('')}
               </div>
               <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--forest-green); font-weight: 600;">
                 <span>STAGED · VALIDATED</span>
@@ -199,10 +203,8 @@ export function renderAgents(rootElement, params, router) {
           <!-- Thumbnails & Pitch Status -->
           <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="display: flex; gap: 0.4rem;">
-                <span class="entity-pill">Aesop</span>
-                <span class="entity-pill">TE</span>
-                <span class="entity-pill">Herman Miller</span>
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                ${brandPartners.map(name => `<span class="entity-pill">${escapeHtml(name)}</span>`).join('')}
               </div>
               <span style="font-size: 0.75rem; color: var(--forest-green); font-weight: 600;">DRAFTED · VALIDATED</span>
             </div>

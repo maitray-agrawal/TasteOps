@@ -31,12 +31,20 @@ export function renderDashboard(rootElement, params, router) {
         <div>
           <div class="hero-eyebrow">
             <span>✦</span>
-            <span>CREATE YOUR SPACE</span>
+            <span>AUTONOMOUS SPATIAL CURATION</span>
           </div>
-          <h1 class="hero-headline">Design spaces people belong to.</h1>
+          <h1 class="hero-headline">Turn Cultural Taste into Physical Space.</h1>
           <p class="hero-supporting">
-            AI agents that understand culture and curate your physical space with music, books, and brand partnerships.
+            AI agents powered by Qloo's 250M+ entity taste graph that curate physical hospitality, listening bars, and concept stores with music, books, and brand partnerships.
           </p>
+          <div style="display: flex; gap: 0.85rem; margin-top: 1.5rem; align-items: center; flex-wrap: wrap;">
+            <a href="/create-space" class="btn btn-primary" style="text-decoration: none; padding: 0.75rem 1.6rem; font-size: 0.95rem;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/create-space');">
+              <span>Curate Custom Space Brief →</span>
+            </a>
+            <a href="/cultural-twin" class="btn btn-secondary" style="text-decoration: none; padding: 0.75rem 1.35rem; font-size: 0.95rem;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/cultural-twin');">
+              <span>Explore Cultural Twin</span>
+            </a>
+          </div>
         </div>
 
         <div class="hero-image-arch">
@@ -48,6 +56,20 @@ export function renderDashboard(rootElement, params, router) {
            2. PRIMARY INPUT & SPACE FILTERS
            ===================================================================== -->
       <section class="primary-input-card">
+        <!-- Quick Preset Switcher Bar -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-sage); font-weight: 600;">Quick Scenarios:</span>
+          <button type="button" class="brief-chip" id="btn-quick-kitsune" style="font-size: 0.75rem; padding: 0.3rem 0.75rem;">
+            <span>✨ Kitsuné Musique Lab (Mumbai)</span>
+          </button>
+          <button type="button" class="brief-chip active" id="btn-quick-austin" style="font-size: 0.75rem; padding: 0.3rem 0.75rem;">
+            <span>☕ Austin Tech & Creative</span>
+          </button>
+          <button type="button" class="brief-chip" id="btn-quick-kyoto" style="font-size: 0.75rem; padding: 0.3rem 0.75rem;">
+            <span>🏮 Kyoto Listening Kissa</span>
+          </button>
+        </div>
+
         <form id="space-prompt-form">
           <div class="primary-input-row">
             <span class="sparkle-icon">✦</span>
@@ -79,15 +101,15 @@ export function renderDashboard(rootElement, params, router) {
           <div class="compact-selectors">
             <div class="compact-select">
               <span class="select-label">Location:</span>
-              <strong>Austin, USA</strong>
+              <strong id="display-loc-label">Austin, USA</strong>
             </div>
             <div class="compact-select">
               <span class="select-label">Space Type:</span>
-              <strong>Co-working Space</strong>
+              <strong id="display-type-label">Co-working Space</strong>
             </div>
             <div class="compact-select">
               <span class="select-label">Audience:</span>
-              <strong>100–500</strong>
+              <strong id="display-aud-label">100–500</strong>
             </div>
           </div>
         </div>
@@ -520,6 +542,54 @@ export function renderDashboard(rootElement, params, router) {
     } finally {
       if (submitBtn) submitBtn.disabled = false;
     }
+  });
+
+  // Quick Scenario Presets
+  const setQuickScenario = (promptText, locText, typeText, audText) => {
+    const input = document.getElementById('prompt-input');
+    const locLabel = document.getElementById('display-loc-label');
+    const typeLabel = document.getElementById('display-type-label');
+    const audLabel = document.getElementById('display-aud-label');
+    if (input) input.value = promptText;
+    if (locLabel) locLabel.textContent = locText;
+    if (typeLabel) typeLabel.textContent = typeText;
+    if (audLabel) audLabel.textContent = audText;
+  };
+
+  document.getElementById('btn-quick-kitsune')?.addEventListener('click', () => {
+    document.querySelectorAll('#btn-quick-kitsune, #btn-quick-austin, #btn-quick-kyoto').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-quick-kitsune')?.classList.add('active');
+    setQuickScenario(
+      'An intimate vinyl listening bar and Japanese specialty cafe in Kala Ghoda, Mumbai for design-conscious creatives featuring analog sound, third-wave pour-overs, and contemporary curation.',
+      'Mumbai, India',
+      'Listening Bar & Cafe',
+      '50–150'
+    );
+    showToast({ title: 'Scenario Selected', text: 'Kitsuné Musique Lab (Mumbai) loaded into prompt.', type: 'success' });
+  });
+
+  document.getElementById('btn-quick-austin')?.addEventListener('click', () => {
+    document.querySelectorAll('#btn-quick-kitsune, #btn-quick-austin, #btn-quick-kyoto').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-quick-austin')?.classList.add('active');
+    setQuickScenario(
+      'Austin-based tech workers who love A24 films, minimalist design, and analog acoustic sound.',
+      'Austin, USA',
+      'Co-working Space',
+      '100–500'
+    );
+    showToast({ title: 'Scenario Selected', text: 'Austin Tech & Creative loaded into prompt.', type: 'success' });
+  });
+
+  document.getElementById('btn-quick-kyoto')?.addEventListener('click', () => {
+    document.querySelectorAll('#btn-quick-kitsune, #btn-quick-austin, #btn-quick-kyoto').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-quick-kyoto')?.classList.add('active');
+    setQuickScenario(
+      'A minimalist 12-seat Japanese kissaten listening salon near the Philosopher’s Path in Kyoto pairing single-origin hand-drip coffee with rare modal jazz vinyl.',
+      'Kyoto, Japan',
+      'Listening Kissa Salon',
+      '12–30'
+    );
+    showToast({ title: 'Scenario Selected', text: 'Kyoto Listening Kissa loaded into prompt.', type: 'success' });
   });
 
   // Category filter pills

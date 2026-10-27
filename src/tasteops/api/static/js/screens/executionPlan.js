@@ -16,22 +16,29 @@ export function renderExecutionPlan(rootElement, params, router) {
       ? `SHA-256: ${rawHash.slice(0, 10)}...${rawHash.slice(-6)}`
       : (liveSession ? 'SHA-256: Computed on Plan Synthesis' : 'SHA-256: 7f8a9e2d...410b (Austin Demo Hash)');
 
-    const csvUrl = activeSessionId ? apiClient.getProcurementCsvUrl(activeSessionId) : '#';
+    const spotifyUrl = activeSessionId ? apiClient.getSpotifyPlaylistUrl(activeSessionId) : '#';
+    const brandUrl = activeSessionId ? apiClient.getBrandDossiersUrl(activeSessionId) : '#';
+    const venueName = liveSession?.space?.name || liveSession?.brief?.name || (liveSession ? 'Kitsuné Musique Lab' : 'South Congress Sound Commons');
 
     rootElement.innerHTML = `
-      <div class="main-content" style="max-width: 1400px; margin: 0 auto;">
+      <div class="main-content" style="max-width: 1400px; margin: 0 auto; padding-bottom: 4rem;">
         ${isColdStarting ? `
           <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #92400e;">
-            <span>⚡ <strong>Render Backend Waking Up:</strong> The backend is starting from idle. Displaying offline plan baseline.</span>
+            <span>⚡ <strong>Render Backend Waking Up:</strong> Connecting to operational engine. Displaying offline plan baseline.</span>
             <button id="btn-retry-plan-hydration" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #fff;">Retry Fetch</button>
           </div>
         ` : ''}
         <!-- Header -->
         <div style="margin-bottom: 2.25rem;">
-          <div class="hero-eyebrow">GOVERNANCE & VALIDATION</div>
-          <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem;">Execution Plan</h1>
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <span class="hero-eyebrow" style="margin: 0;">GOVERNANCE & VALIDATION</span>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #047857; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem;">
+              ${liveSession ? 'LIVE PLAN SYNTHESIZED' : 'REFERENCE BASELINE'}
+            </span>
+          </div>
+          <h1 class="hero-title" style="font-size: 2.4rem; margin-bottom: 0.5rem; color: var(--forest-green);">Execution Plan</h1>
           <p class="hero-desc" style="max-width: 780px;">
-            ${liveSession ? `Review and audit synthesized spatial artifacts for session: ${activeSessionId}.` : 'Review and audit all synthesized spatial artifacts before committing physical execution (Austin Reference Baseline).'}
+            ${liveSession ? `Operational curation blueprint synthesized for ${venueName} (Session: ${activeSessionId}). Review and sign off before staging operations.` : 'Review and audit all synthesized spatial artifacts before committing physical execution (Austin Reference Baseline).'}
           </p>
         </div>
 
@@ -49,22 +56,24 @@ export function renderExecutionPlan(rootElement, params, router) {
             <p class="artifact-meta">
               Material palette: Warm lime plaster, dark stained oak, raw brass, monolithic arch motifs, and organic botanical accents.
             </p>
-            <div style="display: flex; gap: 0.5rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
-              <span class="entity-pill">High-Res PDF</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
               <span class="entity-pill">Hex Specs</span>
+              <span style="font-size: 0.75rem; color: var(--forest-green); font-weight: 600;">Spec Ready</span>
             </div>
           </div>
 
           <!-- Playlist Artifact -->
           <div class="artifact-card">
             <div class="artifact-badge">Day-Parted Music (STAGED)</div>
-            <h3 class="artifact-title">Austin Mornings Tracklist</h3>
+            <h3 class="artifact-title">${liveSession ? `${venueName} Tracklist Spec` : 'Austin Mornings Tracklist'}</h3>
             <p class="artifact-meta">
-              25 tracks, 2h 14m runtime. Calibrated acoustic flow featuring Khruangbin, Bon Iver, Tycho, Men I Trust, Alabaster DePlume.
+              Dayparted acoustic curve calibrated from Qloo musical affinities. Formatted for turntable & streaming hardware with BPM balancing.
             </p>
-            <div style="display: flex; gap: 0.5rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
-              <span class="entity-pill">Spotify Sandbox Spec</span>
-              <span class="entity-pill">BPM Balanced</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
+              <span class="entity-pill">25 Tracks · Spec</span>
+              <a href="${spotifyUrl}" target="_blank" style="font-size: 0.75rem; color: var(--forest-green); font-weight: 600; text-decoration: underline;">
+                Inspect JSON ↗
+              </a>
             </div>
           </div>
 
@@ -73,11 +82,13 @@ export function renderExecutionPlan(rootElement, params, router) {
             <div class="artifact-badge">Books & Media (PO READY)</div>
             <h3 class="artifact-title">Library Purchase Order</h3>
             <p class="artifact-meta">
-              18 curated publications: Gestalten architectural editions, Kinfolk spatial volumes, and A24 screenplay book monographs.
+              Curated architectural monographs, design anthologies, and indie periodicals validated with ISBNs and unit pricing.
             </p>
-            <div style="display: flex; gap: 0.5rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
               <span class="entity-pill">8-Column CSV</span>
-              <span class="entity-pill">ISBN Matched</span>
+              <a href="${csvUrl}" target="_blank" download="procurement_purchase_order.csv" style="font-size: 0.75rem; color: var(--forest-green); font-weight: 600; text-decoration: underline;">
+                Download CSV ↓
+              </a>
             </div>
           </div>
 
@@ -86,11 +97,13 @@ export function renderExecutionPlan(rootElement, params, router) {
             <div class="artifact-badge">Partnership Draft (DRAFTED)</div>
             <h3 class="artifact-title">Brand Alignment Deck</h3>
             <p class="artifact-meta">
-              Formal partnership pitch letters for Aesop (sensory amenities), Teenage Engineering (sound installation), and Herman Miller.
+              Formal partnership pitch letters for brand activations (sensory amenities, audio installations, furniture) tailored to venue audience.
             </p>
-            <div style="display: flex; gap: 0.5rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
-              <span class="entity-pill">Pitch Memos</span>
-              <span class="entity-pill">Ready to Send</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--warm-stone-light);">
+              <span class="entity-pill">3 Pitch Memos</span>
+              <a href="${brandUrl}" target="_blank" style="font-size: 0.75rem; color: var(--forest-green); font-weight: 600; text-decoration: underline;">
+                Inspect Dossiers ↗
+              </a>
             </div>
           </div>
 

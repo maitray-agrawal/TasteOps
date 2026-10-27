@@ -76,6 +76,20 @@ export function renderSpaceNew(rootElement, params, router) {
         <p class="space-brief-subtext">
           Give TasteOps the cultural context. We'll translate your brief into an operational Cultural Twin grounded in empirical taste intelligence.
         </p>
+
+        <!-- Sample Scenarios Quick-Fill Bar -->
+        <div style="display: flex; gap: 0.65rem; align-items: center; margin-top: 1.25rem; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-sage); font-weight: 600;">Sample Briefs:</span>
+          <button type="button" id="btn-preset-kitsune" class="brief-chip active" style="font-size: 0.75rem; padding: 0.35rem 0.85rem;">
+            <span>✨ Kitsuné Musique Lab (Mumbai)</span>
+          </button>
+          <button type="button" id="btn-preset-austin" class="brief-chip" style="font-size: 0.75rem; padding: 0.35rem 0.85rem;">
+            <span>☕ Austin Tech & Creative Sanctuary</span>
+          </button>
+          <button type="button" id="btn-preset-kyoto" class="brief-chip" style="font-size: 0.75rem; padding: 0.35rem 0.85rem;">
+            <span>🏮 Kyoto Analog Listening Kissa</span>
+          </button>
+        </div>
       </header>
 
       <div id="form-error-container" style="margin-bottom: 1.5rem;"></div>
@@ -434,6 +448,84 @@ export function renderSpaceNew(rootElement, params, router) {
     showToast({ title: 'Brief Saved', text: `Saved "${name}" to spatial workspace registry.`, type: 'success' });
   });
 
+  // 8b. Scenario Presets Handlers
+  const fillPreset = (data) => {
+    if (rootElement.querySelector('#input-brief-narrative')) rootElement.querySelector('#input-brief-narrative').value = data.narrative;
+    if (rootElement.querySelector('#input-space-name')) rootElement.querySelector('#input-space-name').value = data.name;
+    if (rootElement.querySelector('#input-brand')) rootElement.querySelector('#input-brand').value = data.brand;
+    if (rootElement.querySelector('#input-city')) rootElement.querySelector('#input-city').value = data.city;
+    if (rootElement.querySelector('#input-country')) rootElement.querySelector('#input-country').value = data.country;
+    if (rootElement.querySelector('#input-address')) rootElement.querySelector('#input-address').value = data.address;
+    if (rootElement.querySelector('#input-target-audience')) rootElement.querySelector('#input-target-audience').value = data.audience;
+    if (rootElement.querySelector('#input-desired-mood')) rootElement.querySelector('#input-desired-mood').value = data.mood;
+    if (rootElement.querySelector('#input-positioning')) rootElement.querySelector('#input-positioning').value = data.positioning;
+    if (rootElement.querySelector('#input-goals')) rootElement.querySelector('#input-goals').value = data.goals;
+    if (rootElement.querySelector('#input-budget')) rootElement.querySelector('#input-budget').value = data.budget;
+    if (rootElement.querySelector('#input-constraints')) rootElement.querySelector('#input-constraints').value = data.constraints;
+    if (rootElement.querySelector('#input-anchor-entities')) rootElement.querySelector('#input-anchor-entities').value = data.anchors;
+    showToast({ title: 'Sample Brief Loaded', text: `Loaded ${data.name} preset scenario.`, type: 'success' });
+  };
+
+  rootElement.querySelector('#btn-preset-kitsune')?.addEventListener('click', () => {
+    rootElement.querySelectorAll('#btn-preset-kitsune, #btn-preset-austin, #btn-preset-kyoto').forEach(b => b.classList.remove('active'));
+    rootElement.querySelector('#btn-preset-kitsune')?.classList.add('active');
+    fillPreset({
+      narrative: 'An intimate vinyl listening bar and Japanese specialty cafe in Kala Ghoda, Mumbai for design-conscious creatives featuring analog sound, third-wave pour-overs, and contemporary curation.',
+      name: 'Kitsuné Musique Lab',
+      brand: 'Maison Kitsuné',
+      city: 'Mumbai',
+      country: 'India',
+      address: 'Kala Ghoda Arts Precinct',
+      audience: 'Design crowd, vinyl collectors, creative professionals',
+      mood: 'Intimate acoustic warmth, analog jazz culture, warm lighting',
+      positioning: 'High-fidelity listening sanctuary for contemporary design community',
+      goals: 'Bridge Japanese vinyl culture with Indian contemporary craft; cultivate recurring community',
+      budget: '$120,000 USD / Boutique allocation',
+      constraints: 'Acoustic cap at 78 dB, timber-only resonance, no digital screens',
+      anchors: 'Ryuichi Sakamoto, Midori Takada, Blue Bottle Coffee, Aesop',
+    });
+  });
+
+  rootElement.querySelector('#btn-preset-austin')?.addEventListener('click', () => {
+    rootElement.querySelectorAll('#btn-preset-kitsune, #btn-preset-austin, #btn-preset-kyoto').forEach(b => b.classList.remove('active'));
+    rootElement.querySelector('#btn-preset-austin')?.classList.add('active');
+    fillPreset({
+      narrative: 'A sunlit, biophilic creative sanctuary and acoustic co-working space in East Austin tailored for tech founders, indie filmmakers, and analog music enthusiasts.',
+      name: 'South Congress Sound Commons',
+      brand: 'Subculture Hospitality',
+      city: 'Austin',
+      country: 'USA',
+      address: 'East 6th Creative District',
+      audience: 'Tech workers, A24 film enthusiasts, indie creatives, architects',
+      mood: 'Focused morning acoustics, relaxed evening natural wine gatherings',
+      positioning: 'Curated creative hub bridging hardware craft, cinema, and acoustic coffee rituals',
+      goals: 'Foster cross-disciplinary collaboration and quiet deep work; host monthly vinyl listening sessions',
+      budget: '$95,000 USD / Co-working retrofit',
+      constraints: 'Separate quiet focus zones from social acoustic lounge; sustainable natural materials only',
+      anchors: 'Khruangbin, Bon Iver, A24, Kinfolk, Teenage Engineering',
+    });
+  });
+
+  rootElement.querySelector('#btn-preset-kyoto')?.addEventListener('click', () => {
+    rootElement.querySelectorAll('#btn-preset-kitsune, #btn-preset-austin, #btn-preset-kyoto').forEach(b => b.classList.remove('active'));
+    rootElement.querySelector('#btn-preset-kyoto')?.classList.add('active');
+    fillPreset({
+      narrative: 'A minimalist 12-seat Japanese kissaten listening salon near the Philosopher’s Path in Kyoto, pairing single-origin hand-drip coffee with rare Blue Note and modal jazz vinyl pressings.',
+      name: 'Kissa Komorebi',
+      brand: 'Independent Kissa Atelier',
+      city: 'Kyoto',
+      country: 'Japan',
+      address: 'Sakyo Ward, near Ginkaku-ji',
+      audience: 'Audiophiles, solo travelers, authors, contemplative creatives',
+      mood: 'Meditative wabi-sabi stillness, deep analog warmth, ritual pour-overs',
+      positioning: 'Pure analog listening retreat celebrating slow hospitality and mid-century jazz',
+      goals: 'Preserve heritage vinyl culture; offer sensory sanctuary from digital fatigue',
+      budget: '¥8,500,000 JPY / Acoustic refurbishment',
+      constraints: 'Conversational whispering only; strictly tube amplification and Tannoy dual-concentric speakers',
+      anchors: 'Ryo Fukui, Miles Davis, Bill Evans, Haruki Murakami, Karita Wave',
+    });
+  });
+
   // 9. Main Form Submission (Create Space + Run Pipeline)
   const form = rootElement.querySelector('#form-space-brief');
   const errorContainer = rootElement.querySelector('#form-error-container');
@@ -539,6 +631,15 @@ export function renderSpaceNew(rootElement, params, router) {
         auto_run: true,
         take_per_category: 10,
       });
+
+      // Synchronize active session ID globally for all screens
+      window.currentSessionId = session.session_id;
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('tasteops_active_session_id', session.session_id);
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('tasteops_active_session_id', session.session_id);
+      }
 
       // Progression step 3: Completed & Redirecting
       showToast({ title: 'Curatorial synthesis complete', text: 'Cultural Twin established. Opening workspace...', type: 'success' });

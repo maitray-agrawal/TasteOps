@@ -508,7 +508,7 @@ export async function renderSessionApproval(rootElement, params, router) {
                   <div class="form-grid-2" style="margin-bottom: 1rem;">
                     <div class="form-group">
                       <label class="form-label" for="input-approver-name">Curator Identity *</label>
-                      <input type="text" id="input-approver-name" class="form-input" placeholder="e.g. Satwik Jaiswal" required />
+                      <input type="text" id="input-approver-name" class="form-input" placeholder="e.g. Maitray Agrawal" value="Maitray Agrawal (Venue Curator)" required />
                     </div>
 
                     <div class="form-group">

@@ -127,8 +127,8 @@ export function renderResults(rootElement, params, router) {
             </p>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border-stone);">
               <span style="font-size: 0.75rem; color: var(--text-muted);">25 Tracks • 2h 14m</span>
-              <a href="/api/v1/sessions/${encodeURIComponent(sessionId)}/artifacts/spotify_playlist.json" target="_blank" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
-                Inspect Spec (JSON)
+              <a href="${apiClient.getSpotifyPlaylistUrl(sessionId)}" target="_blank" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
+                Inspect Spec (JSON) ↗
               </a>
             </div>
           </div>
@@ -148,7 +148,7 @@ export function renderResults(rootElement, params, router) {
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border-stone);">
               <span style="font-size: 0.75rem; color: var(--text-muted);">6 Publications • $324.50</span>
               <a href="${csvUrl}" download="PO_${sessionId.slice(0, 8)}.csv" id="btn-download-po-csv" class="btn btn-primary" style="padding: 0.45rem 1rem; font-size: 0.75rem; text-decoration: none;">
-                <span>Download Purchase Order (CSV)</span>
+                <span>Download Purchase Order (CSV) ↓</span>
               </a>
             </div>
           </div>
@@ -167,8 +167,8 @@ export function renderResults(rootElement, params, router) {
             </p>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border-stone);">
               <span style="font-size: 0.75rem; color: var(--text-muted);">Verified Affinities • Drafted</span>
-              <a href="/api/v1/sessions/${encodeURIComponent(sessionId)}/artifacts/brand_dossiers.json" target="_blank" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
-                Export Dossiers (JSON)
+              <a href="${apiClient.getBrandDossiersUrl(sessionId)}" target="_blank" class="btn btn-secondary" style="padding: 0.4rem 0.85rem; font-size: 0.75rem; text-decoration: none;">
+                Export Dossiers (JSON) ↗
               </a>
             </div>
           </div>
@@ -182,15 +182,15 @@ export function renderResults(rootElement, params, router) {
               Activation Staged to Spatial Archive
             </h4>
             <p style="font-size: 0.825rem; color: var(--text-muted); margin: 0;">
-              All cryptographic plan signatures, Qloo provenance records, and curator audit events are permanently stored.
+              All cryptographic plan signatures, Qloo provenance records, and curator audit events are permanently stored in the audit ledger.
             </p>
           </div>
           <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <a href="/sessions/${encodeURIComponent(sessionId)}/ledger" class="btn btn-secondary" style="text-decoration: none;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/sessions/${encodeURIComponent(sessionId)}/ledger');">
+              📜 Audit Ledger
+            </a>
             <a href="/spaces/new" class="btn btn-secondary" style="text-decoration: none;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/spaces/new');">
               + Curate Another Space
-            </a>
-            <a href="/saved-spaces" class="btn btn-secondary" style="text-decoration: none;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/saved-spaces');">
-              View Saved Spaces
             </a>
             <a href="/dashboard" class="btn btn-primary" style="text-decoration: none;" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/dashboard');">
               Return to Dashboard
