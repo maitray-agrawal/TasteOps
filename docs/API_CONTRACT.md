@@ -34,10 +34,10 @@ graph TD
 | :--- | :--- | :--- |
 | **Tier 1** | **Frontend UI** | Renders brief studio, cultural matrix visualization, approval gate checklist, live task progress cards, and the immutable decision ledger. **Never calls MCP or Qloo directly.** |
 | **Tier 2** | **FastAPI** | Validates HTTP payloads using Pydantic, injects authentication/CORS, provides SSE/WebSocket streams, and translates domain exceptions into standard HTTP error envelopes. |
-| **Tier 3** | **Service Layer** | [`TasteOpsOrchestrator`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/orchestrator.py) acts as the single unified application facade. Manages session lifecycle, active memory caching, and delegating to persistence. |
+| **Tier 3** | **Service Layer** | [`TasteOpsOrchestrator`](src/tasteops/workflows/orchestrator.py) acts as the single unified application facade. Manages session lifecycle, active memory caching, and delegating to persistence. |
 | **Tier 4** | **WorkflowEngine** | Enforces the 13 deterministic workflow states, bounded retry loops, bounded validation corrective cycles, and human-in-the-loop approval gate. Invokes the 4 specialized agents. |
 | **Tier 5** | **MCP Layer** | FastMCP server exposing 10 strict cultural tools. Ensures agents **never** make raw HTTP calls to Qloo; all interactions carry typed request IDs and confidence scores. |
-| **Tier 6** | **Qloo Gateway** | [`QlooClient`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/client.py) handles HTTP transport, exponential backoffs, secret masking, and caching against `https://hackathon.api.qloo.com`. |
+| **Tier 6** | **Qloo Gateway** | [`QlooClient`](src/tasteops/client.py) handles HTTP transport, exponential backoffs, secret masking, and caching against `https://hackathon.api.qloo.com`. |
 
 ---
 
@@ -49,7 +49,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 1. `Space`
 - **Purpose:** Entity representing a registered physical venue or hospitality space.
-- **Underlying Models:** Derived from [`LocationInput`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L14-L49) and venue metadata in `WorkflowContext.space_id`.
+- **Underlying Models:** Derived from [`LocationInput`](src/tasteops/models/cultural_matrix.py#L14-L49) and venue metadata in `WorkflowContext.space_id`.
 - **Fields & Types:**
   - `space_id` (`str`): Unique spatial identifier (e.g. `"space_mumbai_boutique_01"`).
   - `name` (`str`): Display name of the physical venue.
@@ -72,7 +72,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 2. `SpaceBrief`
 - **Purpose:** Client-submitted brief defining the user's intent, acoustic guardrails, and aesthetic anchors.
-- **Underlying Models:** Direct alias of [`PhysicalSpaceBrief`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L83-L118).
+- **Underlying Models:** Direct alias of [`PhysicalSpaceBrief`](src/tasteops/models/cultural_matrix.py#L83-L118).
 - **Fields & Types:**
   - `business_type` (`str`, required): Venue typology.
   - `location` (`LocationInput | str | dict[str, Any] | None`): Geolocation coordinates or WKT string.
@@ -94,7 +94,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 3. `WorkflowSession`
 - **Purpose:** Complete state container for an end-to-end physical space cultural activation lifecycle.
-- **Underlying Models:** Direct adaptation of [`WorkflowContext`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/context.py#L34-L89).
+- **Underlying Models:** Direct adaptation of [`WorkflowContext`](src/tasteops/workflows/context.py#L34-L89).
 - **Fields & Types:**
   - `session_id` (`str`): UUID4 session identifier (`sess_[a-f0-9]{12}`).
   - `space_id` (`str | None`): Associated physical venue ID.
@@ -117,7 +117,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
   - `qloo_retry_count` (`int`): Bounded API retry counter (max 2).
   - `agent_retry_count` (`int`): Bounded agent retry counter (max 2).
 - **Validation:**
-  - Transitions must strictly satisfy the [`VALID_TRANSITIONS`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/states.py#L29-L59) graph.
+  - Transitions must strictly satisfy the [`VALID_TRANSITIONS`](src/tasteops/workflows/states.py#L29-L59) graph.
 - **Lifecycle:** `CREATED` $\rightarrow$ `INTENT_PARSED` $\rightarrow$ `CULTURAL_TWIN_CREATED` $\rightarrow$ `QLOO_RESOLVED` $\rightarrow$ `CULTURAL_MATRIX_READY` $\rightarrow$ `AGENTS_RUNNING` $\rightarrow$ `PLAN_GENERATED` $\rightarrow$ `VALIDATED` $\rightarrow$ `AWAITING_APPROVAL` $\rightarrow$ `APPROVED` $\rightarrow$ `EXECUTING` $\rightarrow$ `COMPLETED` (or `FAILED`).
 - **Error Behavior:** Illegal transitions raise `InvalidStateTransitionError` (HTTP 409).
 - **Provenance Requirements:** Every transition emits an immutable `AuditEvent` persisted to `FileStateStore`.
@@ -126,7 +126,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 4. `WorkflowState`
 - **Purpose:** Deterministic finite state machine enumerations.
-- **Underlying Models:** Direct reuse of [`WorkflowState`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/states.py#L10-L25).
+- **Underlying Models:** Direct reuse of [`WorkflowState`](src/tasteops/workflows/states.py#L10-L25).
 - **Values (13 States):**
   1. `CREATED`: Session initialized with raw brief.
   2. `INTENT_PARSED`: Brief structured into domain hints and anchors.
@@ -148,7 +148,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 5. `CulturalTwin`
 - **Purpose:** Foundation model capturing the space's cultural DNA, demographic profile, and verified anchors.
-- **Underlying Models:** Direct reuse of [`CulturalTwin`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L120-L185).
+- **Underlying Models:** Direct reuse of [`CulturalTwin`](src/tasteops/models/cultural_matrix.py#L120-L185).
 - **Fields & Types:**
   - `business_type` (`str`): Typology descriptor.
   - `audience_profile` (`str`): Demographics and subcultural alignment.
@@ -170,7 +170,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 6. `CulturalMatrix`
 - **Purpose:** Holistic 6-domain cultural affinity matrix assembled from Qloo Insights.
-- **Underlying Models:** Direct reuse of [`CulturalMatrix`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L187-L280).
+- **Underlying Models:** Direct reuse of [`CulturalMatrix`](src/tasteops/models/cultural_matrix.py#L187-L280).
 - **Fields & Types:**
   - `artists` (`list[CulturalRecommendation]`): Sonic / music recommendations.
   - `books` (`list[CulturalRecommendation]`): Literary and monograph recommendations.
@@ -189,7 +189,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 7. `CulturalEvidence`
 - **Purpose:** Verifiable audit trail certifying why a recommendation was made and grounding it in Qloo signals.
-- **Underlying Models:** Unified adaptation of [`CulturalMatrixEvidence`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/models/cultural_matrix.py#L107-L118) and [`TaskProvenance`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L750-L775).
+- **Underlying Models:** Unified adaptation of [`CulturalMatrixEvidence`](src/tasteops/models/cultural_matrix.py#L107-L118) and [`TaskProvenance`](src/tasteops/workflows/schemas.py#L750-L775).
 - **Fields & Types:**
   - `evidence_id` (`str`): Unique evidence identifier (`ev_[a-f0-9]{8}`).
   - `category` (`str`): Domain (`artist`, `brand`, `place`, `book`, `movie`).
@@ -228,7 +228,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 9. `ExperienceBlueprint`
 - **Purpose:** Multi-sensory physical experience design blueprint synthesized by the Experience Architect.
-- **Underlying Models:** Direct adaptation of [`ExperienceDesignOutput`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L170-L195).
+- **Underlying Models:** Direct adaptation of [`ExperienceDesignOutput`](src/tasteops/workflows/schemas.py#L170-L195).
 - **Fields & Types:**
   - `sonic_identity` (`SonicIdentity`): Sound architecture, frequency profiles, playback mediums (vinyl, 24-bit lossless), dayparts, and recommended artists.
   - `reading_library` (`ReadingLibraryIdentity`): Monograph selection, curatorial themes, display strategy.
@@ -245,7 +245,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 10. `PartnershipRecommendation`
 - **Purpose:** Commercial and brand partnership candidate evaluated across 6 dimensions.
-- **Underlying Models:** Direct adaptation of [`BrandPartnershipCandidate`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L250-L310).
+- **Underlying Models:** Direct adaptation of [`BrandPartnershipCandidate`](src/tasteops/workflows/schemas.py#L250-L310).
 - **Fields & Types:**
   - `brand` (`str`): Brand name.
   - `brand_entity_id` (`str`): Verified Qloo brand entity ID.
@@ -266,7 +266,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 11. `GovernanceResult`
 - **Purpose:** Automated compliance, anti-hallucination, and approval readiness audit.
-- **Underlying Models:** Direct reuse of [`GovernanceValidationOutput`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L549-L566).
+- **Underlying Models:** Direct reuse of [`GovernanceValidationOutput`](src/tasteops/workflows/schemas.py#L549-L566).
 - **Fields & Types:**
   - `is_valid` (`bool`): `True` if all 7 compliance checks pass.
   - `provenance_verified` (`bool`): `True` if 100% of referenced IDs match verified Qloo entities.
@@ -282,7 +282,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 12. `ValidationResult`
 - **Purpose:** Individual compliance rule check result within the governance audit.
-- **Underlying Models:** Direct reuse of [`ComplianceCheck`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L528-L537).
+- **Underlying Models:** Direct reuse of [`ComplianceCheck`](src/tasteops/workflows/schemas.py#L528-L537).
 - **Fields & Types:**
   - `rule_name` (`str`): Name of audited rule:
     1. `missing_evidence_audit`
@@ -302,7 +302,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 13. `ExecutionPlan`
 - **Purpose:** Pre-approval dependency-mapped execution blueprint synthesized before human sign-off.
-- **Underlying Models:** Direct reuse of [`ExecutionPlan`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L586-L612).
+- **Underlying Models:** Direct reuse of [`ExecutionPlan`](src/tasteops/workflows/schemas.py#L586-L612).
 - **Fields & Types:**
   - `plan_id` (`str`): Execution plan unique ID (`plan_[a-f0-9]{8}`).
   - `version` (`int`): Plan iteration version number (default `1`).
@@ -323,7 +323,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 14. `ExecutionTask`
 - **Purpose:** Executable or executed task item dispatched post-approval.
-- **Underlying Models:** Direct reuse of [`ExecutionTask`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L660-L711).
+- **Underlying Models:** Direct reuse of [`ExecutionTask`](src/tasteops/workflows/schemas.py#L660-L711).
 - **Fields & Types:**
   - `task_id` (`str`): Unique execution task ID (`task_[a-f0-9]{8}`).
   - `idempotency_key` (`str`): Deterministic deduplication key (`idem_{plan_id}_{category}_{entity_id}`).
@@ -337,7 +337,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
   - `output_reference` (`str | None`): External resource URI (`spotify://seed_artist/...`, `brief://partner/...`).
   - `result` (`dict[str, Any]`): Connector response payload (playlist URL, email receipt).
   - `error` (`str | None`): Error detail if failed.
-- **Validation:** Must pass [`validate_task_provenance()`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/agents/governance.py#L511-L540). Must belong to whitelisted categories.
+- **Validation:** Must pass [`validate_task_provenance()`](src/tasteops/agents/governance.py#L511-L540). Must belong to whitelisted categories.
 - **Lifecycle:** Instantiated only in `EXECUTING` state post-approval.
 - **Idempotency Guarantee:** If `idempotency_key` exists in deduplication store, returns cached result with `status="SKIPPED_IDEMPOTENT"`.
 
@@ -345,7 +345,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 15. `Approval`
 - **Purpose:** Cryptographic record of human sign-off binding curator identity to the exact plan content.
-- **Underlying Models:** Direct adaptation of [`ApprovalRecord`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/schemas.py#L642-L658).
+- **Underlying Models:** Direct adaptation of [`ApprovalRecord`](src/tasteops/workflows/schemas.py#L642-L658).
 - **Fields & Types:**
   - `approval_id` (`str`): Unique approval record ID (`appr_[a-f0-9]{8}`).
   - `session_id` (`str`): Workflow session ID.
@@ -367,7 +367,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ### 16. `AuditEvent`
 - **Purpose:** Immutable append-only audit record capturing every state transition and lifecycle event.
-- **Underlying Models:** Direct reuse of [`AuditEvent`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/persistence.py#L27-L38).
+- **Underlying Models:** Direct reuse of [`AuditEvent`](src/tasteops/workflows/persistence.py#L27-L38).
 - **Fields & Types:**
   - `event_id` (`str`): Unique event identifier (`evt_[a-f0-9]{12}`).
   - `session_id` (`str`): Session identifier.
@@ -385,7 +385,7 @@ All contracts adapt and reuse existing models in `src/tasteops/` wherever possib
 
 ## 3. FastAPI Route Specifications
 
-The FastAPI application acts as a strictly-typed gateway routing client requests directly to [`TasteOpsOrchestrator`](file:///c:/Users/Admin/Desktop/Tasteops/TasteOps-feature-cultural-intelligence-core/src/tasteops/workflows/orchestrator.py).
+The FastAPI application acts as a strictly-typed gateway routing client requests directly to [`TasteOpsOrchestrator`](src/tasteops/workflows/orchestrator.py).
 
 ```mermaid
 graph LR

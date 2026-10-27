@@ -242,8 +242,10 @@ class WorkflowEngine:
         elif isinstance(loc_data, LocationInput):
             loc_model = loc_data
 
-        raw_entities = intent.get("raw_anchor_entities", [])
-        raw_tags = intent.get("raw_tags", [])
+        raw_entities = (
+            intent.get("raw_anchor_entities") or intent.get("anchor_entities") or []
+        )
+        raw_tags = intent.get("raw_tags") or intent.get("vibe_keywords") or []
 
         brief = PhysicalSpaceBrief(
             business_type=intent.get("business_type", "Curated Physical Space"),

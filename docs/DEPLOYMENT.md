@@ -16,14 +16,14 @@
 
 ## 2. One-Click Blueprint Deployment (`render.yaml`)
 
-TasteOps provides a native Render Blueprint specification ([`render.yaml`](file:///d:/TasteOps/render.yaml)).
+TasteOps provides a native Render Blueprint specification ([`render.yaml`](render.yaml)).
 
 1. Log into your **Render Dashboard**.
 2. Click **Blueprints** → **New Blueprint Instance**.
 3. Select the `TasteOps` repository.
-4. Render will parse [`render.yaml`](file:///d:/TasteOps/render.yaml) and configure:
+4. Render will parse [`render.yaml`](render.yaml) and configure:
    - **Service Name:** `tasteops-backend`
-   - **Runtime:** `Docker` (using [`Dockerfile`](file:///d:/TasteOps/Dockerfile))
+   - **Runtime:** `Docker` (using [`Dockerfile`](Dockerfile))
    - **Health Check Path:** `/health`
    - **Environment Variables:** `ENVIRONMENT=production`, `QLOO_BASE_URL=https://hackathon.api.qloo.com`, etc.
 5. In the blueprint variables screen, enter your secret `QLOO_API_KEY`.

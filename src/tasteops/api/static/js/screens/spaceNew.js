@@ -97,19 +97,19 @@ export function renderSpaceNew(rootElement, params, router) {
               class="brief-textarea-large" 
               placeholder="An intimate vinyl listening bar in Mumbai for design-conscious creatives who love Japanese jazz, analog sound and contemporary Indian art."
               rows="3"
-            ></textarea>
+            >An intimate vinyl listening bar and Japanese specialty cafe in Kala Ghoda, Mumbai for design-conscious creatives featuring analog sound, third-wave pour-overs, and contemporary curation.</textarea>
           </div>
 
           <!-- Venue Name & Brand -->
           <div class="brief-input-row" style="margin-bottom: 1.75rem;">
             <div class="brief-field-group">
               <label class="brief-field-label" for="input-space-name">Venue / Space Name *</label>
-              <input type="text" id="input-space-name" class="brief-input" placeholder="e.g. Kissa Sound Room" required />
+              <input type="text" id="input-space-name" class="brief-input" placeholder="e.g. Kitsuné Musique Lab" value="Kitsuné Musique Lab" required />
             </div>
 
             <div class="brief-field-group">
               <label class="brief-field-label" for="input-brand">Brand / Parent Identity</label>
-              <input type="text" id="input-brand" class="brief-input" placeholder="e.g. Subculture Hospitality Group" />
+              <input type="text" id="input-brand" class="brief-input" placeholder="e.g. Maison Kitsuné" value="Maison Kitsuné" />
             </div>
           </div>
 

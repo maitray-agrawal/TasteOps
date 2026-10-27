@@ -1,12 +1,13 @@
 """TasteOps Production End-to-End API Smoke Test and Execution Truthfulness Verification."""
 
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
-BASE_URL = "https://tasteops-backend-50047164098.development.catalystappsail.in"
+BASE_URL = os.getenv("TASTEOPS_BASE_URL", "https://tasteops-backend.onrender.com")
 
 
 def http_post(path: str, payload: dict | None = None) -> tuple[int, dict, dict]:
@@ -111,7 +112,9 @@ def run_smoke_test():
     }
 
     # 4. Run Cultural Intelligence Pipeline (Qloo + Agents)
-    print(f"\n[4] POST /api/v1/sessions/{session_id}/pipeline (driving Qloo + Agent mesh)...")
+    print(
+        f"\n[4] POST /api/v1/sessions/{session_id}/pipeline (driving Qloo + Agent mesh)..."
+    )
     t0 = time.time()
     status, pipe_data, headers = http_post(
         f"/api/v1/sessions/{session_id}/pipeline",
@@ -150,7 +153,7 @@ def run_smoke_test():
     print(f"    Body: {json.dumps(unapproved_data)}")
     assert status in (400, 403, 409), f"Unapproved execution should fail: {status}"
     # Verify session state is still AWAITING_APPROVAL
-    status_chk, chk_data, _ = http_get(f"/api/v1/sessions/{session_id}")
+    _status_chk, chk_data, _ = http_get(f"/api/v1/sessions/{session_id}")
     assert chk_data["current_state"] == "AWAITING_APPROVAL", (
         "State mutated during unapproved execution!"
     )
@@ -165,7 +168,9 @@ def run_smoke_test():
     }
 
     # 6. Approve Plan (Governance Gate)
-    print(f"\n[6] POST /api/v1/sessions/{session_id}/approve (Curator Approval Gate)...")
+    print(
+        f"\n[6] POST /api/v1/sessions/{session_id}/approve (Curator Approval Gate)..."
+    )
     status, approve_data, headers = http_post(
         f"/api/v1/sessions/{session_id}/approve",
         {
@@ -282,7 +287,13 @@ def run_smoke_test():
     # 10. Secrets Leak Check
     print("\n[10] CRITICAL TEST: Verifying Zero Secrets in Responses...")
     all_text = json.dumps([results, exec_data, audit_events])
-    for forbidden in ["raw_api_key", "sk-live-", "sk-proj-", "qloo_secret", "BEGIN RSA PRIVATE KEY"]:
+    for forbidden in [
+        "raw_api_key",
+        "sk-live-",
+        "sk-proj-",
+        "qloo_secret",
+        "BEGIN RSA PRIVATE KEY",
+    ]:
         assert forbidden not in all_text, f"Potential secret leak detected: {forbidden}"
     print("    PASS: Zero secrets detected in responses.")
 

@@ -349,6 +349,8 @@ export class TasteOpsAPIClient {
         desired_mood: space.brief?.desired_mood,
         target_audience: space.brief?.target_audience,
         anchor_entities: space.brief?.anchor_entities || [],
+        raw_anchor_entities: space.brief?.anchor_entities || [],
+        raw_tags: vibeKeywords,
         business_type: space.business_type,
         location: space.location,
         vibe_keywords: vibeKeywords,

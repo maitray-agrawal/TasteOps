@@ -86,7 +86,7 @@ TasteOps transforms raw physical space briefs and demographics into culturally r
 ## 2. Core Architectural Pillars
 
 ### I. Strict Upstream Client Isolation
-Raw HTTP calls (`httpx`) exist exclusively inside [`src/tasteops/client.py`](file:///d:/TasteOps/src/tasteops/client.py). No service, agent, or workflow engine component ever directly queries external APIs.
+Raw HTTP calls (`httpx`) exist exclusively inside [`src/tasteops/client.py`](src/tasteops/client.py). No service, agent, or workflow engine component ever directly queries external APIs.
 
 ### II. Zero-Hallucination & Anti-Fabrication Guarantee
 - Anchor entity resolution and tag resolution enforce minimum confidence thresholds (default: 0.50).
@@ -109,5 +109,5 @@ VALIDATED ──► AWAITING_APPROVAL ──► APPROVED ──► EXECUTING ─
 ### IV. Production-Grade Serving & Observability
 - **FastAPI HTTP Service:** Exposes session lifecycle, liveness probes (`/health`), and readiness probes (`/ready`).
 - **Request Tracing:** Every request receives an `X-Request-ID` correlation identifier returned in headers.
-- **Auditing:** Every state change emits an immutable [`AuditEvent`](file:///d:/TasteOps/src/tasteops/workflows/persistence.py#L27) persisted to disk.
+- **Auditing:** Every state change emits an immutable [`AuditEvent`](src/tasteops/workflows/persistence.py#L27) persisted to disk.
 - **Docker Container:** Runs non-root (`appuser`), multi-stage build via Astral `uv`, dynamic `$PORT` expansion.
