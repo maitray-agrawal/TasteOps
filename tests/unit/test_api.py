@@ -496,3 +496,24 @@ def test_validation_error_on_invalid_payload(client):
     data = response.json()
     assert data["error"] == "validation_error"
     assert "request_id" in data
+
+
+def test_validation_error_on_oversized_payload(client):
+    """Payload with raw_intent exceeding 5000 characters returns HTTP 422."""
+    oversized = "a" * 5001
+    response = client.post("/api/v1/sessions", json={"raw_intent": oversized})
+    assert response.status_code == 422
+    data = response.json()
+    assert data["error"] == "validation_error"
+    assert "request_id" in data
+
+
+def test_approve_request_accepts_curator_id_alias(client):
+    """ApproveRequest accepts curator_id alias and audit notes seamlessly."""
+    from tasteops.api.schemas import ApproveRequest
+
+    req = ApproveRequest.model_validate(
+        {"curator_id": "curator_alice", "notes": "Verified acoustic parameters."}
+    )
+    assert req.approver == "curator_alice"
+    assert req.notes == "Verified acoustic parameters."

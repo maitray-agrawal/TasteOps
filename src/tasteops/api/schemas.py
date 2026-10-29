@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -34,6 +34,7 @@ class CreateSessionRequest(BaseModel):
     raw_intent: str = Field(
         ...,
         min_length=3,
+        max_length=5000,
         description="User cultural intent, brief, or anchor demographic description.",
         examples=[
             "Design a listening bar in Tokyo Shibuya for indie vinyl collectors and specialty coffee enthusiasts."
@@ -41,6 +42,7 @@ class CreateSessionRequest(BaseModel):
     )
     space_id: str | None = Field(
         default=None,
+        max_length=200,
         description="Optional unique identifier for the physical space venue.",
         examples=["venue_shibuya_001"],
     )
@@ -70,7 +72,14 @@ class ApproveRequest(BaseModel):
 
     approver: str = Field(
         default="human_curator",
+        max_length=200,
+        validation_alias=AliasChoices("approver", "curator_id"),
         description="Identifier of the human curator authorizing the plan.",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Optional curator audit notes explaining the approval decision.",
     )
 
 
@@ -79,6 +88,7 @@ class RejectRequest(BaseModel):
 
     reason: str = Field(
         default="Curator rejected plan",
+        max_length=1000,
         description="Reason for rejecting the current plan.",
     )
 

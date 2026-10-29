@@ -362,7 +362,7 @@ export async function renderSessionApproval(rootElement, params, router) {
                   </span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.85rem; color: var(--text-muted);">Compliance Confidence Score:</span>
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">Governance Readiness Score:</span>
                   <span style="font-family: var(--font-mono); font-weight: 700; color: var(--cyan); font-size: 0.95rem;">
                     ${complianceScore !== null ? `${(complianceScore * 100).toFixed(0)}%` : 'Unavailable'}
                   </span>

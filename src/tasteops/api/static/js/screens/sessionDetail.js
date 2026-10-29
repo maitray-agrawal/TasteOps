@@ -221,7 +221,7 @@ export async function renderSessionDetail(rootElement, params, router) {
                               </div>
                             </div>
                             <div style="text-align: right; flex-shrink: 0;">
-                              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Confidence</div>
+                              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Signal Match</div>
                               <div style="font-weight: 700; color: ${typeof ent.confidence === 'number' ? '#34d399' : 'var(--text-muted)'}; font-size: 1.1rem; font-family: var(--font-mono);">
                                 ${typeof ent.confidence === 'number' ? `${(ent.confidence * 100).toFixed(0)}%` : 'Unavailable'}
                               </div>
@@ -357,7 +357,7 @@ export async function renderSessionDetail(rootElement, params, router) {
                   </div>
                 </div>
                 <div style="text-align: right;">
-                  <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Overall Confidence</div>
+                  <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted);">Synthesis Match</div>
                   <div style="font-weight: 700; color: ${typeof ct.confidence === 'number' ? '#a5b4fc' : 'var(--text-muted)'}; font-size: 1.25rem; font-family: var(--font-mono);">
                     ${typeof ct.confidence === 'number' ? `${(ct.confidence * 100).toFixed(0)}%` : 'Unavailable'}
                   </div>

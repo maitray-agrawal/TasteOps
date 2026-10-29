@@ -56,7 +56,17 @@ export async function renderSessionBlueprint(rootElement, params, router) {
 
       // Expose modal handler globally for interactive provenance inspection
       window.tasteopsInspectProvenance = (entityKey) => {
-        const item = provMap[entityKey];
+        if (!entityKey) return;
+        let item = provMap[entityKey] || provMap[String(entityKey).toLowerCase()];
+        if (!item) {
+          const searchKey = String(entityKey).toLowerCase().trim();
+          for (const k of Object.keys(provMap)) {
+            if (k.toLowerCase().includes(searchKey) || searchKey.includes(k.toLowerCase())) {
+              item = provMap[k];
+              break;
+            }
+          }
+        }
         if (!item) {
           showToast({ title: 'Provenance Record Unavailable', text: `Telemetry record for "${entityKey}" not cached in active session.`, type: 'warning' });
           return;
@@ -83,6 +93,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
       const zones = blueprint.spatial_zones || expConcept.spatial_zones || [];
       const soundscape = blueprint.soundscape_design || expConcept.soundscape_design || {};
       const pillars = blueprint.cultural_pillars || cultPos.cultural_pillars || [];
+      const isFailed = blueprint.state === 'FAILED';
 
       container.innerHTML = `
         <div class="fade-in" style="padding-bottom: 5rem;">
@@ -127,22 +138,60 @@ export async function renderSessionBlueprint(rootElement, params, router) {
           <!-- Sub-navigation -->
           ${renderSubNav(sessionId, 'blueprint')}
 
+          <!-- Failure Diagnostic & Audit Remediation Alert (Rendered only on FAILED state) -->
+          ${isFailed ? `
+            <div class="card" style="margin-bottom: 2rem; border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.08); border-radius: var(--radius-md); padding: 1.5rem;">
+              <div style="display: flex; align-items: flex-start; gap: 1.25rem;">
+                <span style="font-size: 2rem; line-height: 1;">🛑</span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <div style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; color: #f87171;">
+                      Workflow Halted — Plan Validation or Retrieval Failure
+                    </div>
+                    <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-weight: 700; font-size: 0.75rem;">
+                      STAGE: ${escapeHtml(blueprint.failing_stage || 'GOVERNANCE VALIDATION')}
+                    </span>
+                  </div>
+                  <div style="font-size: 0.9rem; color: var(--text-primary); margin-bottom: 0.75rem; line-height: 1.5;">
+                    ${escapeHtml(blueprint.error_message || 'The session encountered governance violations, insufficient evidence, or validation policy failures that prevented progression to the Human Approval Gate.')}
+                  </div>
+                  ${risks && risks.length > 0 ? `
+                    <div style="background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 0.75rem;">
+                      <div style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: #f87171; margin-bottom: 0.35rem;">Audit Violations & Risk Flags:</div>
+                      <ul style="margin: 0; padding-left: 1.25rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+                        ${risks.map(r => `<li>${escapeHtml(typeof r === 'string' ? r : r.risk || JSON.stringify(r))}</li>`).join('')}
+                      </ul>
+                    </div>
+                  ` : ''}
+                  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" onclick="window.tasteopsRouter.navigate('/dashboard')">
+                      ← Return to Dashboard
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/activity')">
+                      Inspect Agent Activity Log
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+
           <!-- Telemetry & Security Header Bar -->
           <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem 1.25rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
             <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
               <!-- Cryptographic Hash -->
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Plan Signature:</span>
-                <span class="hash-pill" style="font-size: 0.75rem; font-family: var(--font-mono); color: ${blueprint.plan_hash ? '#34d399' : 'var(--text-muted)'};">
-                  ${blueprint.plan_hash ? `🔒 ${escapeHtml(blueprint.plan_hash.slice(0, 18))}...` : 'Pending approval sign-off'}
+                <span class="hash-pill" style="font-size: 0.75rem; font-family: var(--font-mono); color: ${blueprint.plan_hash ? '#34d399' : (isFailed ? '#f87171' : 'var(--text-muted)')};">
+                  ${blueprint.plan_hash ? `🔒 ${escapeHtml(blueprint.plan_hash.slice(0, 18))}...` : (isFailed ? 'N/A — Workflow Terminated Prior to Approval' : 'Pending approval sign-off')}
                 </span>
               </div>
 
               <!-- Governance Readiness -->
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Governance Readiness:</span>
-                <span class="badge" style="background: ${confidence !== null ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)'}; color: ${confidence !== null ? '#34d399' : 'var(--text-muted)'}; font-weight: 700; font-family: var(--font-mono);">
-                  ${confidence !== null ? `${(confidence * 100).toFixed(0)}% Governance Readiness` : 'Unavailable'}
+                <span class="badge" style="background: ${isFailed ? 'rgba(239, 68, 68, 0.15)' : (confidence !== null ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)')}; color: ${isFailed ? '#f87171' : (confidence !== null ? '#34d399' : 'var(--text-muted)')}; font-weight: 700; font-family: var(--font-mono);">
+                  ${isFailed ? 'Validation Failed' : (confidence !== null ? `${(confidence * 100).toFixed(0)}% Governance Readiness` : 'Unavailable')}
                 </span>
               </div>
 
@@ -156,8 +205,8 @@ export async function renderSessionBlueprint(rootElement, params, router) {
             </div>
 
             <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--cyan); font-size: 0.75rem;">
-                ✦ Provenance Audited
+              <span class="badge" style="background: ${isFailed ? 'rgba(239, 68, 68, 0.15)' : 'rgba(6, 182, 212, 0.15)'}; color: ${isFailed ? '#f87171' : 'var(--cyan)'}; font-size: 0.75rem;">
+                ${isFailed ? '✕ Execution Halted' : '✦ Provenance Audited'}
               </span>
             </div>
           </div>
