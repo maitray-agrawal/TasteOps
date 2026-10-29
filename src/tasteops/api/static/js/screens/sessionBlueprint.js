@@ -138,11 +138,11 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                 </span>
               </div>
 
-              <!-- Signal Confidence -->
+              <!-- Governance Readiness -->
               <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Signal Confidence:</span>
+                <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Governance Readiness:</span>
                 <span class="badge" style="background: ${confidence !== null ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)'}; color: ${confidence !== null ? '#34d399' : 'var(--text-muted)'}; font-weight: 700; font-family: var(--font-mono);">
-                  ${confidence !== null ? `${(confidence * 100).toFixed(0)}% Model Confidence` : 'Unavailable'}
+                  ${confidence !== null ? `${(confidence * 100).toFixed(0)}% Governance Readiness` : 'Unavailable'}
                 </span>
               </div>
 
@@ -515,7 +515,7 @@ export async function renderSessionBlueprint(rootElement, params, router) {
             <div style="padding-top: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem;">
               ${partnerships.map(p => {
                 const bName = p.brand || p.partner_name || p.name || 'Brand Partner';
-                const score = typeof p.score === 'number' ? p.score : (typeof p.affinity_score === 'number' ? p.affinity_score * 100 : null);
+                const score = typeof p.score === 'number' ? p.score : (typeof p.composite_fit_score === 'number' ? p.composite_fit_score : (typeof p.affinity_score === 'number' ? p.affinity_score * 100 : null));
                 const breakdown = p.score_breakdown || {};
                 return `
                   <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">

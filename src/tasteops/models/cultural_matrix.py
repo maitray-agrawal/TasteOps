@@ -232,8 +232,11 @@ class CulturalRecommendation(BaseModel):
         ...,
         description="Entity category (e.g. artist, book, brand, place, movie, destination)",
     )
-    affinity: float = Field(
-        ..., ge=0.0, le=1.0, description="Normalized affinity score [0.0 - 1.0]"
+    affinity: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Normalized affinity score [0.0 - 1.0], or None if unavailable from endpoint",
     )
     score: float | None = Field(default=None, description="Raw affinity score")
     confidence: float | None = Field(

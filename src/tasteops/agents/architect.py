@@ -442,7 +442,7 @@ class ExperienceArchitect:
 
         for item in candidates:
             # 1. Affinity threshold: Ensure candidate possesses demonstrable audience overlap
-            if item.affinity < 0.50:
+            if item.affinity is not None and item.affinity < 0.50:
                 continue
 
             # 2. Exclusions filter: Reject items clashing with cultural anti-patterns
@@ -483,7 +483,9 @@ class ExperienceArchitect:
                     recommendation=item.name,
                     qloo_evidence=evidence,
                     cultural_rationale=rationale,
-                    confidence=round(item.affinity, 3),
+                    confidence=round(item.affinity, 3)
+                    if item.affinity is not None
+                    else item.confidence,
                     expected_role=role,
                     category=category,
                 )
@@ -505,26 +507,49 @@ class ExperienceArchitect:
         mood = twin.mood or twin.mood_profile or "acoustic warmth"
 
         if category == "artist":
+            overlap_desc = (
+                f"{round(item.affinity * 100)}% audience taste overlap"
+                if item.affinity is not None
+                else "verified acoustic profile match"
+            )
             return (
-                f"Demonstrates a {round(item.affinity * 100)}% audience taste overlap with {venue} patrons. "
+                f"Demonstrates a {overlap_desc} with {venue} patrons. "
                 f"Contributes an organic, textured sonic palette that reinforces {mood} without jarring conversational distraction."
             )
         if category == "book":
+            aff_desc = (
+                f" (affinity: {round(item.affinity * 100)}%)"
+                if item.affinity is not None
+                else ""
+            )
             return (
-                f"Reflects the editorial curiosity and contemplative aesthetic of {venue} patrons (affinity: {round(item.affinity * 100)}%). "
+                f"Reflects the editorial curiosity and contemplative aesthetic of {venue} patrons{aff_desc}. "
                 "Enriches the physical environment with tangible print publication authority."
             )
         if category == "brand":
+            aff_desc = (
+                f" ({round(item.affinity * 100)}%)" if item.affinity is not None else ""
+            )
             return (
-                f"Shares high brand affinity ({round(item.affinity * 100)}%) with core space anchors. "
+                f"Shares high brand affinity{aff_desc} with core space anchors. "
                 "Embodies material restraint, ethical craftsmanship, and understated physical beauty."
             )
         if category == "place":
+            res_desc = (
+                f" with {round(item.affinity * 100)}% patron resonance"
+                if item.affinity is not None
+                else ""
+            )
             return (
-                f"Exemplifies premier spatial hospitality standards with {round(item.affinity * 100)}% patron resonance. "
+                f"Exemplifies premier spatial hospitality standards{res_desc}. "
                 "Serves as an architectural and acoustic layout benchmark for dwell time and patron intimacy."
             )
-        return f"Vetted cultural anchor ({round(item.affinity * 100)}% affinity) contributing to the coherent identity of {venue}."
+        aff_desc = (
+            f" ({round(item.affinity * 100)}% affinity)"
+            if item.affinity is not None
+            else ""
+        )
+        return f"Vetted cultural anchor{aff_desc} contributing to the coherent identity of {venue}."
 
     def _build_expected_role(
         self,

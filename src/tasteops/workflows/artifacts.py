@@ -71,7 +71,11 @@ def generate_procurement_csv(ctx: WorkflowContext, demo_mode: bool = False) -> s
                     "Publisher": "UNAVAILABLE",
                     "Quantity": "UNAVAILABLE",
                     "Unit Price": "UNAVAILABLE",
-                    "Affinity Score": f"{book.affinity:.2f}",
+                    "Affinity Score": (
+                        f"{book.affinity:.2f}"
+                        if book.affinity is not None
+                        else "UNAVAILABLE"
+                    ),
                     "Qloo Entity ID": book.id,
                 }
             )

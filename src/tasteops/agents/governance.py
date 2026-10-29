@@ -288,7 +288,9 @@ class GovernanceAgent:
 
         # Check 1: Missing Evidence
         has_matrix_evidence = (
-            bool(matrix.evidence) or bool(matrix.query_metadata) or bool(matrix.artists)
+            bool(matrix.evidence)
+            or bool(matrix.query_metadata)
+            or bool(matrix.total_recommendations > 0)
         )
         has_recs_evidence = True
         for rec in experience.sonic_identity.curated_recommendations:
@@ -430,14 +432,46 @@ class GovernanceAgent:
                 f"Provenance violation: Invalid entities detected: Unverified IDs: {unverified_ids}"
             )
 
-        # Check 5: Low Confidence
+        # Check 5: Confidence & Evidence Audit
         low_confidence_items: list[str] = []
         for p in partnerships.partnerships:
-            if p.affinity_score < 0.50:
-                low_confidence_items.append(f"{p.partner_name} ({p.affinity_score})")
+            if p.affinity_score is not None:
+                # Measured Qloo affinity: must satisfy minimum 0.50 affinity threshold
+                if p.affinity_score < 0.50:
+                    low_confidence_items.append(
+                        f"{p.partner_name} (measured low affinity: {p.affinity_score:.2f} < 0.50)"
+                    )
+            elif p.composite_fit_score is not None:
+                # Endpoint did not provide affinity (e.g. spatial place discovery): validate composite fit
+                if p.composite_fit_score < 50.0:
+                    low_confidence_items.append(
+                        f"{p.partner_name} (low composite fit: {p.composite_fit_score:.1f} < 50.0)"
+                    )
+            else:
+                # Neither measured affinity nor composite fit is available: evidence missing!
+                low_confidence_items.append(
+                    f"{p.partner_name} (missing affinity and composite fit evidence)"
+                )
+
         for cand in partnerships.candidates:
+            # Candidate score is a composite fit score [0 - 100]
             if cand.score < 50.0:
-                low_confidence_items.append(f"{cand.brand} ({cand.score})")
+                low_confidence_items.append(
+                    f"{cand.brand} (low candidate composite score: {cand.score:.1f} < 50.0)"
+                )
+            # If Qloo evidence contains a measured affinity, audit it against affinity threshold
+            raw_aff = cand.supporting_qloo_evidence.get("affinity")
+            if raw_aff is not None:
+                try:
+                    num_aff = float(raw_aff)
+                    if num_aff < 0.50:
+                        low_confidence_items.append(
+                            f"{cand.brand} (measured low affinity in evidence: {num_aff:.2f} < 0.50)"
+                        )
+                except (ValueError, TypeError):
+                    low_confidence_items.append(
+                        f"{cand.brand} (invalid affinity in evidence: {raw_aff})"
+                    )
 
         confidence_passed = len(low_confidence_items) == 0
         compliance_checks.append(
@@ -445,9 +479,9 @@ class GovernanceAgent:
                 rule_name="confidence_threshold_audit",
                 passed=confidence_passed,
                 detail=(
-                    "All recommendations satisfy the minimum cultural affinity and confidence thresholds."
+                    "All recommendations satisfy verified cultural affinity or composite fit thresholds."
                     if confidence_passed
-                    else f"Low confidence detected for: {', '.join(low_confidence_items)}"
+                    else f"Confidence audit failed: {'; '.join(low_confidence_items)}"
                 ),
             )
         )
@@ -836,6 +870,7 @@ class GovernanceAgent:
                                 "partner_entity_id": p.partner_entity_id,
                                 "activation_type": p.activation_type,
                                 "affinity_score": p.affinity_score,
+                                "composite_fit_score": p.composite_fit_score,
                             },
                             status=TaskStatus.PENDING,
                             timestamp=now,

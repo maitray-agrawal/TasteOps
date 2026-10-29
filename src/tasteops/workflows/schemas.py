@@ -81,11 +81,11 @@ class ExperienceRecommendation(BaseModel):
         ...,
         description="Curatorial rationale explaining alignment with the space's cultural twin",
     )
-    confidence: float = Field(
-        ...,
+    confidence: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Confidence score reflecting Qloo affinity and curatorial fit",
+        description="Confidence score reflecting Qloo affinity and curatorial fit, or None if unavailable from endpoint",
     )
     expected_role: str = Field(
         ...,
@@ -390,6 +390,10 @@ class PartnershipScoreBreakdown(BaseModel):
         le=100.0,
         description="Normalized composite score from 0 to 100",
     )
+    affinity_measured: bool = Field(
+        default=True,
+        description="True if audience_fit was derived from measured Qloo affinity; False if unavailable from endpoint",
+    )
 
 
 class OutreachDraft(BaseModel):
@@ -471,8 +475,17 @@ class PartnershipActivation(BaseModel):
         description="e.g. 'Hardware Residency', 'Retail Display', 'Co-branded Merchandise'",
     )
     concept_description: str = Field(..., description="Detailed collaboration concept")
-    affinity_score: float = Field(
-        ..., ge=0.0, le=1.0, description="Qloo cultural affinity score"
+    affinity_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Measured Qloo cultural affinity score [0.0 - 1.0], or None if unavailable from endpoint",
+    )
+    composite_fit_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Multi-dimensional composite fit score [0 - 100] calculated across cultural and operational constraints",
     )
     alignment_rationale: str = Field(
         ..., description="Why this partner resonates with the space audience"

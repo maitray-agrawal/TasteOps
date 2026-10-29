@@ -208,6 +208,10 @@ class PartnershipAgent:
         ]
         for idx, sc in enumerate(scored_candidates[:4]):
             act_type = activation_types[idx % len(activation_types)]
+            raw_aff = sc.supporting_qloo_evidence.get("affinity")
+            measured_affinity: float | None = (
+                float(raw_aff) if raw_aff is not None else None
+            )
             partnerships.append(
                 PartnershipActivation(
                     partner_name=sc.brand,
@@ -215,12 +219,18 @@ class PartnershipAgent:
                     category=sc.category,
                     activation_type=act_type,
                     concept_description=sc.partnership_concept,
-                    affinity_score=sc.supporting_qloo_evidence.get(
-                        "affinity", round(sc.score / 100.0, 2)
-                    ),
+                    affinity_score=measured_affinity,
+                    composite_fit_score=sc.score,
                     alignment_rationale=(
-                        f"Patrons exhibit an affinity index of {sc.supporting_qloo_evidence.get('affinity', 0.85):0.2f} "
-                        f"toward {sc.brand} (overall fit: {sc.score}/100), ensuring organic subcultural resonance."
+                        (
+                            f"Patrons exhibit an affinity index of {measured_affinity:0.2f} "
+                            f"toward {sc.brand} (overall composite fit: {sc.score}/100), ensuring organic subcultural resonance."
+                        )
+                        if measured_affinity is not None
+                        else (
+                            f"Curated spatial partner {sc.brand} matches venue profile with an overall composite fit of {sc.score}/100 "
+                            f"based on geographic proximity and operational alignment."
+                        )
                     ),
                 )
             )
@@ -238,7 +248,14 @@ class PartnershipAgent:
                     activation_type="Guest Roaster Residency",
                     concept_description=f"Curated guest bean takeover and barista exchange program with {place.name}.",
                     affinity_score=place.affinity,
-                    alignment_rationale="Shared subcultural audience and craftsmanship alignment.",
+                    composite_fit_score=place.score
+                    if place.score is not None
+                    else 75.0,
+                    alignment_rationale=(
+                        f"Patrons exhibit an affinity index of {place.affinity:0.2f} toward {place.name}."
+                        if place.affinity is not None
+                        else f"Curated hospitality exchange with {place.name} based on spatial proximity and craftsmanship alignment."
+                    ),
                 )
             )
 
@@ -284,8 +301,13 @@ class PartnershipAgent:
         budget: str,
     ) -> PartnershipScoreBreakdown:
         """Calculates 6-dimensional scoring and composite normalized score."""
-        # 1. AudienceFit: Direct Qloo affinity percentage
-        audience_fit = round(min(max(candidate.affinity * 100.0, 0.0), 100.0), 1)
+        # 1. AudienceFit: Direct Qloo affinity percentage if measured
+        if candidate.affinity is not None:
+            audience_fit = round(min(max(candidate.affinity * 100.0, 0.0), 100.0), 1)
+            affinity_measured = True
+        else:
+            audience_fit = 0.0
+            affinity_measured = False
 
         # 2. CulturalFit: Semantic overlap with cultural themes and aesthetic mood
         cultural_keywords = set()
@@ -298,8 +320,9 @@ class PartnershipAgent:
 
         brand_text = f"{candidate.name} {candidate.type or ''} {' '.join(candidate.explainability)}".lower()
         matches = sum(1 for kw in cultural_keywords if len(kw) > 3 and kw in brand_text)
+        base_cultural = (audience_fit * 0.80) if affinity_measured else 50.0
         cultural_fit = round(
-            min(max(audience_fit * 0.80 + (matches * 4.0) + 10.0, 50.0), 98.0),
+            min(max(base_cultural + (matches * 4.0) + 10.0, 50.0), 98.0),
             1,
         )
 
@@ -348,24 +371,38 @@ class PartnershipAgent:
         if is_mass_retail:
             novelty = 42.0
         else:
+            aff_factor = candidate.affinity if candidate.affinity is not None else 0.5
             novelty = round(
                 min(
-                    max(72.0 + (1.0 - candidate.affinity * 0.2) * 15.0, 60.0),
+                    max(72.0 + (1.0 - aff_factor * 0.2) * 15.0, 60.0),
                     95.0,
                 ),
                 1,
             )
 
         # Composite Normalized Score (0 to 100)
-        overall = round(
-            (0.25 * audience_fit)
-            + (0.20 * cultural_fit)
-            + (0.20 * brand_compatibility)
-            + (0.15 * context_fit)
-            + (0.10 * budget_fit)
-            + (0.10 * novelty),
-            1,
-        )
+        if affinity_measured:
+            overall = round(
+                (0.25 * audience_fit)
+                + (0.20 * cultural_fit)
+                + (0.20 * brand_compatibility)
+                + (0.15 * context_fit)
+                + (0.10 * budget_fit)
+                + (0.10 * novelty),
+                1,
+            )
+        else:
+            # When audience affinity is unmeasured by endpoint (e.g. spatial place discovery),
+            # renormalize weights over the 5 measured dimensions (sum of weights = 0.75):
+            # cultural_fit (20/75), brand_compatibility (20/75), context_fit (15/75), budget_fit (10/75), novelty (10/75)
+            unweighted = (
+                (0.20 * cultural_fit)
+                + (0.20 * brand_compatibility)
+                + (0.15 * context_fit)
+                + (0.10 * budget_fit)
+                + (0.10 * novelty)
+            )
+            overall = round(unweighted / 0.75, 1)
 
         return PartnershipScoreBreakdown(
             cultural_fit=cultural_fit,
@@ -375,6 +412,7 @@ class PartnershipAgent:
             budget_fit=budget_fit,
             novelty=novelty,
             overall_score=overall,
+            affinity_measured=affinity_measured,
         )
 
     # -------------------------------------------------------------------------
@@ -468,14 +506,20 @@ class PartnershipAgent:
     ) -> OutreachDraft:
         """Drafts an exploratory, evidence-backed outreach letter (no real partnership claimed)."""
         venue = twin.business_type or "physical space"
-        affinity_pct = round(candidate.affinity * 100)
-
         subject = f"Exploratory Cultural Alignment: {venue} × {candidate.name}"
-        hook = (
-            f"Our physical space analytics indicate a notable cultural affinity ({affinity_pct}% patron taste overlap) "
-            f"between patrons of our {venue} and {candidate.name}. Both communities share a commitment to deliberate craftsmanship, "
-            "understated aesthetic restraint, and tactile authenticity."
-        )
+        if candidate.affinity is not None:
+            affinity_pct = round(candidate.affinity * 100)
+            hook = (
+                f"Our physical space analytics indicate a notable cultural affinity ({affinity_pct}% patron taste overlap) "
+                f"between patrons of our {venue} and {candidate.name}. Both communities share a commitment to deliberate craftsmanship, "
+                "understated aesthetic restraint, and tactile authenticity."
+            )
+        else:
+            hook = (
+                f"Our physical space analytics indicate strong operational and spatial alignment "
+                f"between patrons of our {venue} and {candidate.name}. Both communities share a commitment to deliberate craftsmanship, "
+                "understated aesthetic restraint, and tactile authenticity."
+            )
         value_prop = (
             f"For {candidate.name}: An intimate, high-dwell-time physical showcase in front of a discerning cultural demographic "
             f"(45+ minute dwell time). For our {venue}: Elevating patron sensory touchpoints through authentic partner craft."

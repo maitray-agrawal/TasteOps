@@ -14,9 +14,9 @@ class QlooInsight(BaseModel):
         default=None,
         description="Insight entity or tag category (e.g. urn:entity:place, urn:entity:artist)",
     )
-    affinity: float = Field(
-        ...,
-        description="Normalized affinity index or probability score (typically 0.0 to 1.0)",
+    affinity: float | None = Field(
+        default=None,
+        description="Normalized affinity index or probability score (typically 0.0 to 1.0), or None if unavailable from endpoint",
     )
     score: float | None = Field(
         default=None, description="Raw ranking score or index from Qloo"
@@ -62,7 +62,7 @@ class QlooInsight(BaseModel):
                 else:
                     data["affinity"] = 1.0
             except (ValueError, TypeError):
-                data["affinity"] = 0.0
+                data["affinity"] = None
         elif raw_affinity is not None:
             try:
                 numeric_affinity = float(raw_affinity)
@@ -75,9 +75,11 @@ class QlooInsight(BaseModel):
                         raw_score if raw_score is not None else numeric_affinity
                     )
             except (ValueError, TypeError):
-                data["affinity"] = 0.0
+                data["affinity"] = None
         else:
-            data["affinity"] = 0.0
+            # When neither affinity nor score was provided by the endpoint (e.g. spatial place search),
+            # affinity is unavailable (None), NOT a measured zero.
+            data["affinity"] = None
 
         # Resolve explainability
         explain = (
