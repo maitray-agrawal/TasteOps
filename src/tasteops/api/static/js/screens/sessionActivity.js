@@ -186,12 +186,6 @@ export async function renderSessionActivity(rootElement, params, router) {
                     <span>⚡ Dispatch Execution Tasks →</span>
                   </button>
                 ` : ''}
-                <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}')">
-                  <span>🧬 Cultural Twin</span>
-                </button>
-                <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/blueprint')">
-                  <span>📐 Blueprint</span>
-                </button>
               </div>
             </header>
 

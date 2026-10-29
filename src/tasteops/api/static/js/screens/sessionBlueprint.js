@@ -126,12 +126,6 @@ export async function renderSessionBlueprint(rootElement, params, router) {
                   <span>⚡ Dispatch Execution Tasks →</span>
                 </button>
               ` : ''}
-              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/activity')">
-                <span>🤖 Agent Activity</span>
-              </button>
-              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}')">
-                <span>🧬 Cultural Twin</span>
-              </button>
             </div>
           </header>
 
@@ -212,8 +206,8 @@ export async function renderSessionBlueprint(rootElement, params, router) {
           </div>
 
           <!-- 4-Tier Visual Distinction Legend -->
-          <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-bottom: 2rem;">
-            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.75rem;">
+          <div style="background: var(--white); border: 1px solid var(--border-stone); border-radius: var(--radius-md); padding: 1.25rem 1.5rem; margin-bottom: 2rem; box-shadow: var(--shadow-subtle);">
+            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--forest-green); margin-bottom: 0.85rem;">
               Blueprint Epistemic Architecture & Visual Distinction
             </div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">

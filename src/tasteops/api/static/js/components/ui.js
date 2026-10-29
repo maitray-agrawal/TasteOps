@@ -327,25 +327,37 @@ export function renderAgentStatusBadge(status) {
 }
 
 export function renderSubNav(sessionId, activeTab) {
+  const sid = sessionId || (typeof window !== 'undefined' && window.currentSessionId) || '';
   const tabs = [
-    { key: 'overview', label: 'Overview & Twin', path: `/sessions/${sessionId}` },
-    { key: 'activity', label: 'Agent Activity', path: `/sessions/${sessionId}/activity` },
-    { key: 'blueprint', label: 'Architectural Blueprint', path: `/sessions/${sessionId}/blueprint` },
-    { key: 'approval', label: 'Approval Gate', path: `/sessions/${sessionId}/approval` },
-    { key: 'execution', label: 'Execution Engine', path: `/sessions/${sessionId}/execution` },
-    { key: 'ledger', label: 'Audit Ledger', path: `/sessions/${sessionId}/ledger` },
+    { key: 'overview', label: 'Overview & Twin', icon: '🧬', path: `/sessions/${sid}` },
+    { key: 'activity', label: 'Agent Activity', icon: '🤖', path: `/sessions/${sid}/activity` },
+    { key: 'blueprint', label: 'Architectural Blueprint', icon: '📐', path: `/sessions/${sid}/blueprint` },
+    { key: 'approval', label: 'Approval Gate', icon: '⚖️', path: `/sessions/${sid}/approval` },
+    { key: 'execution', label: 'Execution Engine', icon: '⚡', path: `/sessions/${sid}/execution` },
+    { key: 'ledger', label: 'Audit Ledger', icon: '📜', path: `/sessions/${sid}/ledger` },
   ];
 
   return `
-    <nav class="tabs-nav">
-      ${tabs.map(t => `
-        <button 
-          class="tab-btn ${activeTab === t.key ? 'active' : ''}" 
-          onclick="window.tasteopsRouter.navigate('${t.path}')"
-        >
-          ${t.label}
-        </button>
-      `).join('')}
+    <nav class="session-nav-bar tabs-nav" aria-label="Session Navigation">
+      <div class="session-tabs-container" role="tablist">
+        ${tabs.map(t => {
+          const isActive = activeTab === t.key;
+          return `
+            <a 
+              href="${t.path}" 
+              role="tab"
+              aria-selected="${isActive ? 'true' : 'false'}"
+              class="session-tab-item tab-btn ${isActive ? 'active' : ''}" 
+              id="session-tab-${t.key}"
+              data-tab="${t.key}"
+              onclick="if (window.tasteopsRouter) { event.preventDefault(); window.tasteopsRouter.navigate('${t.path}'); }"
+            >
+              <span class="session-tab-icon" aria-hidden="true">${t.icon}</span>
+              <span class="session-tab-label">${escapeHtml(t.label)}</span>
+            </a>
+          `;
+        }).join('')}
+      </div>
     </nav>
   `;
 }

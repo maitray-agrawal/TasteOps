@@ -406,12 +406,12 @@ export class TasteOpsAPIClient {
     return this._normalizeSession(res);
   }
 
-  async approveSession(sessionId, { approver = 'human_curator' } = {}) {
+  async approveSession(sessionId, { approver = 'human_curator', notes = null } = {}) {
     if (!sessionId) throw new Error('Session ID is required');
     if (!approver) throw new Error('Approver name is required for authoritative sign-off');
     const res = await this._fetch(ENDPOINTS.SESSION_APPROVE(sessionId), {
       method: 'POST',
-      body: JSON.stringify({ approver }),
+      body: JSON.stringify({ approver, notes }),
     });
     return this._normalizeSession(res);
   }

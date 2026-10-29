@@ -209,7 +209,7 @@ export async function renderSessionLedger(rootElement, params, router) {
         ${renderSubNav(sessionId, 'ledger')}
 
         <!-- Read-Only & Immutability Notice Banner -->
-        <div class="read-only-notice-banner" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 0.85rem 1.25rem; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius-md); margin-bottom: 1.5rem; backdrop-filter: blur(8px);">
+        <div class="read-only-notice-banner" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 0.85rem 1.25rem; background: var(--white); border: 1px solid var(--border-stone); border-radius: var(--radius-md); margin-bottom: 1.5rem; box-shadow: var(--shadow-subtle);">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
             <span style="font-size: 1.2rem;">🏛️</span>
             <div>
@@ -691,7 +691,7 @@ function renderVerificationStatusCard(verification, eventCount) {
   const planHashMatched = verification?.plan_hash_matched;
 
   return `
-    <div class="card verification-card fade-in" style="padding: 1.25rem 1.5rem; background: rgba(14, 20, 36, 0.85); border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.25)'}; border-radius: var(--radius-md); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); backdrop-filter: blur(8px);">
+    <div class="card verification-card fade-in" style="padding: 1.25rem 1.5rem; background: var(--white); border: 1px solid var(--border-stone); border-radius: var(--radius-md); box-shadow: var(--shadow-card);">
       <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
           <div style="width: 42px; height: 42px; border-radius: var(--radius-md); background: ${isVerified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.1)'}; border: 1px solid ${isVerified ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.2)'}; display: flex; align-items: center; justify-content: center; font-size: 1.35rem;">
@@ -723,22 +723,22 @@ function renderVerificationStatusCard(verification, eventCount) {
       </div>
 
       <!-- Hash Metadata Grid -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 0.775rem;">
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--border-stone); font-family: var(--font-mono); font-size: 0.775rem;">
+        <div style="background: var(--soft-cream); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-stone);">
           <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Hash-Chain Digest</div>
           <div style="color: ${headHash ? 'var(--cyan)' : 'var(--text-muted)'}; word-break: break-all;">
             ${headHash ? escapeHtml(headHash) : '<span style="font-style: italic;">Unavailable (No backend hash-chain)</span>'}
           </div>
         </div>
 
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+        <div style="background: var(--soft-cream); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-stone);">
           <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">Merkle Root Digest</div>
           <div style="color: ${rootHash ? 'var(--text-secondary)' : 'var(--text-muted)'}; word-break: break-all;">
             ${rootHash ? escapeHtml(rootHash) : '<span style="font-style: italic;">Unavailable (No Merkle tree)</span>'}
           </div>
         </div>
 
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+        <div style="background: var(--soft-cream); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-stone);">
           <div style="color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; margin-bottom: 0.2rem;">
             Plan Hash Binding ${planHash ? (planHashMatched ? '<span style="color: #34d399;">(MATCHED)</span>' : '<span style="color: #f87171;">(MUTATED)</span>') : ''}
           </div>

@@ -91,12 +91,6 @@ export async function renderSessionDetail(rootElement, params, router) {
                   <span>⚡ Dispatch Execution Tasks →</span>
                 </button>
               ` : ''}
-              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/blueprint')">
-                <span>📐 View Blueprint</span>
-              </button>
-              <button class="btn btn-secondary" onclick="window.tasteopsRouter.navigate('/sessions/${escapeHtml(sessionId)}/ledger')">
-                <span>📜 Audit Ledger</span>
-              </button>
             </div>
           </header>
 
