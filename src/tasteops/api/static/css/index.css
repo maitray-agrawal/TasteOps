@@ -762,6 +762,301 @@ a {
 }
 
 /* ==========================================================================
+   TasteOps Responsive 5-Milestone Workflow Progress Component
+   ========================================================================== */
+.tasteops-workflow-progress {
+  background: var(--white);
+  border: 1px solid var(--border-stone);
+  border-radius: var(--radius-md);
+  padding: 1.5rem 1.75rem;
+  box-shadow: var(--shadow-subtle);
+  margin-bottom: 2rem;
+  transition: all var(--transition-normal);
+}
+
+.workflow-progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.workflow-progress-title-block {
+  flex: 1;
+  min-width: 280px;
+}
+
+.workflow-progress-stage {
+  font-family: var(--font-heading, var(--font-serif));
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--forest-green);
+  line-height: 1.3;
+}
+
+.workflow-progress-action {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: 0.35rem;
+}
+
+.workflow-progress-action strong {
+  color: var(--forest-green);
+}
+
+.workflow-progress-badge-wrap {
+  flex-shrink: 0;
+}
+
+/* 5-Milestone Horizontal Stepper Track */
+.workflow-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0 1rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 170px;
+  position: relative;
+  user-select: none;
+}
+
+.stepper-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  transition: all var(--transition-normal);
+}
+
+.stepper-step.completed .stepper-circle {
+  background: var(--forest-green);
+  color: var(--white);
+  border: 2px solid var(--forest-green);
+}
+
+.stepper-step.active .stepper-circle {
+  background: var(--terracotta);
+  color: var(--white);
+  border: 2px solid var(--terracotta);
+  box-shadow: 0 0 0 4px var(--clay-tint);
+  animation: pulse-ring 2s infinite ease-in-out;
+}
+
+.stepper-step.failed .stepper-circle {
+  background: var(--state-error);
+  color: var(--white);
+  border: 2px solid var(--state-error);
+}
+
+.stepper-step.upcoming .stepper-circle {
+  background: var(--warm-ivory);
+  color: var(--text-muted);
+  border: 2px solid var(--warm-stone);
+}
+
+.stepper-meta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stepper-num {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.stepper-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.stepper-step.completed .stepper-label {
+  color: var(--forest-green);
+}
+
+.stepper-step.active .stepper-label {
+  color: var(--terracotta);
+  font-weight: 700;
+}
+
+.stepper-step.failed .stepper-label {
+  color: var(--state-error);
+}
+
+.stepper-sublabel {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.stepper-connector {
+  flex: 0 0 28px;
+  height: 2px;
+  background: var(--warm-stone);
+  margin: 0 0.25rem;
+  transition: background var(--transition-normal);
+}
+
+.stepper-connector.completed {
+  background: var(--forest-green);
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--clay-tint); }
+  70% { box-shadow: 0 0 0 8px rgba(201, 104, 66, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(201, 104, 66, 0); }
+}
+
+/* Collapsible Technical Diagnostics Drawer */
+.pipeline-diagnostics-drawer {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-stone);
+  padding-top: 0.75rem;
+}
+
+.diagnostics-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--font-mono);
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0;
+  transition: color var(--transition-fast);
+}
+
+.diagnostics-summary:hover {
+  color: var(--text-primary);
+}
+
+.diagnostics-summary-hint {
+  font-size: 0.72rem;
+}
+
+.diagnostics-summary-hint code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  color: var(--forest-green);
+}
+
+.diagnostics-body {
+  margin-top: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--warm-ivory);
+  border: 1px solid var(--border-stone);
+  border-radius: var(--radius-sm);
+  font-size: 0.775rem;
+}
+
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.85rem;
+}
+
+.diagnostics-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.diagnostics-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.diagnostics-val {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Progressive Disclosure Evidence Accordion */
+.evidence-accordion {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border-stone);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  overflow: hidden;
+}
+
+.evidence-accordion summary {
+  padding: 0.6rem 0.85rem;
+  background: var(--warm-ivory);
+  font-size: 0.775rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background var(--transition-fast);
+}
+
+.evidence-accordion summary:hover {
+  background: var(--soft-cream);
+  color: var(--text-primary);
+}
+
+.evidence-accordion[open] summary {
+  border-bottom: 1px solid var(--border-stone);
+}
+
+.evidence-accordion-content {
+  padding: 0.85rem;
+}
+
+/* Responsive Stepper Adjustments for Mobile / Tablet */
+@media (max-width: 900px) {
+  .workflow-stepper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+  .stepper-connector {
+    display: none;
+  }
+  .stepper-step {
+    min-width: 100%;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--warm-ivory);
+  }
+}
+
+/* ==========================================================================
    Centerpiece Split Grid: Cultural Twin (Left) + Agents & Live Preview (Right)
    ========================================================================== */
 .curation-workspace-grid {

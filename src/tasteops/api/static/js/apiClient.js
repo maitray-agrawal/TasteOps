@@ -552,7 +552,7 @@ export class TasteOpsAPIClient {
           evidence: {
             entity_id: entId,
             source: ent.source || 'qloo_entity_resolver',
-            urn: `urn:qloo:entity:${ent.type || 'cultural_anchor'}:${entId}`,
+            urn: `urn:qloo:entity:${(ent.type && ent.type.toLowerCase() !== 'none') ? ent.type : 'cultural_anchor'}:${entId}`,
             affinity: typeof ent.affinity === 'number' ? ent.affinity : null,
             confidence: typeof ent.confidence === 'number' ? ent.confidence : null,
             why_it_matters: ent.why_it_matters || 'Ground-truth cultural intelligence anchor resolved from venue brief.',
@@ -564,8 +564,8 @@ export class TasteOpsAPIClient {
           },
           recommendation: {
             title: entName,
-            role: `Cultural Anchor (${ent.type || 'Entity'})`,
-            category: ent.type || 'Anchor',
+            role: (ent.type && ent.type.toLowerCase() !== 'none' && ent.type.toLowerCase() !== 'null') ? `Cultural Anchor (${ent.type})` : 'Cultural Anchor',
+            category: (ent.type && ent.type.toLowerCase() !== 'none' && ent.type.toLowerCase() !== 'null') ? ent.type : 'Anchor',
           },
           execution_action: {
             action: `Incorporate ${entName} taste graph into sonic and sensory programming`,

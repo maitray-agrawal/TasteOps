@@ -724,7 +724,11 @@ export async function renderSessionBlueprint(rootElement, params, router) {
             <div style="padding-top: 1.25rem;">
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
                 ${evidence.slice(0, 8).map(ev => {
-                  const evScore = typeof ev.affinity === 'number' ? `${(ev.affinity * 100).toFixed(0)}% Affinity` : (typeof ev.confidence === 'number' ? `${(ev.confidence * 100).toFixed(0)}% Confidence` : 'Affinity Unavailable');
+                  const evScore = typeof ev.affinity === 'number'
+                    ? `${(ev.affinity * 100).toFixed(0)}% Affinity`
+                    : (typeof ev.confidence === 'number'
+                      ? `${(ev.confidence * 100).toFixed(0)}% Model Confidence`
+                      : 'Affinity unavailable');
                   return `
                   <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem;">
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.35rem;">
@@ -821,7 +825,7 @@ function renderProvenanceModal(item) {
               🔬 1. GROUND-TRUTH EVIDENCE
             </span>
             <span style="font-size: 0.75rem; color: ${typeof ev.affinity === 'number' ? '#34d399' : 'var(--text-muted)'}; font-family: var(--font-mono);">
-              ${typeof ev.affinity === 'number' ? `${(ev.affinity * 100).toFixed(0)}% Affinity Overlap` : (typeof ev.confidence === 'number' ? `${(ev.confidence * 100).toFixed(0)}% Confidence` : 'Affinity Unavailable')}
+              ${typeof ev.affinity === 'number' ? `${(ev.affinity * 100).toFixed(0)}% Affinity Overlap` : (typeof ev.confidence === 'number' ? `${(ev.confidence * 100).toFixed(0)}% Model Confidence` : 'Affinity unavailable')}
             </span>
           </div>
           <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.5rem;">

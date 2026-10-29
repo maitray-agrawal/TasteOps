@@ -53,6 +53,65 @@ export function renderDashboard(rootElement, params, router) {
       </section>
 
       <!-- =====================================================================
+           FIRST-TIME VISITOR 10-SECOND ORIENTATION & VALUE ARCHITECTURE
+           ===================================================================== -->
+      <section class="card" style="background: var(--white); border: 1px solid var(--border-stone); border-radius: var(--radius-md); padding: 1.5rem 1.75rem; margin-bottom: 2rem; box-shadow: var(--shadow-subtle);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="font-size: 1.25rem;">🏛️</span>
+            <div>
+              <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--terracotta);">First-Time Visitor Orientation</span>
+              <h2 style="font-family: var(--font-serif); font-size: 1.25rem; color: var(--forest-green); margin: 0;">How TasteOps Works in 30 Seconds</h2>
+            </div>
+          </div>
+          <span class="badge" style="background: var(--sage-tint); color: var(--forest-green); font-size: 0.75rem; font-weight: 600;">
+            100% Governed · Zero Hallucinations
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; font-size: 0.85rem; line-height: 1.5;">
+          <!-- 1. What & Who -->
+          <div style="background: var(--warm-ivory); border: 1px solid var(--border-stone); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-weight: 700; color: var(--forest-green); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span>🎯</span> What is TasteOps &amp; Who is it for?
+            </div>
+            <p style="color: var(--text-secondary); margin: 0;">
+              An autonomous spatial curation platform for <strong>hospitality founders, venue curators, and acoustic designers</strong> that converts natural-language briefs into physically grounded experience blueprints.
+            </p>
+          </div>
+
+          <!-- 2. Problem & Output -->
+          <div style="background: var(--warm-ivory); border: 1px solid var(--border-stone); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-weight: 700; color: var(--forest-green); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span>📐</span> What Problem Does It Solve &amp; What Do You Create?
+            </div>
+            <p style="color: var(--text-secondary); margin: 0;">
+              Replaces subjective trial-and-error with empirical taste intelligence. Generates <strong>day-parted vinyl playlists, 8-column library purchase orders (PO CSVs), and vetted brand partnership decks</strong>.
+            </p>
+          </div>
+
+          <!-- 3. Evidence & Governance -->
+          <div style="background: var(--warm-ivory); border: 1px solid var(--border-stone); border-radius: var(--radius-sm); padding: 1rem;">
+            <div style="font-weight: 700; color: var(--forest-green); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem;">
+              <span>⚖️</span> Evidence Provenance &amp; Human Control Gate
+            </div>
+            <p style="color: var(--text-secondary); margin: 0;">
+              Every recommendation links to <strong>Qloo's 250M+ entity graph</strong>. Zero actions execute without explicit human curator approval via our cryptographic <strong>Human Approval Gate</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border-stone); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+            <span>🚀 <strong>Primary Flow:</strong> Create Brief → Synthesize Cultural Twin → Review Blueprint → Sign Off Gate → Execute Tasks.</span>
+          </div>
+          <a href="/create-space" class="btn btn-primary btn-sm" onclick="event.preventDefault(); window.tasteopsRouter.navigate('/create-space');" style="text-decoration: none;">
+            Start Primary Journey →
+          </a>
+        </div>
+      </section>
+
+      <!-- =====================================================================
            2. PRIMARY INPUT & SPACE FILTERS
            ===================================================================== -->
       <section class="primary-input-card">

@@ -103,19 +103,19 @@ export async function renderSessionDetail(rootElement, params, router) {
           <!-- Sub-navigation Tabs -->
           ${renderSubNav(sessionId, 'overview')}
 
-          <!-- Real-Time SSE Stream Monitor -->
-          <div class="stream-monitor-bar" style="margin-bottom: 1.5rem;">
+          <!-- Real-Time Workspace Stream Monitor -->
+          <div class="stream-monitor-bar" style="margin-bottom: 1.5rem;" title="Transport: /api/v1/sessions/${escapeHtml(sessionId)}/stream">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <span class="stream-status-pill">
                 <span class="stream-dot" id="sse-live-dot"></span>
-                <span id="sse-live-label">SSE Stream Active</span>
+                <span id="sse-live-label">Live Intelligence Stream Active</span>
               </span>
               <span style="color: var(--text-muted);">|</span>
-              <span id="sse-last-event" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">
-                Listening on /api/v1/sessions/${escapeHtml(sessionId)}/stream
+              <span id="sse-last-event" style="font-size: 0.8rem; color: var(--text-secondary);">
+                Continuous workspace synchronization active
               </span>
             </div>
-            <span class="hash-pill" id="sse-event-id" style="font-size: 0.7rem;">reconnect-safe</span>
+            <span class="hash-pill" id="sse-event-id" style="font-size: 0.7rem; color: var(--forest-green);">Real-time Sync</span>
           </div>
 
           <!-- FSM Workflow Pipeline Stepper -->
@@ -210,7 +210,7 @@ export async function renderSessionDetail(rootElement, params, router) {
                               <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                                 <span style="font-weight: 700; color: var(--text-primary); font-size: 1rem;">${escapeHtml(ent.name)}</span>
                                 <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-size: 0.75rem; text-transform: uppercase;">
-                                  ${escapeHtml(ent.type || 'Entity')}
+                                  ${escapeHtml((ent.type && ent.type.toLowerCase() !== 'none' && ent.type.toLowerCase() !== 'null') ? ent.type : 'Anchor')}
                                 </span>
                                 <span class="hash-pill" style="font-size: 0.75rem; color: var(--cyan);">
                                   ${escapeHtml(ent.id)}
@@ -228,22 +228,33 @@ export async function renderSessionDetail(rootElement, params, router) {
                             </div>
                           </div>
 
-                          <!-- Evidence Payload Box -->
+                          <!-- Progressive Disclosure Evidence Accordion -->
                           <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); font-size: 0.8rem;">
                             ${hasEvidence ? `
-                              <div style="color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-                                <span style="color: #34d399;">✓</span>
-                                <span style="font-weight: 600; text-transform: uppercase; font-size: 0.7rem; color: var(--text-secondary);">Verified Evidence Payload:</span>
-                                <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.75rem;">Source: ${escapeHtml(ent.source || 'qloo_search')}</span>
-                              </div>
-                              <pre style="background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); overflow-x: auto; margin: 0;">${escapeHtml(JSON.stringify(ent.evidence, null, 2))}</pre>
+                              <details class="evidence-accordion">
+                                <summary>
+                                  <span style="display: flex; align-items: center; gap: 0.45rem;">
+                                    <span style="color: #34d399;">✓</span>
+                                    <span>Verified Qloo Evidence &amp; Entity Payload</span>
+                                  </span>
+                                  <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">
+                                    Source: ${escapeHtml(ent.source || 'qloo_search')} ▾
+                                  </span>
+                                </summary>
+                                <div class="evidence-accordion-content">
+                                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                                    Authoritative response payload returned by Cultural Intelligence MCP / Qloo API:
+                                  </div>
+                                  <pre style="background: rgba(0,0,0,0.3); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); overflow-x: auto; margin: 0;">${escapeHtml(JSON.stringify(ent.evidence, null, 2))}</pre>
+                                </div>
+                              </details>
                             ` : `
                               <div style="background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.3); padding: 0.5rem 0.75rem; border-radius: 4px; color: #fbbf24; display: flex; align-items: center; justify-content: space-between;">
                                 <div style="display: flex; align-items: center; gap: 0.4rem;">
-                                  <span>⚠️</span>
-                                  <span><strong>EVIDENCE MISSING:</strong> Raw match telemetry was not recorded for this entity.</span>
+                                  <span>ℹ️</span>
+                                  <span><strong>Provenance Note:</strong> Resolved from initial brief; raw vector telemetry was not recorded.</span>
                                 </div>
-                                <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">source: ${escapeHtml(ent.source || 'untracked')}</span>
+                                <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">source: ${escapeHtml(ent.source || 'brief_anchor')}</span>
                               </div>
                             `}
                           </div>

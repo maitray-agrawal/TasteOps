@@ -100,7 +100,11 @@ class CulturalStrategist:
             if entity_res.get("is_resolved") and entity_res.get("resolved_entity_id"):
                 ent_id = str(entity_res["resolved_entity_id"])
                 ent_name = str(entity_res.get("entity_name", clean_term))
-                ent_type = str(entity_res.get("entity_type", "brand"))
+                raw_type = entity_res.get("entity_type")
+                if raw_type and str(raw_type).strip().lower() not in ("none", "null"):
+                    ent_type = str(raw_type).strip()
+                else:
+                    ent_type = None
                 conf = float(entity_res.get("confidence", 1.0))
                 resolution_confidences.append(conf)
 
@@ -112,7 +116,7 @@ class CulturalStrategist:
                     ResolvedEntity(
                         id=ent_id,
                         name=ent_name,
-                        type=ent_type,
+                        type=ent_type or "cultural_anchor",
                         confidence=conf,
                         why_it_matters=why_it_matters,
                         source="qloo_search",
@@ -239,7 +243,7 @@ class CulturalStrategist:
     # Signal Reasoning & Synthesis Helpers
     # -------------------------------------------------------------------------
     def _explain_entity_signal(
-        self, name: str, entity_type: str, brief: PhysicalSpaceBrief
+        self, name: str, entity_type: str | None, brief: PhysicalSpaceBrief
     ) -> str:
         """Generates contextual rationale explaining why a verified entity signal matters."""
         venue = brief.business_type or "physical space"
@@ -261,7 +265,9 @@ class CulturalStrategist:
                 f"Serves as an architectural and hospitality benchmark for {venue}, "
                 f"demonstrating spatial pacing, patron density, and social ritual resonant with {name}."
             )
-        return f"Grounds the cultural identity of {venue} in proven taste affinities aligned with {name} ({entity_type})."
+        if entity_type and entity_type.strip().lower() not in ("none", "null"):
+            return f"Grounds the cultural identity of {venue} in proven taste affinities aligned with {name} ({entity_type})."
+        return f"Grounds the cultural identity of {venue} in proven taste affinities aligned with {name}."
 
     def _explain_tag_signal(self, name: str, brief: PhysicalSpaceBrief) -> str:
         """Generates contextual rationale explaining why a verified tag signal matters."""

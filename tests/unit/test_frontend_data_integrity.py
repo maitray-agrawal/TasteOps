@@ -196,3 +196,40 @@ async def test_csv_artifact_format_and_provenance(
             "Affinity Score",
             "Qloo Entity ID",
         ]
+
+
+def test_entity_signal_explanation_never_emits_none() -> None:
+    """Verifies that _explain_entity_signal never interpolates literal (None) or (NONE)."""
+    from tasteops.agents.strategist import CulturalStrategist
+    from tasteops.models.cultural_matrix import PhysicalSpaceBrief
+
+    strategist = CulturalStrategist(mcp_adapter=None)
+    brief = PhysicalSpaceBrief(
+        name="Kyoto Listening Kissa",
+        business_type="listening bar",
+        desired_mood="deep analog warmth",
+    )
+
+    # Test with None entity_type
+    explanation_none = strategist._explain_entity_signal("Miles Davis", None, brief)
+    assert "(None)" not in explanation_none
+    assert "(NONE)" not in explanation_none
+    assert "Miles Davis" in explanation_none
+    assert (
+        explanation_none
+        == "Grounds the cultural identity of listening bar in proven taste affinities aligned with Miles Davis."
+    )
+
+    # Test with literal "None" string
+    explanation_str_none = strategist._explain_entity_signal(
+        "Miles Davis", "None", brief
+    )
+    assert "(None)" not in explanation_str_none
+    assert "(NONE)" not in explanation_str_none
+
+    # Test with valid artist entity_type
+    explanation_artist = strategist._explain_entity_signal(
+        "Miles Davis", "artist", brief
+    )
+    assert "(artist)" not in explanation_artist
+    assert "listening palette" in explanation_artist

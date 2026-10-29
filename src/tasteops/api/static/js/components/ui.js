@@ -124,51 +124,166 @@ export function renderBadge(state) {
 
 export function renderStatePipeline(currentState) {
   const s = String(currentState || '').toUpperCase();
-  const steps = [
-    { key: 'CREATED', label: 'Created' },
-    { key: 'INTENT_PARSED', label: 'Intent' },
-    { key: 'CULTURAL_TWIN_CREATED', label: 'Twin' },
-    { key: 'QLOO_RESOLVED', label: 'Qloo' },
-    { key: 'CULTURAL_MATRIX_READY', label: 'Matrix' },
-    { key: 'AGENTS_RUNNING', label: 'Agents' },
-    { key: 'PLAN_GENERATED', label: 'Plan' },
-    { key: 'VALIDATED', label: 'Governance' },
-    { key: 'AWAITING_APPROVAL', label: 'Gate' },
-    { key: 'APPROVED', label: 'Approved' },
-    { key: 'EXECUTING', label: 'Execution' },
-    { key: 'COMPLETED', label: 'Complete' },
-  ];
-
-  const stepKeys = steps.map(st => st.key);
-  const currentIndex = stepKeys.indexOf(s);
   const isFailed = s === 'FAILED';
 
+  // 5 Canonical Human-Centric Milestones
+  const milestones = [
+    {
+      id: 1,
+      name: 'Concept Ingestion',
+      desc: 'Venue Brief & Parameters',
+      states: ['CREATED', 'INTENT_PARSED'],
+    },
+    {
+      id: 2,
+      name: 'Cultural Intelligence',
+      desc: 'Qloo Taste Graph Signals',
+      states: ['CULTURAL_TWIN_CREATED', 'QLOO_RESOLVED', 'CULTURAL_MATRIX_READY'],
+    },
+    {
+      id: 3,
+      name: 'Agent Synthesis',
+      desc: 'Multi-Agent Blueprint',
+      states: ['AGENTS_RUNNING', 'PLAN_GENERATED'],
+    },
+    {
+      id: 4,
+      name: 'Governance Gate',
+      desc: 'Mandatory Human Approval',
+      states: ['VALIDATED', 'AWAITING_APPROVAL'],
+    },
+    {
+      id: 5,
+      name: 'Governed Activation',
+      desc: 'Dispatch & Procurement',
+      states: ['APPROVED', 'EXECUTING', 'COMPLETED'],
+    },
+  ];
+
+  // Determine current active milestone index (0 to 4)
+  let activeIndex = 0;
+  if (milestones[1].states.includes(s)) activeIndex = 1;
+  else if (milestones[2].states.includes(s)) activeIndex = 2;
+  else if (milestones[3].states.includes(s)) activeIndex = 3;
+  else if (milestones[4].states.includes(s)) activeIndex = 4;
+  else if (isFailed) activeIndex = 3; // Typically halts at governance/validation
+
+  const isCompleted = s === 'COMPLETED';
+
+  // Human-friendly stage name and next action
+  let stageTitle = `Milestone ${activeIndex + 1} of 5: ${milestones[activeIndex].name}`;
+  let stageBadgeText = s.replace(/_/g, ' ');
+  let stageBadgeClass = 'badge-in-progress';
+  let nextActionHtml = '';
+
+  if (isFailed) {
+    stageTitle = 'Workflow Halted — Validation or Policy Check Failed';
+    stageBadgeText = 'Validation Failed';
+    stageBadgeClass = 'badge-failed';
+    nextActionHtml = '<strong>Next Action:</strong> Inspect governance violations in the failure diagnostics below, adjust brief constraints or brand partner thresholds, and rerun synthesis.';
+  } else if (s === 'AWAITING_APPROVAL') {
+    stageTitle = 'Milestone 4 of 5: Governance Checks Passed — Awaiting Human Approval';
+    stageBadgeText = 'Awaiting Approval';
+    stageBadgeClass = 'badge-awaiting-approval';
+    nextActionHtml = '<strong>Next Action:</strong> Human curator review required. Navigate to the <em>Approval Gate</em> tab to review policy compliance and sign off on execution.';
+  } else if (s === 'APPROVED') {
+    stageTitle = 'Milestone 5 of 5: Human Approval Granted — Ready for Execution';
+    stageBadgeText = 'Approved';
+    stageBadgeClass = 'badge-approved';
+    nextActionHtml = '<strong>Next Action:</strong> Plan approved by curator. Click <em>Dispatch Execution Tasks</em> to stage real-world procurement and playlist specifications.';
+  } else if (s === 'EXECUTING' || s === 'RUNNING') {
+    stageTitle = 'Milestone 5 of 5: Governed Task Execution In Progress';
+    stageBadgeText = 'Executing Tasks';
+    stageBadgeClass = 'badge-executing';
+    nextActionHtml = '<strong>Next Action:</strong> Connectors are generating Spotify playlist specs, procurement purchase orders, and partner outreach packets.';
+  } else if (isCompleted) {
+    stageTitle = 'Milestone 5 of 5: Execution Completed & Cryptographically Verified';
+    stageBadgeText = 'Execution Complete';
+    stageBadgeClass = 'badge-completed';
+    nextActionHtml = '<strong>Next Action:</strong> Review final deliverables in the <em>Results</em> screen or inspect the immutable audit record in the <em>Audit Ledger</em>.';
+  } else {
+    nextActionHtml = '<strong>Next Action:</strong> Autonomous cultural agents are analyzing cross-domain taste vectors. Real-time updates streaming below.';
+  }
+
   return `
-    <div class="workflow-stepper">
-      ${steps.map((st, idx) => {
-        let nodeClass = '';
-        if (isFailed) {
-          nodeClass = idx === 0 ? 'completed' : '';
-        } else if (idx < currentIndex) {
-          nodeClass = 'completed';
-        } else if (idx === currentIndex) {
-          nodeClass = 'active';
-        }
+    <div class="tasteops-workflow-progress">
+      <!-- Top Status Banner -->
+      <div class="workflow-progress-header">
+        <div class="workflow-progress-title-block">
+          <div class="workflow-progress-stage">${escapeHtml(stageTitle)}</div>
+          <div class="workflow-progress-action">${nextActionHtml}</div>
+        </div>
+        <div class="workflow-progress-badge-wrap">
+          <span class="badge ${stageBadgeClass}" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">
+            ${escapeHtml(stageBadgeText)}
+          </span>
+        </div>
+      </div>
 
-        const isConnectorCompleted = !isFailed && idx < currentIndex;
+      <!-- Responsive 5-Milestone Track -->
+      <div class="workflow-stepper">
+        ${milestones.map((m, idx) => {
+          let nodeClass = 'upcoming';
+          let icon = String(idx + 1);
 
-        return `
-          <div class="stepper-node ${nodeClass}">
-            <div class="stepper-circle">
-              ${idx < currentIndex ? '✓' : idx + 1}
+          if (isFailed && idx === activeIndex) {
+            nodeClass = 'failed';
+            icon = '✕';
+          } else if (idx < activeIndex || (idx === activeIndex && isCompleted)) {
+            nodeClass = 'completed';
+            icon = '✓';
+          } else if (idx === activeIndex) {
+            nodeClass = 'active';
+            icon = String(idx + 1);
+          }
+
+          const isConnectorCompleted = !isFailed && (idx < activeIndex || (idx === activeIndex && isCompleted));
+
+          return `
+            <div class="stepper-step ${nodeClass}">
+              <div class="stepper-circle">
+                ${icon}
+              </div>
+              <div class="stepper-meta">
+                <span class="stepper-num">Phase 0${idx + 1}</span>
+                <span class="stepper-label">${escapeHtml(m.name)}</span>
+                <span class="stepper-sublabel">${escapeHtml(m.desc)}</span>
+              </div>
             </div>
-            <div class="stepper-label">${st.label}</div>
+            ${idx < milestones.length - 1 ? `
+              <div class="stepper-connector ${isConnectorCompleted ? 'completed' : ''}"></div>
+            ` : ''}
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Collapsible Technical Telemetry & Diagnostics -->
+      <details class="pipeline-diagnostics-drawer">
+        <summary class="diagnostics-summary">
+          <span>🛠️ Technical FSM State Machine &amp; Telemetry Details</span>
+          <span class="diagnostics-summary-hint">Authoritative State: <code>${escapeHtml(s)}</code></span>
+        </summary>
+        <div class="diagnostics-body">
+          <div class="diagnostics-grid">
+            <div class="diagnostics-item">
+              <span class="diagnostics-label">Authoritative State:</span>
+              <strong class="diagnostics-val" style="color: var(--cyan);">${escapeHtml(s)}</strong>
+            </div>
+            <div class="diagnostics-item">
+              <span class="diagnostics-label">State Machine Invariant:</span>
+              <span class="diagnostics-val">Deterministic 13-state sequential transition model</span>
+            </div>
+            <div class="diagnostics-item">
+              <span class="diagnostics-label">Human Gate Enforcement:</span>
+              <span class="diagnostics-val" style="color: #34d399;">Mandatory curator sign-off before task execution</span>
+            </div>
+            <div class="diagnostics-item">
+              <span class="diagnostics-label">Event Transport:</span>
+              <span class="diagnostics-val">Server-Sent Events (SSE) with reconnect resilience</span>
+            </div>
           </div>
-          ${idx < steps.length - 1 ? `
-            <div class="stepper-connector ${isConnectorCompleted ? 'completed' : ''}"></div>
-          ` : ''}
-        `;
-      }).join('')}
+        </div>
+      </details>
     </div>
   `;
 }
